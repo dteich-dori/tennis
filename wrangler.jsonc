@@ -39,7 +39,7 @@
 		{
 			"binding": "DB",
 			"database_name": "tennis-scheduler-db",
-			"database_id": "local",
+			"database_id": "27e09d36-03f5-4b39-8401-36a189c6ad38",
 			"migrations_dir": "drizzle/migrations"
 		}
 	]
