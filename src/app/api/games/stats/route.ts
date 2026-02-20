@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db/getDb";
+import { games, gameAssignments, players } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
+
+/**
+ * GET /api/games/stats?seasonId=1&group=dons
+ * Returns per-player statistics for the entire season filtered by group:
+ *   - ytd: total games assigned
+ *   - contracted: contracted frequency
+ *   - expectedYtd: freq * weeksWithAssignments
+ *   - deficit: expectedYtd - ytd
+ *   - weeklyBreakdown: games per week
+ *   - ballsBrought: slot 1 count (ball-bringing duty)
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const seasonId = request.nextUrl.searchParams.get("seasonId");
+    const group = request.nextUrl.searchParams.get("group"); // "dons" or "solo"
+    if (!seasonId) {
+      return NextResponse.json(
+        { error: "seasonId required" },
+        { status: 400 }
+      );
+    }
+
+    const database = await db();
+    const sid = parseInt(seasonId);
+
+    // Base game filter: season + normal status + optional group
+    const gameFilter = group
+      ? and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(games.group, group))
+      : and(eq(games.seasonId, sid), eq(games.status, "normal"));
+
+    // Load all active players, filtered by group eligibility
+    const allPlayersRaw = await database
+      .select()
+      .from(players)
+      .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
+
+    // For solo group, only include players with a non-null soloShareLevel
+    const allPlayers = group === "solo"
+      ? allPlayersRaw.filter((p) => p.soloShareLevel != null)
+      : allPlayersRaw;
+
+    // Get the highest week number that has any assignments (current progress)
+    const [maxWeekRow] = await database
+      .select({
+        maxWeek: sql<number>`max(${games.weekNumber})`.as("maxWeek"),
+      })
+      .from(games)
+      .innerJoin(gameAssignments, eq(gameAssignments.gameId, games.id))
+      .where(gameFilter);
+
+    const currentMaxWeek = maxWeekRow?.maxWeek ?? 0;
+
+    // YTD count per player
+    const ytdRows = await database
+      .select({
+        playerId: gameAssignments.playerId,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(gameAssignments)
+      .innerJoin(games, eq(gameAssignments.gameId, games.id))
+      .where(gameFilter)
+      .groupBy(gameAssignments.playerId);
+
+    const ytdMap = new Map<number, number>();
+    for (const row of ytdRows) {
+      ytdMap.set(row.playerId, row.count);
+    }
+
+    // Ball-bringing count (slot 1 assignments) per player
+    const ballFilter = group
+      ? and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(games.group, group), eq(gameAssignments.slotPosition, 1))
+      : and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(gameAssignments.slotPosition, 1));
+
+    const ballRows = await database
+      .select({
+        playerId: gameAssignments.playerId,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(gameAssignments)
+      .innerJoin(games, eq(gameAssignments.gameId, games.id))
+      .where(ballFilter)
+      .groupBy(gameAssignments.playerId);
+
+    const ballMap = new Map<number, number>();
+    for (const row of ballRows) {
+      ballMap.set(row.playerId, row.count);
+    }
+
+    // Per-week counts per player
+    const weeklyRows = await database
+      .select({
+        playerId: gameAssignments.playerId,
+        weekNumber: games.weekNumber,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(gameAssignments)
+      .innerJoin(games, eq(gameAssignments.gameId, games.id))
+      .where(gameFilter)
+      .groupBy(gameAssignments.playerId, games.weekNumber);
+
+    const weeklyMap = new Map<number, Record<number, number>>();
+    for (const row of weeklyRows) {
+      if (!weeklyMap.has(row.playerId)) {
+        weeklyMap.set(row.playerId, {});
+      }
+      weeklyMap.get(row.playerId)![row.weekNumber] = row.count;
+    }
+
+    // Solo share frequency mapping
+    const soloShareFreqMap: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
+
+    // Build stats
+    const stats = allPlayers
+      .sort((a, b) => a.lastName.localeCompare(b.lastName))
+      .map((p) => {
+        // Use solo share frequency for solo group, contracted frequency for dons
+        const freq = group === "solo"
+          ? (p.soloShareLevel ? (soloShareFreqMap[p.soloShareLevel] ?? 0) : 0)
+          : (parseInt(p.contractedFrequency) || 0);
+        const ytd = ytdMap.get(p.id) ?? 0;
+        const expectedYtd = freq * currentMaxWeek;
+        const deficit = expectedYtd - ytd;
+        const ballsBrought = ballMap.get(p.id) ?? 0;
+        const weeksPlayed = Object.keys(weeklyMap.get(p.id) ?? {}).length;
+
+        return {
+          playerId: p.id,
+          lastName: p.lastName,
+          firstName: p.firstName,
+          frequency: p.contractedFrequency,
+          skillLevel: p.skillLevel,
+          soloShareLevel: p.soloShareLevel,
+          ytd,
+          expectedYtd,
+          deficit,
+          ballsBrought,
+          weeksPlayed,
+        };
+      });
+
+    return NextResponse.json({
+      stats,
+      currentMaxWeek,
+      totalPlayers: allPlayers.length,
+    });
+  } catch (err) {
+    console.error("[games/stats GET] error:", err);
+    return NextResponse.json(
+      { error: "Failed to load stats" },
+      { status: 500 }
+    );
+  }
+}
