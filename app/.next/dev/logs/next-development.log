@@ -1,4 +1,0 @@
-[20:39:17.762] Server  ERROR   ⨯ Module not found: Error: Can't resolve 'next-flight-client-entry-loader' in '/Users/doriteich/TennisScheduler/app'
-[20:39:17.882] Server  ERROR   Error: ENOENT: no such file or directory, scandir '/Users/doriteich/TennisScheduler/app/src/app'
-[20:39:17.883] Server  ERROR   ⨯ "unhandledRejection:" Error: ENOENT: no such file or directory, scandir '/Users/doriteich/TennisScheduler/app/src/app'
-[20:39:17.884] Server  ERROR   ⨯ "unhandledRejection: " Error: ENOENT: no such file or directory, scandir '/Users/doriteich/TennisScheduler/app/src/app'
