@@ -314,7 +314,7 @@ export default function SchedulePage() {
       const res = await fetch(
         `/api/games/compliance?seasonId=${season.id}&weekNumber=${currentWeek}&group=${group}`
       );
-      const data = await res.json();
+      const data = await res.json() as { violations?: Parameters<typeof setViolations>[0] };
       setViolations(data.violations ?? []);
       setComplianceChecked(true);
     } catch (err) {
@@ -339,12 +339,12 @@ export default function SchedulePage() {
           apply: false,
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as { error?: string; swaps?: number; preview?: unknown; imbalance?: number };
       if (data.error) {
         setBalanceBallsMessage(`Error: ${data.error}`);
         setBalanceBallsPreview(null);
       } else {
-        setBalanceBallsPreview(data);
+        setBalanceBallsPreview(data as Parameters<typeof setBalanceBallsPreview>[0]);
       }
     } catch (err) {
       console.error("Failed to preview ball balance:", err);
@@ -367,7 +367,7 @@ export default function SchedulePage() {
           apply: true,
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as { error?: string; swaps?: number };
       if (data.error) {
         setBalanceBallsMessage(`Error: ${data.error}`);
       } else {
@@ -392,7 +392,7 @@ export default function SchedulePage() {
     setExtraGamesLoading(true);
     try {
       const res = await fetch(`/api/games/extra?seasonId=${season.id}`);
-      const data = await res.json();
+      const data = await res.json() as Parameters<typeof setExtraGamesData>[0];
       setExtraGamesData(data);
     } catch (err) {
       console.error("Failed to load extra games:", err);

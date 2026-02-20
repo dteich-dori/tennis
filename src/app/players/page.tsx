@@ -184,7 +184,7 @@ export default function PlayersPage() {
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        const err = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
         setFormError(err.error || "Failed to save player");
         return;
       }
@@ -327,7 +327,7 @@ export default function PlayersPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        const err = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
         setImportMessage(`Import failed: ${err.error}`);
       } else {
         const data = (await res.json()) as { added: number; updated: number; skipped: number };
