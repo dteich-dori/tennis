@@ -39,10 +39,10 @@
 		{
 			"binding": "DB",
 			"database_name": "tennis-scheduler-db",
-			"database_id": "27e09d36-03f5-4b39-8401-36a189c6ad38",
+			"database_id": "local",
 			"migrations_dir": "drizzle/migrations"
 		}
-	]
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
