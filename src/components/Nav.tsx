@@ -17,6 +17,9 @@ const links = [
 export function Nav() {
   const pathname = usePathname();
 
+  // Hide nav on login page
+  if (pathname === "/login") return null;
+
   return (
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
       <div className="text-lg font-bold mb-6 px-3">Tennis Scheduler</div>
