@@ -69,15 +69,14 @@ export default function DeveloperGuidePage() {
                   <span className="font-semibold">Styling:</span> Tailwind CSS 4
                 </li>
                 <li>
-                  <span className="font-semibold">Database:</span> SQLite via Drizzle ORM
-                  (local: better-sqlite3, production: Cloudflare D1)
+                  <span className="font-semibold">Database:</span> Turso (libSQL / SQLite-compatible)
+                  via Drizzle ORM
                 </li>
                 <li>
                   <span className="font-semibold">PDF Generation:</span> jsPDF
                 </li>
                 <li>
-                  <span className="font-semibold">Deployment Target:</span> Cloudflare Workers
-                  (via OpenNext)
+                  <span className="font-semibold">Deployment Target:</span> Vercel
                 </li>
                 <li>
                   <span className="font-semibold">Package Manager:</span> npm
@@ -130,8 +129,8 @@ export default function DeveloperGuidePage() {
     │   │   │   ├── holidays.ts   ← holidays
     │   │   │   ├── courtSchedules.ts
     │   │   │   └── index.ts      ← Schema barrel export
-    │   │   ├── getDb.ts          ← Dev DB singleton (better-sqlite3)
-    │   │   └── index.ts          ← Production DB factory (D1)
+    │   │   ├── getDb.ts          ← DB singleton (Turso connection)
+    │   │   └── index.ts          ← DB factory (libSQL client)
     │   └── lib/
     │       └── reports/          ← PDF report generators
     │           ├── gamesByDatePdf.ts
@@ -142,9 +141,8 @@ export default function DeveloperGuidePage() {
     ├── package.json
     ├── drizzle.config.ts         ← Drizzle ORM configuration
     ├── next.config.ts            ← Next.js configuration
-    ├── wrangler.jsonc            ← Cloudflare Workers config
     ├── tsconfig.json             ← TypeScript configuration
-    └── .wrangler/state/          ← Local D1 database files`}</div>
+    └── .env.local                ← Turso credentials (not committed)`}</div>
             </div>
           </section>
 
@@ -194,21 +192,21 @@ export default function DeveloperGuidePage() {
                       </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run preview</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run db:push</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Build and preview using the Cloudflare Workers runtime locally
+                        Push schema directly to Turso database
                       </td>
                     </tr>
                     <tr className="bg-gray-50/50">
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run deploy</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run db:generate</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Build and deploy to Cloudflare Workers (production)
+                        Generate SQL migration files from schema changes
                       </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run cf-typegen</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">npm run db:migrate</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Regenerate Cloudflare environment TypeScript types
+                        Apply pending migrations to the Turso database
                       </td>
                     </tr>
                   </tbody>
@@ -273,7 +271,7 @@ export default function DeveloperGuidePage() {
                   drizzle.config.ts
                 </span>{" "}
                 points to the schema directory and migrations output folder. Configuration:{" "}
-                dialect = sqlite, schema = ./src/db/schema, out = ./drizzle/migrations.
+                dialect = turso, schema = ./src/db/schema, out = ./drizzle/migrations.
               </div>
             </div>
           </section>
@@ -629,19 +627,19 @@ a668e3c Add ball balancing feature
                     <tr className="bg-gray-50/50">
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">next.config.ts</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Next.js settings: server packages (better-sqlite3), Turbopack, Cloudflare dev init
+                        Next.js settings
                       </td>
                     </tr>
                     <tr>
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">drizzle.config.ts</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Drizzle ORM: schema path, migration output, SQLite dialect
+                        Drizzle ORM: schema path, migration output, Turso dialect + credentials
                       </td>
                     </tr>
                     <tr className="bg-gray-50/50">
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">wrangler.jsonc</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">.env.local</td>
                       <td className="px-3 py-2 border-b border-border">
-                        Cloudflare Workers: D1 database binding, compatibility flags, deployment settings
+                        Turso database URL and auth token (not committed to git)
                       </td>
                     </tr>
                     <tr>
@@ -657,9 +655,9 @@ a668e3c Add ball balancing feature
                       </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">open-next.config.ts</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">.env.example</td>
                       <td className="px-3 py-2 border-b border-border">
-                        OpenNext configuration for Cloudflare deployment adapter
+                        Template for required environment variables
                       </td>
                     </tr>
                   </tbody>
@@ -703,9 +701,9 @@ a668e3c Add ball balancing feature
                       <td className="px-3 py-2 border-b border-border">Client-side PDF generation for reports</td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">better-sqlite3</td>
-                      <td className="px-3 py-2 border-b border-border text-xs">12.6.2</td>
-                      <td className="px-3 py-2 border-b border-border">Local SQLite driver (dev only)</td>
+                      <td className="px-3 py-2 border-b border-border font-mono text-xs">@libsql/client</td>
+                      <td className="px-3 py-2 border-b border-border text-xs">0.17.x</td>
+                      <td className="px-3 py-2 border-b border-border">Turso / libSQL database driver</td>
                     </tr>
                     <tr className="bg-gray-50/50">
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">tailwindcss</td>
@@ -716,16 +714,6 @@ a668e3c Add ball balancing feature
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">drizzle-kit</td>
                       <td className="px-3 py-2 border-b border-border text-xs">0.31.9</td>
                       <td className="px-3 py-2 border-b border-border">Schema migrations and database tooling</td>
-                    </tr>
-                    <tr className="bg-gray-50/50">
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">wrangler</td>
-                      <td className="px-3 py-2 border-b border-border text-xs">4.63.0</td>
-                      <td className="px-3 py-2 border-b border-border">Cloudflare Workers CLI (deploy, D1, dev)</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">@opennextjs/cloudflare</td>
-                      <td className="px-3 py-2 border-b border-border text-xs">1.15.1</td>
-                      <td className="px-3 py-2 border-b border-border">Next.js-to-Cloudflare Workers adapter</td>
                     </tr>
                   </tbody>
                 </table>
