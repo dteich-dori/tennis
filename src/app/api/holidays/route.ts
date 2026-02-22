@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { seasonId: number; date: string };
-    const { seasonId, date } = body;
+    const body = (await request.json()) as { seasonId: number; date: string; name?: string };
+    const { seasonId, date, name } = body;
 
     const database = await db();
 
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     const result = await database
       .insert(holidays)
-      .values({ seasonId, date })
+      .values({ seasonId, date, name: name || "" })
       .returning();
 
     return NextResponse.json(result[0], { status: 201 });

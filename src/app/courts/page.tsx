@@ -37,6 +37,7 @@ export default function CourtsPage() {
     { dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[] | null
   >(null);
   const [importError, setImportError] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
 
   const loadSeason = useCallback(async () => {
     const res = await fetch("/api/seasons");
@@ -128,7 +129,7 @@ export default function CourtsPage() {
     return a.courtNumber - b.courtNumber;
   });
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     if (sortedCourts.length === 0) return;
     const header = "Day,Court #,Start Time,Group";
     const rows = sortedCourts.map(
@@ -136,13 +137,24 @@ export default function CourtsPage() {
         `${DAYS[s.dayOfWeek]},${s.courtNumber},${s.startTime},${s.isSolo ? "Solo" : "Don's"}`
     );
     const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "court-schedule.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    // Save to TennisScheduler/Backup directory via API
+    setExportMessage("");
+    try {
+      const res = await fetch("/api/export-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "court-schedule.csv", content: csv }),
+      });
+      const data = await res.json() as { success?: boolean; path?: string; error?: string };
+      if (data.success) {
+        setExportMessage(`Court schedule CSV saved to: ${data.path}`);
+      } else {
+        setExportMessage(`Export failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
   };
 
   const handleImportClick = () => {
@@ -391,6 +403,11 @@ export default function CourtsPage() {
           {courts.length} court slot{courts.length !== 1 ? "s" : ""} configured
         </span>
       </div>
+      {exportMessage && (
+        <p className={`text-sm mt-2 ${exportMessage.startsWith("Export failed") ? "text-danger" : "text-green-600"}`}>
+          {exportMessage}
+        </p>
+      )}
       <input
         ref={fileInputRef}
         type="file"

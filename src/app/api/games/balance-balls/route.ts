@@ -6,6 +6,7 @@ import { eq, and, sql } from "drizzle-orm";
 /**
  * POST /api/games/balance-balls
  * Body: { seasonId: number, weekNumber: number, group: "dons" | "solo", apply?: boolean }
+ *   OR: { seasonId: number, group: "solo", allWeeks: true }  (season-wide, always applies)
  *
  * Balances ball-bringing duty (slot 1) across players for the given week & group.
  *
@@ -16,6 +17,8 @@ import { eq, and, sql } from "drizzle-orm";
  *    - Move the player with lowest (actualBalls - expectedBalls) into slot 1
  * 4. Early stop after 2 consecutive non-improving passes
  * 5. If apply=true, persist changes; otherwise return preview
+ *
+ * allWeeks mode: processes ALL weeks for the group at once (used for solo season-wide balancing)
  */
 export async function POST(request: NextRequest) {
   const database = await db();
@@ -23,15 +26,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       seasonId: number;
-      weekNumber: number;
+      weekNumber?: number;
       group: string;
       apply?: boolean;
+      allWeeks?: boolean;
     };
-    const { seasonId, weekNumber, group, apply } = body;
+    const { seasonId, weekNumber, group, apply, allWeeks } = body;
 
-    if (!seasonId || !weekNumber || !group) {
+    if (!seasonId || !group) {
       return NextResponse.json(
-        { error: "seasonId, weekNumber, and group are required" },
+        { error: "seasonId and group are required" },
+        { status: 400 }
+      );
+    }
+
+    if (!allWeeks && !weekNumber) {
+      return NextResponse.json(
+        { error: "weekNumber is required (or use allWeeks: true)" },
         { status: 400 }
       );
     }
@@ -43,38 +54,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Load all normal games for this week & group
-    const weekGames = await database
-      .select()
-      .from(games)
-      .where(
-        and(
-          eq(games.seasonId, seasonId),
-          eq(games.weekNumber, weekNumber),
-          eq(games.group, group),
-          eq(games.status, "normal")
-        )
-      );
+    // 1. Load games — either for one week or all weeks
+    const targetGames = allWeeks
+      ? await database
+          .select()
+          .from(games)
+          .where(
+            and(
+              eq(games.seasonId, seasonId),
+              eq(games.group, group),
+              eq(games.status, "normal")
+            )
+          )
+      : await database
+          .select()
+          .from(games)
+          .where(
+            and(
+              eq(games.seasonId, seasonId),
+              eq(games.weekNumber, weekNumber!),
+              eq(games.group, group),
+              eq(games.status, "normal")
+            )
+          );
 
-    if (weekGames.length === 0) {
+    if (targetGames.length === 0) {
       return NextResponse.json({ error: "No games found" }, { status: 404 });
     }
 
-    const gameIds = weekGames.map((g) => g.id);
+    const gameIds = targetGames.map((g) => g.id);
 
-    // 2. Load all assignments for these games
-    const allAssignments = await database
-      .select()
-      .from(gameAssignments)
-      .where(
-        sql`${gameAssignments.gameId} IN (${sql.join(
-          gameIds.map((id) => sql`${id}`),
-          sql`, `
-        )})`
-      );
+    // 2. Load all assignments for these games (in batches for large sets)
+    type AssignmentRow = { id: number; gameId: number; slotPosition: number; playerId: number; isPrefill: boolean };
+    const allAssignments: AssignmentRow[] = [];
+    const BATCH = 50;
+    for (let i = 0; i < gameIds.length; i += BATCH) {
+      const batch = gameIds.slice(i, i + BATCH);
+      const rows = await database
+        .select()
+        .from(gameAssignments)
+        .where(
+          sql`${gameAssignments.gameId} IN (${sql.join(
+            batch.map((id) => sql`${id}`),
+            sql`, `
+          )})`
+        );
+      allAssignments.push(...rows);
+    }
 
     // Group assignments by game
-    const assignmentsByGame = new Map<number, typeof allAssignments>();
+    const assignmentsByGame = new Map<number, AssignmentRow[]>();
     for (const a of allAssignments) {
       const arr = assignmentsByGame.get(a.gameId) ?? [];
       arr.push(a);
@@ -143,8 +172,8 @@ export async function POST(request: NextRequest) {
 
     // Expected balls for each player: round(totalGames / 4)
     const expectedBalls = new Map<number, number>();
-    for (const [playerId, totalGames] of totalGamesMap) {
-      expectedBalls.set(playerId, Math.round(totalGames / 4));
+    for (const [playerId, total] of totalGamesMap) {
+      expectedBalls.set(playerId, Math.round(total / 4));
     }
 
     // Helper: compute total imbalance
@@ -157,7 +186,7 @@ export async function POST(request: NextRequest) {
       return total;
     };
 
-    // 5. Snapshot current slot-1 holders for this week's games (for rollback)
+    // 5. Snapshot current slot-1 holders for target games (for rollback)
     const snapshot: { gameId: number; originalSlot1PlayerId: number }[] = [];
     for (const gid of fullyAssignedGameIds) {
       const assigns = assignmentsByGame.get(gid)!;
@@ -195,7 +224,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Game lookup for display info
-    const gameMap = new Map(weekGames.map((g) => [g.id, g]));
+    const gameMap = new Map(targetGames.map((g) => [g.id, g]));
 
     for (let pass = 0; pass < 10; pass++) {
       const prevImbalance = computeImbalance();
@@ -273,8 +302,9 @@ export async function POST(request: NextRequest) {
       (s) => s.oldBallBringer !== s.newBallBringer
     );
 
-    // 7. If apply, persist the swaps
-    if (apply && netSwaps.length > 0) {
+    // 7. If apply (or allWeeks which always applies), persist the swaps
+    const shouldApply = apply || allWeeks;
+    if (shouldApply && netSwaps.length > 0) {
       for (const gid of fullyAssignedGameIds) {
         const simAssigns = simByGame.get(gid)!;
         for (const sa of simAssigns) {
@@ -286,12 +316,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build player name lookup for preview
-    // We don't have player names here, so return IDs — frontend will resolve names
+    // For allWeeks mode, build per-player summary
+    let playerSummary: { playerId: number; totalGames: number; ballsBrought: number; expected: number }[] | undefined;
+    if (allWeeks) {
+      playerSummary = [];
+      for (const [playerId, total] of totalGamesMap) {
+        playerSummary.push({
+          playerId,
+          totalGames: total,
+          ballsBrought: actualBalls.get(playerId) ?? 0,
+          expected: expectedBalls.get(playerId) ?? 0,
+        });
+      }
+      playerSummary.sort((a, b) => a.playerId - b.playerId);
+    }
+
     return NextResponse.json({
       swaps: netSwaps.length,
-      applied: apply ?? false,
-      preview: netSwaps.map((s) => ({
+      applied: shouldApply ?? false,
+      preview: allWeeks ? undefined : netSwaps.map((s) => ({
         gameId: s.gameId,
         gameNumber: s.gameNumber,
         date: s.date,
@@ -299,7 +342,8 @@ export async function POST(request: NextRequest) {
         newBallBringerId: s.newBallBringer,
       })),
       imbalance: computeImbalance(),
-      snapshot: apply ? snapshot : undefined,
+      snapshot: (apply && !allWeeks) ? snapshot : undefined,
+      playerSummary,
     });
   } catch (err) {
     console.error("[games/balance-balls POST] error:", err);

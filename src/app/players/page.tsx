@@ -64,6 +64,7 @@ export default function PlayersPage() {
   const [sortField, setSortField] = useState<"lastName" | "firstName" | "skillLevel" | "contractedFrequency">("lastName");
   const [sortAsc, setSortAsc] = useState(true);
   const [importMessage, setImportMessage] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<
@@ -506,31 +507,24 @@ export default function PlayersPage() {
     });
 
     const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
 
-    // Try to show "Save As" dialog so user can pick Desktop
-    if ("showSaveFilePicker" in window) {
-      try {
-        const handle = await (window as unknown as { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
-          suggestedName: "players.csv",
-          types: [{ description: "CSV file", accept: { "text/csv": [".csv"] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        return;
-      } catch {
-        // User cancelled or API not supported — fall through to regular download
+    // Save to TennisScheduler/Backup directory via API
+    setExportMessage("");
+    try {
+      const res = await fetch("/api/export-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "players.csv", content: csv }),
+      });
+      const data = await res.json() as { success?: boolean; path?: string; error?: string };
+      if (data.success) {
+        setExportMessage(`Players CSV saved to: ${data.path}`);
+      } else {
+        setExportMessage(`Export failed: ${data.error || "Unknown error"}`);
       }
+    } catch (err) {
+      setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-
-    // Fallback: regular download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "players.csv";
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const SortHeader = ({
@@ -602,6 +596,12 @@ export default function PlayersPage() {
       {importMessage && (
         <div className="bg-green-50 border border-green-200 text-green-800 rounded px-4 py-2 mb-4 text-sm">
           {importMessage}
+        </div>
+      )}
+
+      {exportMessage && (
+        <div className={`border rounded px-4 py-2 mb-4 text-sm ${exportMessage.startsWith("Export failed") ? "bg-red-50 border-red-200 text-red-800" : "bg-green-50 border-green-200 text-green-800"}`}>
+          {exportMessage}
         </div>
       )}
 

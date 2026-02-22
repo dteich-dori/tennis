@@ -53,4 +53,4 @@ next-env.d.ts
 
 # database
 local.db
-/backups
+/Backup

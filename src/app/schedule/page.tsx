@@ -39,6 +39,7 @@ interface Game {
   courtNumber: number;
   group: string;
   status: string;
+  holidayName: string;
   assignments: Assignment[];
 }
 
@@ -801,24 +802,14 @@ export default function SchedulePage() {
             >
               {bonusMode === "bonusAll" ? "✓ Bonus All" : "Bonus All"}
             </button>
-            <span className="flex gap-2">
-              <button
-                onClick={() => handleBalanceBallsPreview("dons")}
-                disabled={balanceBallsLoading || games.length === 0}
-                className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
-                title="Balance ball-bringing duty across Don's group players"
-              >
-                {balanceBallsLoading && balanceBallsGroup === "dons" ? "..." : "Balls Don's"}
-              </button>
-              <button
-                onClick={() => handleBalanceBallsPreview("solo")}
-                disabled={balanceBallsLoading || games.length === 0}
-                className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
-                title="Balance ball-bringing duty across Solo group players"
-              >
-                {balanceBallsLoading && balanceBallsGroup === "solo" ? "..." : "Balls Solo"}
-              </button>
-            </span>
+            <button
+              onClick={() => handleBalanceBallsPreview("dons")}
+              disabled={balanceBallsLoading || games.length === 0}
+              className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
+              title="Balance ball-bringing duty across Don's group players"
+            >
+              {balanceBallsLoading && balanceBallsGroup === "dons" ? "..." : "Balls Don's"}
+            </button>
             <button
               onClick={() => handleCheckCompliance("dons")}
               disabled={checkingCompliance || games.length === 0}
@@ -1146,9 +1137,47 @@ export default function SchedulePage() {
             <div className="space-y-4">
               {Array.from(gamesByDate.entries()).map(([date, dateGames]) => (
                 <div key={date}>
-                  <div className="text-sm font-semibold text-muted mb-2">
-                    {DAYS[dateGames[0].dayOfWeek]} &mdash;{" "}
-                    {formatDisplayDate(date)}
+                  <div className="text-sm font-semibold text-muted mb-2 flex items-center gap-2">
+                    <span>
+                      {DAYS[dateGames[0].dayOfWeek]} &mdash;{" "}
+                      {formatDisplayDate(date)}
+                    </span>
+                    {dateGames[0].status === "holiday" ? (
+                      <button
+                        onClick={async () => {
+                          if (!season) return;
+                          if (!confirm(`Remove holiday for ${formatDisplayDate(date)}? Games will return to normal status.`)) return;
+                          await fetch("/api/games/toggle-holiday", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ seasonId: season.id, date }),
+                          });
+                          await loadGames(season.id, currentWeek);
+                        }}
+                        className="text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded transition-colors"
+                        title="Remove holiday — restore games to normal"
+                      >
+                        {dateGames[0].holidayName || "Holiday"} &times;
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          if (!season) return;
+                          const name = window.prompt(`Mark ${formatDisplayDate(date)} as a holiday.\nAll assignments for this date will be cleared.\n\nHoliday name (optional):`);
+                          if (name === null) return; // cancelled
+                          await fetch("/api/games/toggle-holiday", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ seasonId: season.id, date, name }),
+                          });
+                          await loadGames(season.id, currentWeek);
+                        }}
+                        className="text-xs text-muted hover:text-amber-700 hover:bg-amber-50 px-2 py-0.5 rounded transition-colors"
+                        title="Mark this date as a holiday"
+                      >
+                        + Holiday
+                      </button>
+                    )}
                   </div>
                   <table className="w-full text-sm border border-border mb-4">
                     <colgroup>
@@ -1220,7 +1249,7 @@ export default function SchedulePage() {
                               colSpan={4}
                               className="p-2 text-amber-700 font-medium text-center"
                             >
-                              Holiday
+                              {game.holidayName || "Holiday"}
                             </td>
                           ) : game.status === "blanked" ? (
                             <td

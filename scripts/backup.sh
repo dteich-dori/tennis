@@ -4,7 +4,7 @@
 
 set -e
 
-BACKUP_DIR="backups"
+BACKUP_DIR="Backup"
 TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/${TIMESTAMP}.sqlite"
 

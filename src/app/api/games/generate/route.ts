@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       .where(eq(holidays.seasonId, seasonId));
 
     const holidayDates = new Set(holidayRows.map((h) => h.date));
+    const holidayNameMap = new Map(holidayRows.map((h) => [h.date, h.name || ""]));
 
     // 4. Delete any existing games for this season (regeneration)
     await database.delete(games).where(eq(games.seasonId, seasonId));
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       courtNumber: number;
       group: string;
       status: string;
+      holidayName: string;
     }[] = [];
 
     let gameNumber = 1;
@@ -101,6 +103,7 @@ export async function POST(request: NextRequest) {
           courtNumber: slot.courtNumber,
           group: slot.isSolo ? "solo" : "dons",
           status: isHoliday ? "holiday" : "normal",
+          holidayName: isHoliday ? (holidayNameMap.get(dateStr) || "") : "",
         });
 
         gameNumber++;

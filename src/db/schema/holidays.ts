@@ -7,4 +7,5 @@ export const holidays = sqliteTable("holidays", {
     .notNull()
     .references(() => seasons.id, { onDelete: "cascade" }),
   date: text("date").notNull(), // ISO date string
+  name: text("name").default(""), // e.g. "Memorial Day", "Labor Day"
 });

@@ -15,6 +15,7 @@ export const games = sqliteTable("games", {
   courtNumber: integer("court_number").notNull(),
   group: text("group").notNull().default("dons"), // "dons" or "solo"
   status: text("status").notNull().default("normal"), // "normal", "holiday", "blanked"
+  holidayName: text("holiday_name").default(""), // e.g. "Memorial Day"
 });
 
 export const gameAssignments = sqliteTable("game_assignments", {

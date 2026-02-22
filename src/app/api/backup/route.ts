@@ -41,7 +41,7 @@ export async function POST() {
     const datePart = now.toISOString().split("T")[0]; // 2026-02-14
     const timePart = now.toTimeString().split(" ")[0].replace(/:/g, ""); // 111500
     const folderName = `${datePart}_${timePart}`;
-    const backupDir = path.join(process.cwd(), "backups", folderName);
+    const backupDir = path.join(process.cwd(), "Backup", folderName);
     fs.mkdirSync(backupDir, { recursive: true });
 
     // Checkpoint WAL to ensure all data is in the main file
