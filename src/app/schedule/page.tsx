@@ -486,7 +486,7 @@ export default function SchedulePage() {
 
   // Get the effective weekly frequency for a player in a given group
   // For dons: uses contract frequency. For solo: uses solo share level.
-  const soloShareFreq: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
+  const soloShareFreq: Record<string, number> = { full: 1, half: 0.5 };
   const getEffectiveFreq = (player: Player, gameGroup: string): number => {
     if (gameGroup === "solo") {
       return player.soloShareLevel ? (soloShareFreq[player.soloShareLevel] ?? 0) : 0;
@@ -711,6 +711,13 @@ export default function SchedulePage() {
         <>
           {/* Week navigation */}
           <div className="flex items-center gap-4 mb-6 flex-wrap">
+            <button
+              onClick={() => changeWeek(1)}
+              disabled={currentWeek === 1}
+              className="px-3 py-1 border border-border rounded text-sm disabled:opacity-30 hover:bg-gray-100"
+            >
+              First
+            </button>
             <button
               onClick={() => changeWeek(Math.max(1, currentWeek - 1))}
               disabled={currentWeek === 1}

@@ -16,7 +16,7 @@ export const players = sqliteTable("players", {
   skillLevel: text("skill_level").notNull().default("C"), // "A", "B", "C", "D"
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   isDerated: integer("is_derated", { mode: "boolean" }).notNull().default(false),
-  soloShareLevel: text("solo_share_level"), // "full", "half", "quarter", "eighth", or null
+  soloShareLevel: text("solo_share_level"), // "full", "half", or null
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {
@@ -37,6 +37,16 @@ export const playerVacations = sqliteTable("player_vacations", {
 });
 
 export const playerDoNotPair = sqliteTable("player_do_not_pair", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerId: integer("player_id")
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+  pairedPlayerId: integer("paired_player_id")
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+});
+
+export const playerSoloPairs = sqliteTable("player_solo_pairs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   playerId: integer("player_id")
     .notNull()

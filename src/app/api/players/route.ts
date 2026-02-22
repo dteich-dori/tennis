@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, playerBlockedDays, playerVacations, playerDoNotPair, gameAssignments } from "@/db/schema";
+import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerSoloPairs, gameAssignments } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
 
@@ -9,7 +9,7 @@ type PlayerBody = any;
 
 const VALID_FREQUENCIES = ["0", "1", "2", "2+"];
 const VALID_SKILL_LEVELS = ["A", "B", "C", "D"];
-const VALID_SOLO_SHARE_LEVELS = ["full", "half", "quarter", "eighth", null];
+const VALID_SOLO_SHARE_LEVELS = ["full", "half", null];
 
 function validatePlayerFields(body: PlayerBody): string | null {
   if (!body.seasonId || typeof body.seasonId !== "number") return "seasonId is required";
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
     let allBlockedDays: { id: number; playerId: number; dayOfWeek: number }[] = [];
     let allVacations: { id: number; playerId: number; startDate: string; endDate: string }[] = [];
     let allDoNotPair: { id: number; playerId: number; pairedPlayerId: number }[] = [];
+    let allSoloPairs: { id: number; playerId: number; pairedPlayerId: number }[] = [];
 
     if (playerIds.length > 0) {
       allBlockedDays = await database
@@ -67,6 +68,11 @@ export async function GET(request: NextRequest) {
         .select()
         .from(playerDoNotPair)
         .where(inArray(playerDoNotPair.playerId, playerIds));
+
+      allSoloPairs = await database
+        .select()
+        .from(playerSoloPairs)
+        .where(inArray(playerSoloPairs.playerId, playerIds));
     }
 
     // Group by playerId in memory
@@ -91,11 +97,17 @@ export async function GET(request: NextRequest) {
       dnpByPlayer.set(d.playerId, arr);
     }
 
+    const soloPairByPlayer = new Map<number, number>();
+    for (const sp of allSoloPairs) {
+      soloPairByPlayer.set(sp.playerId, sp.pairedPlayerId);
+    }
+
     const playersWithDetails = allPlayers.map((player) => ({
       ...player,
       blockedDays: blockedByPlayer.get(player.id) ?? [],
       vacations: vacsByPlayer.get(player.id) ?? [],
       doNotPair: dnpByPlayer.get(player.id) ?? [],
+      soloPairId: soloPairByPlayer.get(player.id) ?? null,
     }));
 
     return NextResponse.json(playersWithDetails);
@@ -127,6 +139,7 @@ export async function POST(request: NextRequest) {
       blockedDays,
       vacations,
       doNotPair,
+      soloPairId,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -224,6 +237,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Insert solo pair (bidirectional)
+    if (soloPairId) {
+      // Remove any existing pair the partner has
+      await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, soloPairId));
+      await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, soloPairId));
+      // Create bidirectional link
+      await database.insert(playerSoloPairs).values([
+        { playerId: newPlayer.id, pairedPlayerId: soloPairId },
+        { playerId: soloPairId, pairedPlayerId: newPlayer.id },
+      ]);
+    }
+
     return NextResponse.json(newPlayer, { status: 201 });
   } catch (err) {
     console.error("[players POST] error:", err);
@@ -253,6 +278,7 @@ export async function PUT(request: NextRequest) {
       blockedDays,
       vacations,
       doNotPair,
+      soloPairId,
     } = body;
 
     if (!id) {
@@ -364,6 +390,24 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Replace solo pair (bidirectional)
+    if (soloPairId !== undefined) {
+      // Remove all existing solo pair links for this player (both directions)
+      await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, id));
+      await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, id));
+
+      if (soloPairId) {
+        // Remove any existing pair the new partner has
+        await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, soloPairId));
+        await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, soloPairId));
+        // Create bidirectional link
+        await database.insert(playerSoloPairs).values([
+          { playerId: id, pairedPlayerId: soloPairId },
+          { playerId: soloPairId, pairedPlayerId: id },
+        ]);
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[players PUT] error:", err);
@@ -388,6 +432,8 @@ export async function DELETE(request: NextRequest) {
     await database.delete(playerBlockedDays).where(eq(playerBlockedDays.playerId, playerId));
     await database.delete(playerVacations).where(eq(playerVacations.playerId, playerId));
     await database.delete(playerDoNotPair).where(eq(playerDoNotPair.playerId, playerId));
+    await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, playerId));
+    await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, playerId));
     await database.delete(players).where(eq(players.id, playerId));
 
     return NextResponse.json({ success: true });

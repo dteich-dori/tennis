@@ -34,6 +34,17 @@ export default function SeasonPage() {
   const [confirmGenerate, setConfirmGenerate] = useState(false);
   const [totalGames, setTotalGames] = useState(0);
 
+  // Solo auto-assign state
+  const [soloAssigning, setSoloAssigning] = useState(false);
+  const [soloAssignMessage, setSoloAssignMessage] = useState("");
+  const [soloAssignLog, setSoloAssignLog] = useState<
+    { type: string; week?: number; message: string }[]
+  >([]);
+
+  // Clear all assignments state
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearAllMessage, setClearAllMessage] = useState("");
+
   const loadSeasons = useCallback(async () => {
     const res = await fetch("/api/seasons");
     const data = (await res.json()) as Season[];
@@ -210,6 +221,97 @@ export default function SeasonPage() {
       setResetStatus("");
       setBackupResult("");
     }, 5000);
+  };
+
+  const handleSoloAssign = async () => {
+    if (!activeSeason) return;
+    setSoloAssigning(true);
+    setSoloAssignMessage("");
+    setSoloAssignLog([]);
+    try {
+      const res = await fetch("/api/games/solo-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        assignedCount?: number;
+        totalSlots?: number;
+        unfilled?: number;
+        error?: string;
+        log?: { type: string; week?: number; message: string }[];
+      };
+      if (!res.ok) {
+        setSoloAssignMessage(`Error: ${data.error}`);
+        if (data.log) setSoloAssignLog(data.log);
+      } else {
+        setSoloAssignMessage(
+          `Assigned ${data.assignedCount} of ${data.totalSlots} solo slots.${
+            data.unfilled ? ` ${data.unfilled} unfilled.` : " All filled!"
+          }`
+        );
+        setSoloAssignLog(data.log ?? []);
+      }
+    } catch {
+      setSoloAssignMessage("Failed to auto-assign solo games.");
+    }
+    setSoloAssigning(false);
+  };
+
+  const handleClearAllAssignments = async () => {
+    if (!activeSeason) return;
+    if (!confirm("Clear ALL player assignments (Don's and Solo) for the entire season? Games and players will be preserved.")) return;
+    setClearingAll(true);
+    setClearAllMessage("");
+    try {
+      const res = await fetch("/api/games/clear-assignments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        deletedCount?: number;
+        error?: string;
+      };
+      if (res.ok) {
+        setClearAllMessage(`Cleared ${data.deletedCount} assignments (Don's + Solo).`);
+      } else {
+        setClearAllMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setClearAllMessage("Failed to clear assignments.");
+    }
+    setClearingAll(false);
+  };
+
+  const handleClearSoloAssign = async () => {
+    if (!activeSeason) return;
+    if (!confirm("Clear ALL solo game assignments for the entire season?")) return;
+    setSoloAssigning(true);
+    setSoloAssignMessage("");
+    setSoloAssignLog([]);
+    try {
+      const res = await fetch("/api/games/solo-assign", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        deletedCount?: number;
+        error?: string;
+      };
+      if (res.ok) {
+        setSoloAssignMessage(`Cleared ${data.deletedCount} solo assignments.`);
+      } else {
+        setSoloAssignMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setSoloAssignMessage("Failed to clear solo assignments.");
+    }
+    setSoloAssigning(false);
   };
 
   const endDateDisplay = startDate && validateMonday(startDate)
@@ -405,6 +507,100 @@ export default function SeasonPage() {
                 : "bg-green-50 border-green-200 text-green-800"
             }`}>
               {generateMessage}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto-Assign Solo Games */}
+      {activeSeason && totalGames > 0 && (
+        <div className="border border-border rounded-lg p-6 mb-6">
+          <h2 className="font-semibold mb-4">Auto-Assign Solo Games</h2>
+          <p className="text-sm text-muted mb-3">
+            Assigns all solo game slots for all 36 weeks based on player solo share levels
+            and pair settings. Best used on a fresh season with no existing solo assignments.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSoloAssign}
+              disabled={soloAssigning}
+              className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {soloAssigning ? "Assigning..." : "Auto-Assign Solo"}
+            </button>
+            <button
+              onClick={handleClearSoloAssign}
+              disabled={soloAssigning}
+              className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              Clear Solo Assignments
+            </button>
+          </div>
+
+          {soloAssignMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                soloAssignMessage.startsWith("Error") ||
+                soloAssignMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {soloAssignMessage}
+            </div>
+          )}
+
+          {soloAssignLog.length > 0 && (
+            <div className="mt-3 max-h-48 overflow-y-auto border border-amber-200 bg-amber-50 rounded p-3">
+              <div className="text-xs font-semibold text-amber-800 mb-1">
+                Log:
+              </div>
+              {soloAssignLog.map((entry, idx) => (
+                <div
+                  key={idx}
+                  className={`text-xs ${
+                    entry.type === "warning"
+                      ? "text-amber-700"
+                      : entry.type === "error"
+                        ? "text-red-700"
+                        : "text-green-700"
+                  }`}
+                >
+                  {entry.week ? `Week ${entry.week}: ` : ""}
+                  {entry.message}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Clear All Assignments */}
+      {activeSeason && totalGames > 0 && (
+        <div className="border border-border rounded-lg p-6 mb-6">
+          <h2 className="font-semibold mb-4">Clear All Assignments</h2>
+          <p className="text-sm text-muted mb-3">
+            Removes all player assignments (Don&apos;s and Solo) for the entire season.
+            Games, players, court schedules, and holidays are preserved.
+          </p>
+          <button
+            onClick={handleClearAllAssignments}
+            disabled={clearingAll}
+            className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            {clearingAll ? "Clearing..." : "Clear All Assignments"}
+          </button>
+
+          {clearAllMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                clearAllMessage.startsWith("Error") ||
+                clearAllMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {clearAllMessage}
             </div>
           )}
         </div>

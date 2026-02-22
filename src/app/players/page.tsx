@@ -19,6 +19,7 @@ interface Player {
   noConsecutiveDays: boolean;
   isDerated: boolean;
   soloShareLevel: string | null;
+  soloPairId: number | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -47,6 +48,7 @@ const emptyPlayer = {
   noConsecutiveDays: false,
   isDerated: false,
   soloShareLevel: "",
+  soloPairId: null as number | null,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -65,9 +67,14 @@ export default function PlayersPage() {
   const [showInactive, setShowInactive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<
-    { firstName: string; lastName: string; cellNumber: string | null; homeNumber: string | null; email: string | null }[] | null
+    { firstName: string; lastName: string; cellNumber: string | null; homeNumber: string | null; email: string | null;
+      skillLevel: string | null; contractedFrequency: string | null; soloShareLevel: string | null; soloPairName: string | null;
+      isActive: boolean | null; isDerated: boolean | null; noConsecutiveDays: boolean | null;
+      blockedDays: number[]; vacations: { startDate: string; endDate: string }[]; doNotPairNames: string[];
+    }[] | null
   >(null);
   const [importFileName, setImportFileName] = useState("");
+  const [importIsFullBackup, setImportIsFullBackup] = useState(false);
 
   const loadSeason = useCallback(async () => {
     const res = await fetch("/api/seasons");
@@ -126,6 +133,7 @@ export default function PlayersPage() {
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       soloShareLevel: player.soloShareLevel ?? "",
+      soloPairId: player.soloPairId ?? null,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
@@ -160,6 +168,7 @@ export default function PlayersPage() {
       homeNumber: form.homeNumber || null,
       email: form.email || null,
       soloShareLevel: form.soloShareLevel || null,
+      soloPairId: form.soloShareLevel === "half" ? form.soloPairId : null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
       doNotPair: form.doNotPair,
     };
@@ -208,10 +217,16 @@ export default function PlayersPage() {
     const player = players.find((p) => p.id === id);
     if (!player) return;
 
-    const confirmed = window.confirm(
-      `Delete ${player.firstName} ${player.lastName}?`
+    const fullName = `${player.firstName} ${player.lastName}`;
+    const typed = window.prompt(
+      `PERMANENT DELETE: This will remove ${fullName} and all their assignments, vacations, blocked days, and pairings.\n\nType "${fullName}" to confirm:`
     );
-    if (!confirmed) return;
+    if (typed !== fullName) {
+      if (typed !== null) {
+        alert("Name did not match. Delete cancelled.");
+      }
+      return;
+    }
 
     try {
       await fetch(`/api/players?id=${id}`, { method: "DELETE" });
@@ -255,7 +270,29 @@ export default function PlayersPage() {
     // Skip header row
     const dataLines = lines.slice(1);
 
-    const parsed: { firstName: string; lastName: string; cellNumber: string | null; homeNumber: string | null; email: string | null }[] = [];
+    interface ParsedPlayer {
+      firstName: string;
+      lastName: string;
+      cellNumber: string | null;
+      homeNumber: string | null;
+      email: string | null;
+      skillLevel: string | null;
+      contractedFrequency: string | null;
+      soloShareLevel: string | null;
+      soloPairName: string | null;
+      isActive: boolean | null;
+      isDerated: boolean | null;
+      noConsecutiveDays: boolean | null;
+      blockedDays: number[];
+      vacations: { startDate: string; endDate: string }[];
+      doNotPairNames: string[];
+    }
+
+    const parsed: ParsedPlayer[] = [];
+
+    // Detect if this is a full backup CSV (has our header) or a simple 5-column CSV
+    const headerLine = lines[0]?.toLowerCase() ?? "";
+    const isFullBackup = headerLine.includes("skill") && headerLine.includes("frequency");
 
     for (const line of dataLines) {
       if (!line.trim()) continue;
@@ -296,13 +333,76 @@ export default function PlayersPage() {
       const cleanFirst = firstName.replace(/[■`]/g, "").trim();
       if (!cleanLast || !cleanFirst) continue;
 
-      parsed.push({
+      const player: ParsedPlayer = {
         firstName: cleanFirst,
         lastName: cleanLast,
         cellNumber: cell || null,
         homeNumber: home || null,
         email: email || null,
-      });
+        skillLevel: null,
+        contractedFrequency: null,
+        soloShareLevel: null,
+        soloPairName: null,
+        isActive: null,
+        isDerated: null,
+        noConsecutiveDays: null,
+        blockedDays: [],
+        vacations: [],
+        doNotPairNames: [],
+      };
+
+      if (isFullBackup) {
+        // columns: 0=Last, 1=First, 2=Cell, 3=Home, 4=Email, 5=Skill, 6=Freq,
+        //          7=Solo Share, 8=Solo Pair, 9=Active, 10=Derated, 11=No Consec, 12=Blocked, 13=Vacations, 14=DoNotPair
+        const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+        const skill = fields[5] ?? "";
+        if (["A", "B", "C", "D"].includes(skill)) player.skillLevel = skill;
+
+        const freq = fields[6] ?? "";
+        if (freq === "Sub") player.contractedFrequency = "0";
+        else if (["1", "2", "2+"].includes(freq)) player.contractedFrequency = freq;
+
+        const solo = (fields[7] ?? "").toLowerCase();
+        if (solo === "full" || solo === "half") player.soloShareLevel = solo;
+
+        const soloPairRaw = fields[8] ?? "";
+        if (soloPairRaw) player.soloPairName = soloPairRaw;
+
+        const active = (fields[9] ?? "").toLowerCase();
+        if (active === "yes") player.isActive = true;
+        else if (active === "no") player.isActive = false;
+
+        const derated = (fields[10] ?? "").toLowerCase();
+        if (derated === "yes") player.isDerated = true;
+        else if (derated === "no") player.isDerated = false;
+
+        const noConsec = (fields[11] ?? "").toLowerCase();
+        if (noConsec === "yes") player.noConsecutiveDays = true;
+        else if (noConsec === "no") player.noConsecutiveDays = false;
+
+        const blockedStr = fields[12] ?? "";
+        if (blockedStr) {
+          player.blockedDays = blockedStr.split(";").map((d) => DAY_MAP[d.trim()]).filter((d) => d !== undefined);
+        }
+
+        const vacStr = fields[13] ?? "";
+        if (vacStr) {
+          player.vacations = vacStr.split(";").map((v) => {
+            const parts = v.trim().split(" to ");
+            return parts.length === 2 && parts[0] && parts[1]
+              ? { startDate: parts[0].trim(), endDate: parts[1].trim() }
+              : null;
+          }).filter((v): v is { startDate: string; endDate: string } => v !== null);
+        }
+
+        const dnpStr = fields[14] ?? "";
+        if (dnpStr) {
+          player.doNotPairNames = dnpStr.split(";").map((n) => n.trim()).filter(Boolean);
+        }
+      }
+
+      parsed.push(player);
     }
 
     if (parsed.length === 0) {
@@ -313,6 +413,7 @@ export default function PlayersPage() {
 
     // Show preview modal instead of window.confirm
     setImportPreview(parsed);
+    setImportIsFullBackup(isFullBackup);
     setImportFileName(file.name);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -324,7 +425,7 @@ export default function PlayersPage() {
       const res = await fetch("/api/players/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: season.id, players: importPreview }),
+        body: JSON.stringify({ seasonId: season.id, players: importPreview, isFullBackup: importIsFullBackup }),
       });
 
       if (!res.ok) {
@@ -345,11 +446,13 @@ export default function PlayersPage() {
     }
 
     setImportPreview(null);
+    setImportIsFullBackup(false);
     setImportFileName("");
   };
 
   const handleImportCancel = () => {
     setImportPreview(null);
+    setImportIsFullBackup(false);
     setImportFileName("");
   };
 
@@ -364,7 +467,7 @@ export default function PlayersPage() {
       return val;
     };
 
-    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Share,Active,Derated,No Consecutive Days,Blocked Days,Vacations,Does Not Play With";
+    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Share,Solo Pair,Active,Derated,No Consecutive Days,Blocked Days,Vacations,Does Not Play With";
     const rows = sortedPlayers.map((p) => {
       const blockedDays = p.blockedDays.map((d) => FULL_DAYS[d]).join("; ") || "";
       const vacations = p.vacations.map((v) => `${v.startDate} to ${v.endDate}`).join("; ") || "";
@@ -379,6 +482,9 @@ export default function PlayersPage() {
       const solo = p.soloShareLevel
         ? p.soloShareLevel.charAt(0).toUpperCase() + p.soloShareLevel.slice(1)
         : "";
+      const soloPair = p.soloPairId
+        ? (() => { const match = players.find((pl) => pl.id === p.soloPairId); return match ? `${match.lastName}, ${match.firstName}` : ""; })()
+        : "";
 
       return [
         esc(p.lastName),
@@ -389,6 +495,7 @@ export default function PlayersPage() {
         p.skillLevel,
         freq,
         solo,
+        esc(soloPair),
         p.isActive ? "Yes" : "No",
         p.isDerated ? "Yes" : "No",
         p.noConsecutiveDays ? "Yes" : "No",
@@ -589,8 +696,6 @@ export default function PlayersPage() {
                 <option value="">None</option>
                 <option value="full">Full</option>
                 <option value="half">Half</option>
-                <option value="quarter">Quarter</option>
-                <option value="eighth">Eighth</option>
               </select>
             </div>
             <div className="flex items-center gap-4 pt-6">
@@ -755,6 +860,59 @@ export default function PlayersPage() {
             </select>
           </div>
 
+          {/* Solo Pair Partner (only for half-share players) */}
+          {form.soloShareLevel === "half" && (
+            <div className="mb-4">
+              <label className="block text-sm text-muted mb-2">Solo Pair Partner</label>
+              {form.soloPairId ? (() => {
+                const partner = players.find((pl) => pl.id === form.soloPairId);
+                return (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <span className="inline-flex items-center gap-1 bg-orange-50 border border-orange-200 text-orange-800 rounded px-2 py-0.5 text-xs">
+                      {partner ? `${partner.lastName}, ${partner.firstName}` : `Player #${form.soloPairId}`}
+                      <button
+                        onClick={() => setForm({ ...form, soloPairId: null })}
+                        className="text-orange-500 hover:text-orange-700 font-bold ml-1"
+                      >
+                        x
+                      </button>
+                    </span>
+                  </div>
+                );
+              })() : (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const selectedId = parseInt(e.target.value);
+                    if (selectedId) {
+                      setForm({ ...form, soloPairId: selectedId });
+                    }
+                  }}
+                  className="border border-border rounded px-3 py-1.5 text-sm w-64"
+                >
+                  <option value="">+ Select partner...</option>
+                  {players
+                    .filter(
+                      (p) =>
+                        p.id !== editingId &&
+                        p.isActive &&
+                        p.soloShareLevel === "half"
+                    )
+                    .sort((a, b) => a.lastName.localeCompare(b.lastName))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.lastName}, {p.firstName}
+                        {p.soloPairId ? ` (paired with ${players.find((pl) => pl.id === p.soloPairId)?.lastName ?? "?"})` : ""}
+                      </option>
+                    ))}
+                </select>
+              )}
+              <p className="text-xs text-muted mt-1">
+                Half-share players must be paired. The pair alternates odd/even weeks.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={handleSave}
@@ -815,9 +973,22 @@ export default function PlayersPage() {
                 <td className="px-2 py-1">{player.email}</td>
                 <td className="px-2 py-1">{player.skillLevel}</td>
                 <td className="px-2 py-1">{player.contractedFrequency === "0" ? "Sub" : player.contractedFrequency}</td>
-                <td className="px-2 py-1 text-solo-orange">
+                <td className="px-2 py-1">
                   {player.soloShareLevel
-                    ? player.soloShareLevel.charAt(0).toUpperCase() + player.soloShareLevel.slice(1)
+                    ? (<>
+                        <span className="text-orange-600">{player.soloShareLevel.charAt(0).toUpperCase() + player.soloShareLevel.slice(1)}</span>
+                        {player.soloShareLevel === "half" && player.soloPairId && (() => {
+                          const partner = players.find((p) => p.id === player.soloPairId);
+                          return partner ? (
+                            <span className="text-xs text-muted ml-1" title={`Paired with ${partner.firstName} ${partner.lastName}`}>
+                              ({partner.lastName})
+                            </span>
+                          ) : null;
+                        })()}
+                        {player.soloShareLevel === "half" && !player.soloPairId && (
+                          <span className="text-xs text-red-500 ml-1" title="No pair partner assigned">⚠</span>
+                        )}
+                      </>)
                     : "-"}
                 </td>
                 <td className="px-2 py-1">{player.isActive ? "Yes" : "No"}</td>
@@ -885,9 +1056,14 @@ export default function PlayersPage() {
                 )}
                 {newCount > 0 && updateCount > 0 && ","}
                 {updateCount > 0 && (
-                  <span className="text-blue-700 font-medium"> {updateCount} existing (will update non-empty fields)</span>
+                  <span className="text-blue-700 font-medium"> {updateCount} existing (will update)</span>
                 )}
                 .
+                {importIsFullBackup && (
+                  <span className="block mt-1 text-amber-700 font-medium">
+                    Full backup detected — skill, frequency, solo, blocked days, vacations, and pairings will be restored.
+                  </span>
+                )}
               </div>
               <table className="w-full text-sm border border-border mb-4">
                 <thead>
@@ -896,8 +1072,19 @@ export default function PlayersPage() {
                     <th className="text-left px-3 py-2 border-b border-border">Status</th>
                     <th className="text-left px-3 py-2 border-b border-border">Last Name</th>
                     <th className="text-left px-3 py-2 border-b border-border">First Name</th>
-                    <th className="text-left px-3 py-2 border-b border-border">Cell</th>
-                    <th className="text-left px-3 py-2 border-b border-border">Email</th>
+                    {importIsFullBackup ? (
+                      <>
+                        <th className="text-left px-3 py-2 border-b border-border">Skill</th>
+                        <th className="text-left px-3 py-2 border-b border-border">Freq</th>
+                        <th className="text-left px-3 py-2 border-b border-border">Solo</th>
+                        <th className="text-left px-3 py-2 border-b border-border">Active</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="text-left px-3 py-2 border-b border-border">Cell</th>
+                        <th className="text-left px-3 py-2 border-b border-border">Email</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -917,8 +1104,19 @@ export default function PlayersPage() {
                         </td>
                         <td className="px-3 py-1.5 border-b border-border font-medium">{p.lastName}</td>
                         <td className="px-3 py-1.5 border-b border-border">{p.firstName}</td>
-                        <td className="px-3 py-1.5 border-b border-border">{formatPhone(p.cellNumber)}</td>
-                        <td className="px-3 py-1.5 border-b border-border">{p.email ?? ""}</td>
+                        {importIsFullBackup ? (
+                          <>
+                            <td className="px-3 py-1.5 border-b border-border">{p.skillLevel ?? ""}</td>
+                            <td className="px-3 py-1.5 border-b border-border">{p.contractedFrequency === "0" ? "Sub" : (p.contractedFrequency ?? "")}</td>
+                            <td className="px-3 py-1.5 border-b border-border">{p.soloShareLevel ?? ""}</td>
+                            <td className="px-3 py-1.5 border-b border-border">{p.isActive === false ? "No" : "Yes"}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-1.5 border-b border-border">{formatPhone(p.cellNumber)}</td>
+                            <td className="px-3 py-1.5 border-b border-border">{p.email ?? ""}</td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
