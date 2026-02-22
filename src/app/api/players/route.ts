@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { players, playerBlockedDays, playerVacations, playerDoNotPair, gameAssignments } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
+import { formatPhone } from "@/lib/formatPhone";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PlayerBody = any;
@@ -178,8 +179,8 @@ export async function POST(request: NextRequest) {
         seasonId,
         firstName,
         lastName,
-        cellNumber,
-        homeNumber,
+        cellNumber: cellNumber ? formatPhone(cellNumber) : cellNumber,
+        homeNumber: homeNumber ? formatPhone(homeNumber) : homeNumber,
         email,
         isActive: isActive ?? true,
         contractedFrequency: contractedFrequency ?? "1",
@@ -274,8 +275,8 @@ export async function PUT(request: NextRequest) {
     const merged = {
       firstName: firstName ?? currentPlayer.firstName,
       lastName: lastName ?? currentPlayer.lastName,
-      cellNumber: cellNumber !== undefined ? cellNumber : currentPlayer.cellNumber,
-      homeNumber: homeNumber !== undefined ? homeNumber : currentPlayer.homeNumber,
+      cellNumber: cellNumber !== undefined ? (cellNumber ? formatPhone(cellNumber) : cellNumber) : currentPlayer.cellNumber,
+      homeNumber: homeNumber !== undefined ? (homeNumber ? formatPhone(homeNumber) : homeNumber) : currentPlayer.homeNumber,
       email: email !== undefined ? email : currentPlayer.email,
       isActive: isActive !== undefined ? isActive : currentPlayer.isActive,
       contractedFrequency: contractedFrequency ?? currentPlayer.contractedFrequency,

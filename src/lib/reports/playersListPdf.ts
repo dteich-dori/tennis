@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { formatPhone } from "@/lib/formatPhone";
 
 interface Player {
   firstName: string;
@@ -45,7 +46,7 @@ export function generatePlayersListPdf(
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone 973.377.2235 x137   brooklaketennis.com", pageWidth / 2, 58, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 58, { align: "center" });
   }
 
   // Draw header on first page
@@ -139,8 +140,8 @@ export function generatePlayersListPdf(
       const values = [
         player.lastName,
         player.firstName,
-        player.cellNumber ?? "",
-        player.homeNumber ?? "",
+        formatPhone(player.cellNumber),
+        formatPhone(player.homeNumber),
         player.email ?? "",
       ];
 

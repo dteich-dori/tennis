@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { formatPhone } from "@/lib/formatPhone";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -382,8 +383,8 @@ export default function PlayersPage() {
       return [
         esc(p.lastName),
         esc(p.firstName),
-        esc(p.cellNumber ?? ""),
-        esc(p.homeNumber ?? ""),
+        esc(formatPhone(p.cellNumber)),
+        esc(formatPhone(p.homeNumber)),
         esc(p.email ?? ""),
         p.skillLevel,
         freq,
@@ -809,8 +810,8 @@ export default function PlayersPage() {
                   </button>
                 </td>
                 <td className="px-2 py-1">{player.firstName}</td>
-                <td className="px-2 py-1">{player.cellNumber}</td>
-                <td className="px-2 py-1">{player.homeNumber}</td>
+                <td className="px-2 py-1">{formatPhone(player.cellNumber)}</td>
+                <td className="px-2 py-1">{formatPhone(player.homeNumber)}</td>
                 <td className="px-2 py-1">{player.email}</td>
                 <td className="px-2 py-1">{player.skillLevel}</td>
                 <td className="px-2 py-1">{player.contractedFrequency === "0" ? "Sub" : player.contractedFrequency}</td>
@@ -916,7 +917,7 @@ export default function PlayersPage() {
                         </td>
                         <td className="px-3 py-1.5 border-b border-border font-medium">{p.lastName}</td>
                         <td className="px-3 py-1.5 border-b border-border">{p.firstName}</td>
-                        <td className="px-3 py-1.5 border-b border-border">{p.cellNumber ?? ""}</td>
+                        <td className="px-3 py-1.5 border-b border-border">{formatPhone(p.cellNumber)}</td>
                         <td className="px-3 py-1.5 border-b border-border">{p.email ?? ""}</td>
                       </tr>
                     );

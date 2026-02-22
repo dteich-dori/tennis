@@ -96,7 +96,7 @@ export default function SchedulePage() {
   const [playerCounts, setPlayerCounts] = useState<Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>>({});
   const [showPlayerInfo, setShowPlayerInfo] = useState(false);
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
-  const [dropdownSort, setDropdownSort] = useState<"owed" | "name">("owed");
+  const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd">("owed");
 
   // Previous week games (for "once per 2 weeks" derated pairing check)
   const [prevWeekGames, setPrevWeekGames] = useState<Game[]>([]);
@@ -127,6 +127,12 @@ export default function SchedulePage() {
     currentMaxWeek: number;
   } | null>(null);
   const [extraGamesLoading, setExtraGamesLoading] = useState(false);
+
+  // Auto-assign state
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignLog, setAutoAssignLog] = useState<{ type: string; day?: string; message: string }[]>([]);
+  const [autoAssignCount, setAutoAssignCount] = useState(0);
+  const [autoAssignError, setAutoAssignError] = useState("");
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -303,6 +309,9 @@ export default function SchedulePage() {
   const changeWeek = (week: number) => {
     setComplianceChecked(false);
     setViolations([]);
+    setAutoAssignLog([]);
+    setAutoAssignCount(0);
+    setAutoAssignError("");
     setCurrentWeek(week);
   };
 
@@ -398,6 +407,70 @@ export default function SchedulePage() {
       console.error("Failed to load extra games:", err);
     }
     setExtraGamesLoading(false);
+  };
+
+  const handleAutoAssign = async () => {
+    if (!season) return;
+    setAutoAssignLoading(true);
+    setAutoAssignError("");
+    setAutoAssignLog([]);
+    setAutoAssignCount(0);
+    try {
+      const res = await fetch("/api/games/auto-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek }),
+      });
+      const data = await res.json() as {
+        success?: boolean;
+        error?: string;
+        assignedCount?: number;
+        totalSlots?: number;
+        unfilled?: number;
+        assignmentIds?: number[];
+        log?: { type: string; day?: string; message: string }[];
+      };
+      if (!res.ok) {
+        setAutoAssignError(data.error ?? "Auto-assign failed");
+        if (data.log) setAutoAssignLog(data.log);
+      } else {
+        setAutoAssignLog(data.log ?? []);
+        setAutoAssignCount(data.assignedCount ?? 0);
+        // Reload games and counts
+        await loadGames(season.id, currentWeek);
+        await loadPlayerCounts(season.id, currentWeek);
+      }
+    } catch (err) {
+      console.error("Auto-assign failed:", err);
+      setAutoAssignError("Auto-assign failed unexpectedly");
+    }
+    setAutoAssignLoading(false);
+  };
+
+  const handleClearDonsAssignments = async () => {
+    if (!season) return;
+    if (!confirm("Clear all Don's game assignments for this week?")) return;
+    setAutoAssignLoading(true);
+    try {
+      const res = await fetch("/api/games/auto-assign", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek }),
+      });
+      if (res.ok) {
+        setAutoAssignLog([]);
+        setAutoAssignError("");
+        await loadGames(season.id, currentWeek);
+        await loadPlayerCounts(season.id, currentWeek);
+      } else {
+        const data = await res.json() as { error?: string };
+        setAutoAssignError(data.error ?? "Clear failed");
+      }
+    } catch (err) {
+      console.error("Clear Don's assignments failed:", err);
+      setAutoAssignError("Clear failed unexpectedly");
+    }
+    setAutoAssignLoading(false);
   };
 
   // Check if player has a YTD deficit (behind schedule due to vacation/illness)
@@ -671,6 +744,24 @@ export default function SchedulePage() {
             <span className="text-xs text-muted ml-auto mr-3">
               {games.length} games this week &middot; {totalGames} total
             </span>
+            {games.filter((g) => g.group === "dons" && g.status === "normal").some((g) => g.assignments.length > 0) ? (
+              <button
+                onClick={handleClearDonsAssignments}
+                disabled={autoAssignLoading}
+                className="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-sm hover:bg-red-600 active:bg-red-700 disabled:opacity-40 transition-colors text-sm"
+              >
+                {autoAssignLoading ? "Clearing..." : "Clear Don's"}
+              </button>
+            ) : (
+              <button
+                onClick={handleAutoAssign}
+                disabled={autoAssignLoading || games.length === 0}
+                title="Auto-assign all Don's games for this week"
+                className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
+              >
+                {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
+              </button>
+            )}
             <button
               onClick={() => setShowPlayerInfo(true)}
               className="px-4 py-2 font-semibold rounded-lg shadow-sm transition-colors text-sm bg-blue-500 text-white hover:bg-blue-600"
@@ -808,7 +899,7 @@ export default function SchedulePage() {
                         </span>
                         <span
                           className={`font-mono w-4 text-center ${
-                            owe > 0 ? "text-red-600 font-bold" : ""
+                            owe > 0 ? "text-green-700 font-bold" : ""
                           }`}
                           title={`Owe ${owe} game(s) this week`}
                         >
@@ -816,7 +907,7 @@ export default function SchedulePage() {
                         </span>
                         <span
                           className={`font-mono w-4 text-center ${
-                            ytdOwed > 0 ? "text-red-600 font-bold" : ""
+                            ytdOwed > 0 ? "text-amber-600 font-bold" : ""
                           }`}
                           title={`YTD Owed: ${expectedYtd} expected − ${counts.ytdDons} played = ${ytdOwed}`}
                         >
@@ -907,6 +998,51 @@ export default function SchedulePage() {
                   </table>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Auto-assign error */}
+          {autoAssignError && (
+            <div className="border border-red-200 bg-red-50 rounded px-4 py-3 mb-4 text-sm flex items-center justify-between">
+              <span className="text-red-800">{autoAssignError}</span>
+              <button
+                onClick={() => setAutoAssignError("")}
+                className="text-xs text-muted hover:underline ml-4"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Auto-assign log panel */}
+          {autoAssignLog.length > 0 && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded px-4 py-3 mb-4 text-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-indigo-800">
+                  Auto-Assign Report {autoAssignCount > 0 ? `\u2014 ${autoAssignCount} players assigned` : ""}
+                </span>
+                <button
+                  onClick={() => { setAutoAssignLog([]); }}
+                  className="text-xs text-muted hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="space-y-0.5 max-h-64 overflow-y-auto">
+                {autoAssignLog.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className={`text-xs flex items-start gap-2 ${
+                      entry.type === "error" ? "text-red-700" : entry.type === "warning" ? "text-amber-700" : "text-indigo-700"
+                    }`}
+                  >
+                    <span className="flex-shrink-0">
+                      {entry.type === "error" ? "\u26A0" : entry.type === "warning" ? "\u26A0" : "\u2713"}
+                    </span>
+                    <span>{entry.message}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1147,12 +1283,7 @@ export default function SchedulePage() {
                                       className="absolute top-full left-0 z-50 bg-white border border-border rounded-lg shadow-lg w-64 mt-1"
                                     >
                                       <div className="flex justify-between px-2 py-0.5 text-xs text-muted font-semibold border-b border-border bg-gray-50">
-                                        <span
-                                          className={`cursor-pointer hover:text-primary select-none ${dropdownSort === "name" ? "text-primary underline" : ""}`}
-                                          onClick={(e) => { e.stopPropagation(); setDropdownSort("name"); }}
-                                        >
-                                          Player {dropdownSort === "name" ? "^" : ""}
-                                        </span>
+                                        <span>Player</span>
                                         <span className="flex gap-3">
                                           <span
                                             className={`w-8 text-center cursor-pointer hover:text-primary select-none ${dropdownSort === "owed" ? "text-primary underline" : ""}`}
@@ -1160,7 +1291,12 @@ export default function SchedulePage() {
                                           >
                                             Owed {dropdownSort === "owed" ? "v" : ""}
                                           </span>
-                                          <span className="w-8 text-center">YTD</span>
+                                          <span
+                                            className={`w-8 text-center cursor-pointer hover:text-primary select-none ${dropdownSort === "ytd" ? "text-primary underline" : ""}`}
+                                            onClick={(e) => { e.stopPropagation(); setDropdownSort("ytd"); }}
+                                          >
+                                            YTD {dropdownSort === "ytd" ? "v" : ""}
+                                          </span>
                                         </span>
                                       </div>
                                       {activeSlot?.replacingAssignmentId && (
@@ -1202,20 +1338,29 @@ export default function SchedulePage() {
                                               const bMust = isMustPlay(b, game);
                                               if (aMust !== bMust) return aMust ? -1 : 1;
 
-                                              if (dropdownSort === "name") {
-                                                return a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
-                                              }
-
-                                              // Default: sort by owed descending, then name
                                               const aCounts = playerCounts[a.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
                                               const bCounts = playerCounts[b.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
-                                              const aOwed = getEffectiveFreq(a, game.group) - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
-                                              const bOwed = getEffectiveFreq(b, game.group) - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
+                                              const aFreq = getEffectiveFreq(a, game.group);
+                                              const bFreq = getEffectiveFreq(b, game.group);
+                                              const aOwed = aFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
+                                              const bOwed = bFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
+                                              const aYtdOwed = aFreq * currentWeek - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
+                                              const bYtdOwed = bFreq * currentWeek - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
+
+                                              if (dropdownSort === "ytd") {
+                                                // Sort by YTD owed descending, then WTD owed, then name
+                                                if (bYtdOwed !== aYtdOwed) return bYtdOwed - aYtdOwed;
+                                                if (bOwed !== aOwed) return bOwed - aOwed;
+                                                return a.lastName.localeCompare(b.lastName);
+                                              }
+
+                                              // Default "owed": sort by WTD owed descending, then YTD owed, then name
                                               if (bOwed !== aOwed) return bOwed - aOwed;
+                                              if (bYtdOwed !== aYtdOwed) return bYtdOwed - aYtdOwed;
                                               return a.lastName.localeCompare(b.lastName);
                                             });
 
-                                          // Bonus players: available but NOT in regular list
+                                          // Bonus players: available but NOT in regular list (already met weekly quota)
                                           const regularIds = new Set(regularPlayers.map((p) => p.id));
                                           const skillOrder: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
                                           const bonusPlayers = bonusMode !== "off"
@@ -1294,7 +1439,7 @@ export default function SchedulePage() {
                                                 </span>
                                                 <span className="flex gap-3 text-xs text-muted">
                                                   <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
-                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`}>{game.group === "solo" ? counts.ytdSolo : counts.ytdDons}</span>
+                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * currentWeek} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * currentWeek - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
                                                 </span>
                                               </button>
                                             );

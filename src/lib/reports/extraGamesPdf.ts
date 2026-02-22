@@ -45,7 +45,7 @@ export function generateExtraGamesPdf(
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone 973.377.2235 x137   brooklaketennis.com", pageWidth / 2, 52, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 52, { align: "center" });
 
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);

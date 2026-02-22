@@ -53,7 +53,7 @@ export function generatePlayerStatsPdf(
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone 973.377.2235 x137   brooklaketennis.com", pageWidth / 2, 58, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 58, { align: "center" });
 
     // Week info
     doc.setFontSize(9);

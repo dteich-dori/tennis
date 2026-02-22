@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { players } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { formatPhone } from "@/lib/formatPhone";
 
 interface ImportPlayer {
   firstName: string;
@@ -50,11 +51,11 @@ export async function POST(request: NextRequest) {
         const current = existing[0];
         const updates: Record<string, string | null> = {};
 
-        if (p.cellNumber && p.cellNumber !== current.cellNumber) {
-          updates.cellNumber = p.cellNumber;
+        if (p.cellNumber && formatPhone(p.cellNumber) !== current.cellNumber) {
+          updates.cellNumber = formatPhone(p.cellNumber);
         }
-        if (p.homeNumber && p.homeNumber !== current.homeNumber) {
-          updates.homeNumber = p.homeNumber;
+        if (p.homeNumber && formatPhone(p.homeNumber) !== current.homeNumber) {
+          updates.homeNumber = formatPhone(p.homeNumber);
         }
         if (p.email && p.email !== current.email) {
           updates.email = p.email;
@@ -75,8 +76,8 @@ export async function POST(request: NextRequest) {
           seasonId,
           firstName: p.firstName,
           lastName: p.lastName,
-          cellNumber: p.cellNumber || null,
-          homeNumber: p.homeNumber || null,
+          cellNumber: p.cellNumber ? formatPhone(p.cellNumber) : null,
+          homeNumber: p.homeNumber ? formatPhone(p.homeNumber) : null,
           email: p.email || null,
           isActive: true,
           contractedFrequency: "1",
