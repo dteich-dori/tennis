@@ -19,6 +19,7 @@ interface Game {
   courtNumber: number;
   group: string;
   status: string;
+  holidayName?: string;
   assignments: Assignment[];
 }
 
@@ -79,14 +80,14 @@ export function generateGamesByDatePdf(
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
   function drawPageHeader() {
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text(title, pageWidth / 2, 36, { align: "center" });
+    doc.text(title, pageWidth / 2, 28, { align: "center" });
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 50, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 40, { align: "center" });
   }
 
   // Column layout: Game# | Time | Ct | Group | Player1 🎾 | Player2 | Player3 | Player4
@@ -102,9 +103,9 @@ export function generateGamesByDatePdf(
   ];
   const colHeaders = ["Game", "Time", "Ct", "Group", "Player 1 (*)", "Player 2", "Player 3", "Player 4"];
 
-  const rowHeight = 14;
-  const dateHeaderHeight = 16;
-  const tableHeaderHeight = 16;
+  const rowHeight = 13;
+  const dateHeaderHeight = 14;
+  const tableHeaderHeight = 14;
 
   // Group games by week
   const gamesByWeek = new Map<number, Game[]>();
@@ -133,12 +134,12 @@ export function generateGamesByDatePdf(
     }
     isFirstPage = false;
     drawPageHeader();
-    currentY = 64;
+    currentY = 48;
     weeksOnPage = 0;
   }
 
   function drawTableHeaderRow() {
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
     doc.setFillColor(240, 240, 240);
     doc.rect(marginLeft, currentY, tableWidth, tableHeaderHeight, "F");
@@ -148,7 +149,7 @@ export function generateGamesByDatePdf(
 
     let x = marginLeft;
     for (let i = 0; i < colHeaders.length; i++) {
-      doc.text(colHeaders[i], x + 2, currentY + 11);
+      doc.text(colHeaders[i], x + 2, currentY + 10);
       x += colWidths[i];
     }
     currentY += tableHeaderHeight;
@@ -171,8 +172,9 @@ export function generateGamesByDatePdf(
     const dates = Array.from(byDate.keys()).sort();
 
     // Estimate space needed for this week
+    // Only 1 table header row per week (not per day), saves vertical space
     const estimatedHeight = dateHeaderHeight + tableHeaderHeight +
-      weekGames.length * rowHeight + dates.length * dateHeaderHeight + 12;
+      weekGames.length * rowHeight + dates.length * dateHeaderHeight + 8;
 
     // Check if we need a new page (2 weeks per page)
     if (weeksOnPage >= 2 || (currentY > 0 && currentY + estimatedHeight > pageHeight - 40)) {
@@ -182,40 +184,47 @@ export function generateGamesByDatePdf(
     }
 
     // Week header
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
     doc.text(`Week ${weekNum}`, marginLeft, currentY + 10);
     currentY += dateHeaderHeight;
 
-    for (const date of dates) {
+    for (let dateIdx = 0; dateIdx < dates.length; dateIdx++) {
+      const date = dates[dateIdx];
       const dateGames = byDate.get(date)!;
       const dow = dateGames[0].dayOfWeek;
+      const isFirstDate = dateIdx === 0;
 
-      // Check space for date header + table header + at least 1 row
-      if (currentY + dateHeaderHeight + tableHeaderHeight + rowHeight > pageHeight - 40) {
+      // Check space for date header + (table header if first) + at least 1 row
+      const neededForHeader = dateHeaderHeight + (isFirstDate ? tableHeaderHeight : 0) + rowHeight;
+      if (currentY + neededForHeader > pageHeight - 40) {
         startNewPage();
         // Reprint week header on new page
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 10);
         currentY += dateHeaderHeight;
+        // Always draw column header after a page break
+        drawTableHeaderRow();
       }
 
       // Date subheader
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(80, 80, 80);
-      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 10);
+      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 9);
       doc.setTextColor(0, 0, 0);
       currentY += dateHeaderHeight - 2;
 
-      // Table header
-      drawTableHeaderRow();
+      // Column header row only for the first date of the week (Monday covers the rest)
+      if (isFirstDate) {
+        drawTableHeaderRow();
+      }
 
       // Game rows
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
+      doc.setFontSize(6.9);
 
       for (let rowIdx = 0; rowIdx < dateGames.length; rowIdx++) {
         const game = dateGames[rowIdx];
@@ -223,13 +232,13 @@ export function generateGamesByDatePdf(
         // Page break check
         if (currentY + rowHeight > pageHeight - 40) {
           startNewPage();
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           doc.setFont("helvetica", "bold");
           doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 10);
           currentY += dateHeaderHeight;
           drawTableHeaderRow();
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(7);
+          doc.setFontSize(6.9);
         }
 
         const isEarlyGame = game.startTime < "10:00";
@@ -244,7 +253,6 @@ export function generateGamesByDatePdf(
           doc.setFillColor(240, 240, 240);
           doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
         } else if (isEarlyGame) {
-          // Light color for 9:00 games
           doc.setFillColor(255, 255, 102);
           doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
         } else if (rowIdx % 2 === 1) {
@@ -265,39 +273,40 @@ export function generateGamesByDatePdf(
         }
 
         let x = marginLeft;
+        const textY = currentY + 9;
 
         // Game #
-        doc.text(String(game.gameNumber), x + 2, currentY + 10);
+        doc.text(String(game.gameNumber), x + 2, textY);
         x += colWidths[0];
 
         // Time
-        doc.text(game.startTime, x + 2, currentY + 10);
+        doc.text(game.startTime, x + 2, textY);
         x += colWidths[1];
 
         // Court
-        doc.text(String(game.courtNumber), x + 2, currentY + 10);
+        doc.text(String(game.courtNumber), x + 2, textY);
         x += colWidths[2];
 
         // Group
-        doc.text(game.group === "solo" ? "Solo" : "Don's", x + 2, currentY + 10);
+        doc.text(game.group === "solo" ? "Solo" : "Don's", x + 2, textY);
         x += colWidths[3];
 
         if (isHoliday) {
           doc.setTextColor(180, 130, 0);
           doc.setFont("helvetica", "bold");
-          doc.text("Holiday", x + 2, currentY + 10);
+          doc.text(game.holidayName || "Holiday", x + 2, textY);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(0, 0, 0);
         } else if (isBlanked) {
           doc.setTextColor(150, 150, 150);
-          doc.text("Blanked", x + 2, currentY + 10);
+          doc.text("Blanked", x + 2, textY);
           doc.setTextColor(0, 0, 0);
         } else {
           // Player slots 1-4
           for (let slot = 1; slot <= 4; slot++) {
             const assignment = game.assignments.find((a) => a.slotPosition === slot);
-            const name = assignment ? getPlayerName(assignment.playerId, players) : "—";
-            doc.text(name, x + 2, currentY + 10);
+            const name = assignment ? getPlayerName(assignment.playerId, players) : "\u2014";
+            doc.text(name, x + 2, textY);
             x += colWidths[3 + slot];
           }
         }
@@ -307,10 +316,10 @@ export function generateGamesByDatePdf(
         currentY += rowHeight;
       }
 
-      currentY += 4; // Small gap between dates
+      currentY += 2; // Small gap between dates
     }
 
-    currentY += 8; // Gap between weeks
+    currentY += 6; // Gap between weeks
     weeksOnPage++;
   }
 
@@ -571,7 +580,7 @@ export function generateGamesByDateWorksheetPdf(
         if (isHoliday) {
           doc.setTextColor(180, 130, 0);
           doc.setFont("helvetica", "bold");
-          doc.text("Holiday", x + 2, currentY + 9);
+          doc.text(game.holidayName || "Holiday", x + 2, currentY + 9);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(0, 0, 0);
         } else if (isBlanked) {

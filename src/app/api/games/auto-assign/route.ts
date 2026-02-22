@@ -240,7 +240,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Get available players for a specific game considering all constraints
-    function getAvailablePlayers(game: GameData, currentAssignments: number[]): PlayerData[] {
+    // firstGameOnly: if true, only include players with ZERO Don's games this week
+    //   (ensures every contracted player gets at least 1 game before anyone gets a 2nd).
+    //   If false, include all players who still owe games or are 2+ eligible for extras.
+    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false): PlayerData[] {
       const assignedInGame = new Set(currentAssignments);
       const assignedOnDate = new Set<number>();
       // Players assigned to other games on same date
@@ -258,10 +261,16 @@ export async function POST(request: NextRequest) {
         if (assignedInGame.has(p.id)) return false;
         if (assignedOnDate.has(p.id)) return false;
 
-        // Only assign players who deserve games: 2+ always eligible, others only if WTD owed > 0
-        if (p.contractedFrequency !== "2+") {
+        // Frequency / owed check
+        const wtd = wtdDonsCounts.get(p.id) ?? 0;
+        if (firstGameOnly) {
+          // Only players who have zero Don's games this week
+          if (wtd > 0) return false;
+        } else if (p.contractedFrequency === "2+") {
+          // 2+ players are always eligible for extras
+        } else {
+          // Non-2+ players: only eligible if WTD owed > 0
           const freq = parseInt(p.contractedFrequency) || 0;
-          const wtd = wtdDonsCounts.get(p.id) ?? 0;
           if (freq - wtd <= 0) return false;
         }
 
@@ -270,6 +279,19 @@ export async function POST(request: NextRequest) {
 
         // Vacation
         if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
+
+        // No consecutive days: skip if player is assigned on the day before or day after
+        if (p.noConsecutiveDays) {
+          const gameDate = new Date(game.date + "T12:00:00");
+          const prevDay = new Date(gameDate);
+          prevDay.setDate(prevDay.getDate() - 1);
+          const nextDay = new Date(gameDate);
+          nextDay.setDate(nextDay.getDate() + 1);
+          const prevStr = prevDay.toISOString().split("T")[0];
+          const nextStr = nextDay.toISOString().split("T")[0];
+          const pDates = assignedDates.get(p.id) ?? new Set();
+          if (pDates.has(prevStr) || pDates.has(nextStr)) return false;
+        }
 
         // Do-not-pair with anyone already in this game
         if (p.doNotPair.length) {
@@ -415,8 +437,7 @@ export async function POST(request: NextRequest) {
       const soloOnDate = soloAssignedByDate.get(date) ?? new Set();
 
       // Get all players available on this date (not yet assigned on this date)
-      // Only include players who deserve a game: 2+ contract, or WTD owed > 0
-      // YTD owed only affects priority, not eligibility beyond weekly contract
+      // Include players who deserve a game: 2+ contract, or WTD owed > 0
       const dayPool = contractedPlayers.filter((p) => {
         if (soloOnDate.has(p.id)) return false;
         const pDates = assignedDates.get(p.id) ?? new Set();
@@ -519,17 +540,20 @@ export async function POST(request: NextRequest) {
       // --- C-only games ---
       for (let i = 0; i < fullCGames && gameIdx < dateGames.length; i++, gameIdx++) {
         const game = dateGames[gameIdx];
-        const available = getAvailablePlayers(game, []).filter(
-          (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
-        );
-        const sorted = sortByPriority(available, game);
 
         for (let slot = 1; slot <= 4; slot++) {
           // Re-filter after each assignment (DNP etc. may change)
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          const eligible = getAvailablePlayers(game, currentAssigned).filter(
+          // First pass: only players who still owe their contracted minimum
+          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
             (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
           );
+          // Second pass: if no owed-first players, allow 2+ extras
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
+              (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
+            );
+          }
           const prioritized = sortByPriority(eligible, game);
 
           if (prioritized.length > 0) {
@@ -553,9 +577,15 @@ export async function POST(request: NextRequest) {
         const cSlotsNeeded = isPairedMixed ? 2 : 1;
         for (let slot = 1; slot <= cSlotsNeeded; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          const eligible = getAvailablePlayers(game, currentAssigned).filter(
+          // First pass: only players who still owe their contracted minimum
+          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
             (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
           );
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
+              (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
+            );
+          }
           const prioritized = sortByPriority(eligible, game);
           if (prioritized.length > 0) {
             await assignPlayer(game, prioritized[0].id, slot);
@@ -567,9 +597,15 @@ export async function POST(request: NextRequest) {
         // Then fill remaining slots with B players (prefer B, fall back to A/B)
         for (let slot = cSlotsNeeded + 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          const eligible = getAvailablePlayers(game, currentAssigned).filter(
+          // First pass: only players who still owe their contracted minimum
+          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
             (p) => p.skillLevel === "B" && !usedOnDay.has(p.id)
           );
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
+              (p) => p.skillLevel === "B" && !usedOnDay.has(p.id)
+            );
+          }
           const prioritized = sortByPriority(eligible, game);
           if (prioritized.length > 0) {
             await assignPlayer(game, prioritized[0].id, slot);
@@ -577,13 +613,23 @@ export async function POST(request: NextRequest) {
             // Fall back to any A/B player (but NOT A for mixed games with C players)
             const currentPlayerIds = gameAssignmentState.get(game.id) ?? [];
             const hasC = currentPlayerIds.some((id) => contractedPlayers.find((p) => p.id === id)?.skillLevel === "C");
-            const fallback = getAvailablePlayers(game, currentAssigned).filter(
+            // First pass: owed-only
+            let fallback = getAvailablePlayers(game, currentAssigned, true).filter(
               (p) => {
                 if (usedOnDay.has(p.id)) return false;
-                if (hasC && p.skillLevel === "A") return false; // Can't pair A with C
+                if (hasC && p.skillLevel === "A") return false;
                 return p.skillLevel === "A" || p.skillLevel === "B";
               }
             );
+            if (fallback.length === 0) {
+              fallback = getAvailablePlayers(game, currentAssigned, false).filter(
+                (p) => {
+                  if (usedOnDay.has(p.id)) return false;
+                  if (hasC && p.skillLevel === "A") return false;
+                  return p.skillLevel === "A" || p.skillLevel === "B";
+                }
+              );
+            }
             const fbSorted = sortByPriority(fallback, game);
             if (fbSorted.length > 0) {
               await assignPlayer(game, fbSorted[0].id, slot);
@@ -600,10 +646,17 @@ export async function POST(request: NextRequest) {
 
         for (let slot = 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          // For A/B games, prefer A/B players but allow any non-C if needed
-          const eligible = getAvailablePlayers(game, currentAssigned).filter(
+
+          // First pass: only players who still owe their contracted minimum
+          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
             (p) => !usedOnDay.has(p.id)
           );
+          // Second pass: if no owed-first players, allow 2+ extras
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
+              (p) => !usedOnDay.has(p.id)
+            );
+          }
 
           // Prefer A/B players, then fall back to C if they can play with current group
           const abEligible = eligible.filter((p) => p.skillLevel === "A" || p.skillLevel === "B");
