@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       .values({
         startDate,
         endDate: endDate.toISOString().split("T")[0],
+        totalWeeks: 36,
         maxDeratedPerWeek: maxDeratedPerWeek ?? null,
       })
       .returning();
@@ -68,10 +69,15 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const endDate = new Date(date);
-    endDate.setDate(endDate.getDate() + 36 * 7 - 1);
-
     const database = await db();
+
+    // Get current totalWeeks to preserve makeup weeks
+    const [current] = await database.select().from(seasons).where(eq(seasons.id, id));
+    const totalWeeks = current?.totalWeeks ?? 36;
+
+    const endDate = new Date(date);
+    endDate.setDate(endDate.getDate() + totalWeeks * 7 - 1);
+
     const result = await database
       .update(seasons)
       .set({

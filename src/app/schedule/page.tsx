@@ -17,6 +17,7 @@ interface Season {
   id: number;
   startDate: string;
   endDate: string;
+  totalWeeks: number;
   maxDeratedPerWeek: number | null;
 }
 
@@ -67,7 +68,7 @@ export default function SchedulePage() {
       const saved = localStorage.getItem("schedule_currentWeek");
       if (saved) {
         const num = parseInt(saved);
-        if (num >= 1 && num <= 36) return num;
+        if (num >= 1 && num <= 52) return num;
       }
     }
     return 1;
@@ -733,17 +734,17 @@ export default function SchedulePage() {
                 onChange={(e) => changeWeek(parseInt(e.target.value))}
                 className="border border-border rounded px-2 py-1 text-sm"
               >
-                {Array.from({ length: 36 }, (_, i) => i + 1).map((w) => (
+                {Array.from({ length: season?.totalWeeks ?? 36 }, (_, i) => i + 1).map((w) => (
                   <option key={w} value={w}>
                     {w}
                   </option>
                 ))}
               </select>
-              <span className="text-sm text-muted">of 36</span>
+              <span className="text-sm text-muted">of {season?.totalWeeks ?? 36}</span>
             </div>
             <button
-              onClick={() => changeWeek(Math.min(36, currentWeek + 1))}
-              disabled={currentWeek === 36}
+              onClick={() => changeWeek(Math.min(season?.totalWeeks ?? 36, currentWeek + 1))}
+              disabled={currentWeek === (season?.totalWeeks ?? 36)}
               className="px-3 py-1 border border-border rounded text-sm disabled:opacity-30 hover:bg-gray-100"
             >
               Next &#8594;
@@ -1587,7 +1588,8 @@ export default function SchedulePage() {
                           players: r.players,
                         })),
                         season,
-                        extraGamesData.currentMaxWeek
+                        extraGamesData.currentMaxWeek,
+                        season.totalWeeks ?? 36
                       );
                     }
                   }}
@@ -1659,7 +1661,7 @@ export default function SchedulePage() {
             {extraGamesData && extraGamesData.rows.length > 0 && (
               <div className="px-6 py-3 border-t border-border text-xs text-muted">
                 {extraGamesData.rows.length} extra game{extraGamesData.rows.length !== 1 ? "s" : ""} found
-                &middot; Through week {extraGamesData.currentMaxWeek} of 36
+                &middot; Through week {extraGamesData.currentMaxWeek} of {season?.totalWeeks ?? 36}
               </div>
             )}
           </div>

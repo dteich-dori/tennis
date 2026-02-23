@@ -18,7 +18,8 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 export function generateExtraGamesPdf(
   rows: ExtraGameRow[],
   season: Season,
-  currentMaxWeek: number
+  currentMaxWeek: number,
+  totalWeeks = 36
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -49,7 +50,7 @@ export function generateExtraGamesPdf(
 
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Through Week ${currentMaxWeek} of 36`, pageWidth / 2, 64, { align: "center" });
+    doc.text(`Through Week ${currentMaxWeek} of ${totalWeeks}`, pageWidth / 2, 64, { align: "center" });
     doc.setTextColor(0, 0, 0);
   }
 

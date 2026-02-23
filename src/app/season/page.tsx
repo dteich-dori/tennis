@@ -6,6 +6,7 @@ interface Season {
   id: number;
   startDate: string;
   endDate: string;
+  totalWeeks: number;
   maxDeratedPerWeek: number | null;
 }
 
@@ -35,6 +36,10 @@ export default function SeasonPage() {
   const [generateMessage, setGenerateMessage] = useState("");
   const [confirmGenerate, setConfirmGenerate] = useState(false);
   const [totalGames, setTotalGames] = useState(0);
+
+  // Add makeup week state
+  const [addingWeek, setAddingWeek] = useState(false);
+  const [addWeekMessage, setAddWeekMessage] = useState("");
 
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
@@ -145,6 +150,44 @@ export default function SeasonPage() {
     }
 
     setGenerating(false);
+  };
+
+  const handleAddWeek = async () => {
+    if (!activeSeason) return;
+    const nextWeek = (activeSeason.totalWeeks ?? 36) + 1;
+    if (!window.confirm(`Add makeup week ${nextWeek} to the season?`)) return;
+
+    setAddingWeek(true);
+    setAddWeekMessage("");
+
+    try {
+      const res = await fetch("/api/games/add-week", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+
+      const data = (await res.json()) as {
+        success?: boolean;
+        weekNumber?: number;
+        gamesAdded?: number;
+        newEndDate?: string;
+        error?: string;
+      };
+
+      if (data.success) {
+        setAddWeekMessage(`Week ${data.weekNumber} added with ${data.gamesAdded} game slots.`);
+        // Reload season to reflect new totalWeeks and endDate
+        await loadSeasons();
+        await loadGamesCount(activeSeason.id);
+      } else {
+        setAddWeekMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setAddWeekMessage("Failed to add makeup week");
+    }
+
+    setAddingWeek(false);
   };
 
   const handleSaveSeason = async () => {
@@ -414,10 +457,12 @@ export default function SeasonPage() {
     setDonsBallsBalancing(false);
   };
 
+  const totalWeeks = activeSeason?.totalWeeks ?? 36;
+
   const endDateDisplay = startDate && validateMonday(startDate)
     ? (() => {
         const d = new Date(startDate + "T00:00:00");
-        d.setDate(d.getDate() + 36 * 7 - 1);
+        d.setDate(d.getDate() + totalWeeks * 7 - 1);
         return d.toISOString().split("T")[0];
       })()
     : "";
@@ -520,7 +565,9 @@ export default function SeasonPage() {
             />
           </div>
         </div>
-        <div className="text-sm text-muted mb-3">36-week season</div>
+        <div className="text-sm text-muted mb-3">
+          {totalWeeks}-week season{totalWeeks > 36 ? ` (${totalWeeks - 36} makeup)` : ""}
+        </div>
 
         {/* Derated Player Settings - inline */}
         <div className="flex gap-4 items-end mb-4">
@@ -764,7 +811,7 @@ export default function SeasonPage() {
             <p className="text-sm text-muted mb-3">
               {totalGames > 0
                 ? `${totalGames} games currently exist. Regenerating will delete all existing games and player assignments.`
-                : "Creates a game slot for every court schedule entry for each of the 36 weeks. Holiday dates are automatically marked."
+                : `Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`
               }
             </p>
             <button
@@ -773,7 +820,7 @@ export default function SeasonPage() {
               title={
                 totalGames > 0
                   ? "Deletes all existing games and recreates them from the current court schedule and season dates. Player assignments will be lost."
-                  : "Creates a game slot for every court schedule entry for each of the 36 weeks. Holiday dates are automatically marked."
+                  : `Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`
               }
               className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
             >
@@ -816,6 +863,33 @@ export default function SeasonPage() {
               </div>
             )}
           </div>
+
+          {/* Add Makeup Week */}
+          {totalGames > 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-muted mb-3">
+                Add an extra week to the season for makeups (holidays, weather closures). Games are created but not assigned.
+              </p>
+              <button
+                onClick={handleAddWeek}
+                disabled={addingWeek}
+                title={`Adds week ${totalWeeks + 1} with empty game slots based on the court schedule.`}
+                className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
+              >
+                {addingWeek ? "Adding..." : `Add Makeup Week (Week ${totalWeeks + 1})`}
+              </button>
+
+              {addWeekMessage && (
+                <div className={`border rounded px-4 py-2 mt-3 text-sm ${
+                  addWeekMessage.startsWith("Error") || addWeekMessage.startsWith("Failed")
+                    ? "bg-red-50 border-red-200 text-red-800"
+                    : "bg-green-50 border-green-200 text-green-800"
+                }`}>
+                  {addWeekMessage}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -824,13 +898,13 @@ export default function SeasonPage() {
         <div className="border border-border rounded-lg p-6 mb-6">
           <h2 className="font-semibold mb-4">Solo Games</h2>
           <p className="text-sm text-muted mb-3">
-            Assign solo game slots for all 36 weeks and balance ball-bringing duty.
+            Assign solo game slots for all weeks and balance ball-bringing duty.
           </p>
           <div className="flex flex-wrap gap-3">
             <button
               onClick={handleSoloAssign}
               disabled={soloAssigning}
-              title="Assigns players to all solo game slots for all 36 weeks based on solo share levels and pair settings. Best used on a fresh season."
+              title="Assigns players to all solo game slots for all weeks based on solo share levels and pair settings. Best used on a fresh season."
               className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
             >
               {soloAssigning ? "Assigning..." : "Auto-Assign Solo"}

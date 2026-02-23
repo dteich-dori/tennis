@@ -23,7 +23,8 @@ export function generatePlayerStatsPdf(
   stats: PlayerStat[],
   season: Season,
   currentMaxWeek: number,
-  group: "dons" | "solo"
+  group: "dons" | "solo",
+  totalWeeks = 36
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -58,7 +59,7 @@ export function generatePlayerStatsPdf(
     // Week info
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Through Week ${currentMaxWeek} of 36`, pageWidth / 2, 72, { align: "center" });
+    doc.text(`Through Week ${currentMaxWeek} of ${totalWeeks}`, pageWidth / 2, 72, { align: "center" });
     doc.setTextColor(0, 0, 0);
   }
 

@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
  * Body: { seasonId: number }
  *
  * Generates all game slots for the season:
- * - For each week (1-36), for each court slot, create a game record
+ * - For each week (1 through totalWeeks), for each court slot, create a game record
  * - Mark games on holiday dates with status "holiday"
  * - Sequential game numbering across the entire season
  */
@@ -71,7 +71,9 @@ export async function POST(request: NextRequest) {
 
     let gameNumber = 1;
 
-    for (let week = 1; week <= 36; week++) {
+    const totalWeeks = season.totalWeeks ?? 36;
+
+    for (let week = 1; week <= totalWeeks; week++) {
       // Calculate the Monday of this week
       const weekStart = new Date(startDate);
       weekStart.setDate(weekStart.getDate() + (week - 1) * 7);
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       gamesGenerated: insertedCount,
-      totalWeeks: 36,
+      totalWeeks,
       courtSlots: courtSlots.length,
       holidayGames: gamesToInsert.filter((g) => g.status === "holiday").length,
     });

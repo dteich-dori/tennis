@@ -9,6 +9,7 @@ interface Season {
   id: number;
   startDate: string;
   endDate: string;
+  totalWeeks: number;
 }
 
 interface Player {
@@ -55,7 +56,11 @@ export default function ReportsPage() {
     try {
       const res = await fetch("/api/seasons");
       const data = (await res.json()) as Season[];
-      if (data.length > 0) setSeason(data[data.length - 1]);
+      if (data.length > 0) {
+        const s = data[data.length - 1];
+        setSeason(s);
+        setGamesWeekEnd(s.totalWeeks ?? 36);
+      }
     } catch (err) {
       console.error("Failed to load season:", err);
     }
@@ -114,7 +119,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group);
+      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group, season.totalWeeks ?? 36);
     } catch {
       setError("Failed to generate Player Statistics report.");
     }
@@ -211,7 +216,7 @@ export default function ReportsPage() {
               onChange={(e) => setGamesWeekStart(parseInt(e.target.value))}
               className="border border-border rounded px-2 py-1 text-xs w-14"
             >
-              {Array.from({ length: 36 }, (_, i) => i + 1).map((w) => (
+              {Array.from({ length: season?.totalWeeks ?? 36 }, (_, i) => i + 1).map((w) => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>
@@ -221,7 +226,7 @@ export default function ReportsPage() {
               onChange={(e) => setGamesWeekEnd(parseInt(e.target.value))}
               className="border border-border rounded px-2 py-1 text-xs w-14"
             >
-              {Array.from({ length: 36 }, (_, i) => i + 1).map((w) => (
+              {Array.from({ length: season?.totalWeeks ?? 36 }, (_, i) => i + 1).map((w) => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>

@@ -55,7 +55,7 @@ const DAYS = [
 /**
  * POST /api/games/solo-assign
  * Body: { seasonId: number }
- * Auto-assigns all solo game slots for all 36 weeks.
+ * Auto-assigns all solo game slots for all weeks in the season.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -253,8 +253,9 @@ export async function POST(request: NextRequest) {
       return arr;
     }
 
-    // 6. Process weeks 1-36
-    for (let week = 1; week <= 36; week++) {
+    // 6. Process all weeks (derive max from actual games)
+    const maxWeek = allSoloGames.reduce((m, g) => Math.max(m, g.weekNumber), 0);
+    for (let week = 1; week <= maxWeek; week++) {
       const weekGames = (gamesByWeek.get(week) ?? [])
         .filter((g) => g.status === "normal")
         .sort((a, b) => {
