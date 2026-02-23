@@ -10,6 +10,7 @@ const links = [
   { href: "/players", label: "Players" },
   { href: "/schedule", label: "Schedule" },
   { href: "/reports", label: "Reports" },
+  { href: "/communications", label: "Communications" },
   { href: "/user-manual", label: "User Manual" },
   { href: "/developer-guide", label: "Developer Guide" },
 ];
