@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { generatePlayersListPdf } from "@/lib/reports/playersListPdf";
 import { generatePlayerStatsPdf } from "@/lib/reports/playerStatsPdf";
 import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf } from "@/lib/reports/gamesByDatePdf";
+import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 
 interface Season {
   id: number;
@@ -169,6 +170,38 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handlePairingMatrixReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("pairingMatrix");
+
+    try {
+      const res = await fetch(`/api/games/pairings?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to load pairing data.");
+        setGenerating(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        players: { id: number; firstName: string; lastName: string; skillLevel: string }[];
+        pairings: { player1Id: number; player2Id: number; count: number }[];
+        doNotPairs: { playerId: number; pairedPlayerId: number }[];
+      };
+
+      if (!data.players || data.players.length === 0) {
+        setError("No player pairing data available. Assign players to games first.");
+        setGenerating(null);
+        return;
+      }
+
+      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season);
+    } catch {
+      setError("Failed to generate Pairing Matrix report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -271,6 +304,21 @@ export default function ReportsPage() {
               {generating === "playerStats-solo" ? "Generating..." : "Solo Group"}
             </button>
           </div>
+        </div>
+
+        {/* Pairing Matrix Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Pairing Matrix</h2>
+          <p className="text-sm text-muted mb-4">
+            Shows how many Don&apos;s group games each player shared with every other player. Do-not-pair violations highlighted in red.
+          </p>
+          <button
+            onClick={handlePairingMatrixReport}
+            disabled={generating === "pairingMatrix"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "pairingMatrix" ? "Generating..." : "Generate PDF"}
+          </button>
         </div>
 
         {/* Players List Report Card */}

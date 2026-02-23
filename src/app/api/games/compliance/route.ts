@@ -491,7 +491,7 @@ export async function GET(request: NextRequest) {
         if (p.contractedFrequency === "0") continue; // skip subs
         const freq = soloShareFreq[p.soloShareLevel] ?? 0;
         if (freq === 0) continue;
-        const expectedYtd = freq * wk;
+        const expectedYtd = freq * Math.min(wk, 36);
         const actualYtd = ytdSoloCount.get(p.id) ?? 0;
         if (actualYtd < expectedYtd) {
           const freqLabel = freq < 1 ? `1 per ${Math.round(1 / freq)} weeks` : `${freq}/week`;

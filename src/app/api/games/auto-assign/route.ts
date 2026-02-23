@@ -243,7 +243,9 @@ export async function POST(request: NextRequest) {
     // firstGameOnly: if true, only include players with ZERO Don's games this week
     //   (ensures every contracted player gets at least 1 game before anyone gets a 2nd).
     //   If false, include all players who still owe games or are 2+ eligible for extras.
-    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false): PlayerData[] {
+    // bonusMode: if true, allows 2+ players to play a BONUS game on a day they've already played.
+    //   Only 2+ players are eligible in bonus mode. All other constraints still apply.
+    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false, bonusMode = false): PlayerData[] {
       const assignedInGame = new Set(currentAssignments);
       const assignedOnDate = new Set<number>();
       // Players assigned to other games on same date
@@ -259,7 +261,16 @@ export async function POST(request: NextRequest) {
 
       return contractedPlayers.filter((p) => {
         if (assignedInGame.has(p.id)) return false;
-        if (assignedOnDate.has(p.id)) return false;
+
+        // In bonus mode, only 2+ players are eligible, and they CAN play on a date
+        // they've already played (that's the whole point of bonus).
+        // In normal mode, no one can play twice on the same date.
+        if (bonusMode) {
+          if (p.contractedFrequency !== "2+") return false;
+          // 2+ players CAN be on the same date — skip the assignedOnDate check
+        } else {
+          if (assignedOnDate.has(p.id)) return false;
+        }
 
         // Frequency / owed check
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
@@ -358,7 +369,7 @@ export async function POST(request: NextRequest) {
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
       const owed = freq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-      const expectedYtd = freq * weekNumber;
+      const expectedYtd = freq * Math.min(weekNumber, 36);
       const ytdDeficit = expectedYtd - ytd;
 
       // Count remaining playable dates this week (not yet assigned on)
@@ -554,10 +565,20 @@ export async function POST(request: NextRequest) {
               (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
             );
           }
+          // Third pass (bonus): allow 2+ players who already played today to take a bonus game
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, true).filter(
+              (p) => p.skillLevel === "C"
+            );
+          }
           const prioritized = sortByPriority(eligible, game);
 
           if (prioritized.length > 0) {
-            await assignPlayer(game, prioritized[0].id, slot);
+            const chosen = prioritized[0];
+            if (usedOnDay.has(chosen.id)) {
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
+            }
+            await assignPlayer(game, chosen.id, slot);
           } else {
             log.push({
               type: "warning",
@@ -586,9 +607,19 @@ export async function POST(request: NextRequest) {
               (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
             );
           }
+          // Bonus pass: allow 2+ C players who already played today
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, true).filter(
+              (p) => p.skillLevel === "C"
+            );
+          }
           const prioritized = sortByPriority(eligible, game);
           if (prioritized.length > 0) {
-            await assignPlayer(game, prioritized[0].id, slot);
+            const chosen = prioritized[0];
+            if (usedOnDay.has(chosen.id)) {
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
+            }
+            await assignPlayer(game, chosen.id, slot);
           } else {
             log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: no eligible C player for mixed game` });
           }
@@ -630,9 +661,22 @@ export async function POST(request: NextRequest) {
                 }
               );
             }
+            // Bonus pass: allow 2+ A/B players who already played today
+            if (fallback.length === 0) {
+              fallback = getAvailablePlayers(game, currentAssigned, false, true).filter(
+                (p) => {
+                  if (hasC && p.skillLevel === "A") return false;
+                  return p.skillLevel === "A" || p.skillLevel === "B";
+                }
+              );
+            }
             const fbSorted = sortByPriority(fallback, game);
             if (fbSorted.length > 0) {
-              await assignPlayer(game, fbSorted[0].id, slot);
+              const chosen = fbSorted[0];
+              if (usedOnDay.has(chosen.id)) {
+                log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
+              }
+              await assignPlayer(game, chosen.id, slot);
             } else {
               log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: no eligible B/A player for mixed game` });
             }
@@ -657,6 +701,10 @@ export async function POST(request: NextRequest) {
               (p) => !usedOnDay.has(p.id)
             );
           }
+          // Third pass (bonus): allow 2+ players who already played today
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, true);
+          }
 
           // Prefer A/B players, then fall back to C if they can play with current group
           const abEligible = eligible.filter((p) => p.skillLevel === "A" || p.skillLevel === "B");
@@ -672,12 +720,19 @@ export async function POST(request: NextRequest) {
                 // C can't play with A — skip this player
                 const nonC = prioritized.filter((p) => p.skillLevel !== "C");
                 if (nonC.length > 0) {
-                  await assignPlayer(game, nonC[0].id, slot);
+                  const nonCChosen = nonC[0];
+                  if (usedOnDay.has(nonCChosen.id)) {
+                    log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${nonCChosen.lastName} assigned as BONUS (extra game on same day)` });
+                  }
+                  await assignPlayer(game, nonCChosen.id, slot);
                 } else {
                   log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: only C players available but game has A players — slot left empty` });
                 }
                 continue;
               }
+            }
+            if (usedOnDay.has(chosen.id)) {
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
             await assignPlayer(game, chosen.id, slot);
           } else {

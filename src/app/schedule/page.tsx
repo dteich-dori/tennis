@@ -480,7 +480,7 @@ export default function SchedulePage() {
   const hasYtdDeficit = (player: Player, group?: string): boolean => {
     const freq = group ? getEffectiveFreq(player, group) : (parseInt(player.contractedFrequency) || 0);
     if (freq === 0) return false;
-    const expectedYtd = freq * currentWeek;
+    const expectedYtd = freq * Math.min(currentWeek, 36);
     const counts = playerCounts[player.id];
     const actualYtd = group === "solo" ? (counts?.ytdSolo ?? 0) : group === "dons" ? (counts?.ytdDons ?? 0) : (counts?.ytd ?? 0);
     return actualYtd < expectedYtd;
@@ -878,7 +878,7 @@ export default function SchedulePage() {
                     const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
                     const freq = parseInt(p.contractedFrequency) || 0;
                     const owe = freq - counts.wtdDons;
-                    const expectedYtd = freq * currentWeek;
+                    const expectedYtd = freq * Math.min(currentWeek, 36);
                     const ytdOwed = expectedYtd - counts.ytdDons;
                     const onVacation = weekStart && weekEnd && p.vacations?.some(
                       (v) => v.startDate <= weekEnd && v.endDate >= weekStart
@@ -1381,8 +1381,8 @@ export default function SchedulePage() {
                                               const bFreq = getEffectiveFreq(b, game.group);
                                               const aOwed = aFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
                                               const bOwed = bFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
-                                              const aYtdOwed = aFreq * currentWeek - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
-                                              const bYtdOwed = bFreq * currentWeek - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
+                                              const aYtdOwed = aFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
+                                              const bYtdOwed = bFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
 
                                               if (dropdownSort === "ytd") {
                                                 // Sort by YTD owed descending, then WTD owed, then name
@@ -1476,7 +1476,7 @@ export default function SchedulePage() {
                                                 </span>
                                                 <span className="flex gap-3 text-xs text-muted">
                                                   <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
-                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * currentWeek} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * currentWeek - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
+                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
                                                 </span>
                                               </button>
                                             );

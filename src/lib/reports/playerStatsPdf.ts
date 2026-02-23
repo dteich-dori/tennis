@@ -159,7 +159,7 @@ export function generatePlayerStatsPdf(
         ? (stat.soloShareLevel ? stat.soloShareLevel.charAt(0).toUpperCase() + stat.soloShareLevel.slice(1) : "—")
         : (freq === 0 ? "Sub" : String(freq));
 
-      const extra = Math.max(0, stat.ytd - (freq * currentMaxWeek));
+      const extra = Math.max(0, stat.ytd - (freq * Math.min(currentMaxWeek, 36)));
 
       const values = group === "dons"
         ? [
@@ -214,7 +214,7 @@ export function generatePlayerStatsPdf(
 
     const totalExtra = sectionStats.reduce((sum, s) => {
       const freq = parseInt(s.frequency) || 0;
-      return sum + Math.max(0, s.ytd - (freq * currentMaxWeek));
+      return sum + Math.max(0, s.ytd - (freq * Math.min(currentMaxWeek, 36)));
     }, 0);
 
     // Line above totals row
@@ -263,6 +263,134 @@ export function generatePlayerStatsPdf(
 
   if (substitutes.length > 0) {
     drawSection(`Substitutes (${substitutes.length})`, substitutes);
+  }
+
+  // --- Summary by Skill Level (Don's group only) ---
+  if (group === "dons") {
+    // Page break check for summary section
+    if (currentY + 100 > pageHeight - 40) {
+      doc.addPage();
+      drawPageHeader();
+      currentY = 88;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary by Skill Level", marginLeft, currentY);
+    currentY += 8;
+
+    // Count players by skill level for contract players
+    const levelCounts: Record<string, { count: number; totalFreq: number; totalYtd: number }> = {};
+    for (const s of contractPlayers) {
+      const level = s.skillLevel || "?";
+      if (!levelCounts[level]) levelCounts[level] = { count: 0, totalFreq: 0, totalYtd: 0 };
+      levelCounts[level].count++;
+      levelCounts[level].totalFreq += (s.frequency === "2+" ? 2 : (parseInt(s.frequency) || 0));
+      levelCounts[level].totalYtd += s.ytd;
+    }
+
+    // Sort levels: A, B, C
+    const levelOrder = ["A", "B", "C"];
+    const sortedLevels = Object.keys(levelCounts).sort((a, b) => {
+      const ai = levelOrder.indexOf(a);
+      const bi = levelOrder.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    // Summary table columns
+    const summCols = [
+      { header: "Level", width: tableWidth * 0.25 },
+      { header: "Players", width: tableWidth * 0.25 },
+      { header: "Contracts", width: tableWidth * 0.25 },
+      { header: "YTD Games", width: tableWidth * 0.25 },
+    ];
+
+    // Summary header
+    const summHeaderHeight = 22;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setFillColor(240, 240, 240);
+    doc.rect(marginLeft, currentY - 2, tableWidth, summHeaderHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.rect(marginLeft, currentY - 2, tableWidth, summHeaderHeight, "S");
+    let sx = marginLeft;
+    for (const col of summCols) {
+      doc.text(col.header, sx + 4, currentY + 12);
+      sx += col.width;
+    }
+    currentY += summHeaderHeight;
+
+    // Summary rows
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    let grandCount = 0;
+    let grandFreq = 0;
+    let grandYtd = 0;
+
+    for (let ri = 0; ri < sortedLevels.length; ri++) {
+      const level = sortedLevels[ri];
+      const data = levelCounts[level];
+      grandCount += data.count;
+      grandFreq += data.totalFreq;
+      grandYtd += data.totalYtd;
+
+      if (ri % 2 === 1) {
+        doc.setFillColor(248, 248, 248);
+        doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+      }
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+      const vals = [level, String(data.count), String(data.totalFreq), String(data.totalYtd)];
+      let rx = marginLeft;
+      for (let ci = 0; ci < summCols.length; ci++) {
+        doc.text(vals[ci], rx + 4, currentY + 11);
+        rx += summCols[ci].width;
+      }
+      currentY += rowHeight;
+    }
+
+    // Add subs row if any
+    if (substitutes.length > 0) {
+      const subYtd = substitutes.reduce((sum, s) => sum + s.ytd, 0);
+      const ri = sortedLevels.length;
+      if (ri % 2 === 1) {
+        doc.setFillColor(248, 248, 248);
+        doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+      }
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+      const vals = ["Sub", String(substitutes.length), "—", String(subYtd)];
+      let rx = marginLeft;
+      for (let ci = 0; ci < summCols.length; ci++) {
+        doc.text(vals[ci], rx + 4, currentY + 11);
+        rx += summCols[ci].width;
+      }
+      grandCount += substitutes.length;
+      grandYtd += subYtd;
+      currentY += rowHeight;
+    }
+
+    // Grand total row
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(1);
+    doc.line(marginLeft, currentY - 2, marginLeft + tableWidth, currentY - 2);
+    doc.setFillColor(230, 230, 230);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+    doc.setFont("helvetica", "bold");
+    const totVals = ["Total", String(grandCount), String(grandFreq), String(grandYtd)];
+    let gtx = marginLeft;
+    for (let ci = 0; ci < summCols.length; ci++) {
+      doc.text(totVals[ci], gtx + 4, currentY + 11);
+      gtx += summCols[ci].width;
+    }
+    currentY += rowHeight + 20;
   }
 
   // --- Footer on every page ---

@@ -41,6 +41,13 @@ export default function SeasonPage() {
   const [addingWeek, setAddingWeek] = useState(false);
   const [addWeekMessage, setAddWeekMessage] = useState("");
 
+  // Don's auto-assign all state
+  const [donsAssigning, setDonsAssigning] = useState(false);
+  const [donsAssignMessage, setDonsAssignMessage] = useState("");
+  const [donsAssignLog, setDonsAssignLog] = useState<
+    { type: string; week?: number; message: string }[]
+  >([]);
+
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
   const [soloAssignMessage, setSoloAssignMessage] = useState("");
@@ -282,6 +289,72 @@ export default function SeasonPage() {
       setResetStatus("");
       setBackupResult("");
     }, 5000);
+  };
+
+  const handleDonsAssignAll = async () => {
+    if (!activeSeason) return;
+    setDonsAssigning(true);
+    setDonsAssignMessage("");
+    setDonsAssignLog([]);
+    try {
+      const res = await fetch("/api/games/auto-assign-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        weeksAssigned?: number;
+        weeksSkipped?: number;
+        totalAssigned?: number;
+        totalSlots?: number;
+        totalUnfilled?: number;
+        error?: string;
+        log?: { type: string; week?: number; message: string }[];
+      };
+      if (!res.ok) {
+        setDonsAssignMessage(`Error: ${data.error}`);
+        if (data.log) setDonsAssignLog(data.log);
+      } else {
+        setDonsAssignMessage(
+          `Assigned ${data.weeksAssigned} week(s): ${data.totalAssigned} of ${data.totalSlots} slots filled.${
+            data.weeksSkipped ? ` ${data.weeksSkipped} week(s) skipped.` : ""
+          }${data.totalUnfilled ? ` ${data.totalUnfilled} unfilled.` : ""}`
+        );
+        setDonsAssignLog(data.log ?? []);
+      }
+    } catch {
+      setDonsAssignMessage("Failed to auto-assign Don's games.");
+    }
+    setDonsAssigning(false);
+  };
+
+  const handleClearDonsAssignAll = async () => {
+    if (!activeSeason) return;
+    if (!confirm("Clear ALL Don's game assignments for the entire season?")) return;
+    setDonsAssigning(true);
+    setDonsAssignMessage("");
+    setDonsAssignLog([]);
+    try {
+      const res = await fetch("/api/games/auto-assign-all", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        deletedCount?: number;
+        error?: string;
+      };
+      if (res.ok) {
+        setDonsAssignMessage(`Cleared ${data.deletedCount} Don's assignments.`);
+      } else {
+        setDonsAssignMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setDonsAssignMessage("Failed to clear Don's assignments.");
+    }
+    setDonsAssigning(false);
   };
 
   const handleSoloAssign = async () => {
@@ -888,6 +961,69 @@ export default function SeasonPage() {
                   {addWeekMessage}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Don's Games: Auto-Assign All Weeks */}
+      {activeSeason && totalGames > 0 && (
+        <div className="border border-border rounded-lg p-6 mb-6">
+          <h2 className="font-semibold mb-4">Don&apos;s Games</h2>
+          <p className="text-sm text-muted mb-3">
+            Auto-assign Don&apos;s game slots for all weeks. Weeks that already have assignments are skipped.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleDonsAssignAll}
+              disabled={donsAssigning}
+              title="Auto-assign all Don's games for every unassigned week. Solo games must be assigned first."
+              className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
+            >
+              {donsAssigning ? "Assigning..." : "Auto-Assign Don's"}
+            </button>
+            <button
+              onClick={handleClearDonsAssignAll}
+              disabled={donsAssigning}
+              title="Removes all Don's player assignments for the entire season. Solo assignments are not affected."
+              className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              Clear Don&apos;s Assignments
+            </button>
+          </div>
+
+          {donsAssignMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                donsAssignMessage.startsWith("Error") ||
+                donsAssignMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {donsAssignMessage}
+            </div>
+          )}
+
+          {donsAssignLog.length > 0 && (
+            <div className="mt-3 max-h-48 overflow-y-auto border border-amber-200 bg-amber-50 rounded p-3">
+              <div className="text-xs font-semibold text-amber-800 mb-1">
+                Log:
+              </div>
+              {donsAssignLog.map((entry, idx) => (
+                <div
+                  key={idx}
+                  className={`text-xs ${
+                    entry.type === "warning"
+                      ? "text-amber-700"
+                      : entry.type === "error"
+                        ? "text-red-700"
+                        : "text-green-700"
+                  }`}
+                >
+                  {entry.week ? `Week ${entry.week}: ` : ""}{entry.message}
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
           ? (p.soloShareLevel ? (soloShareFreqMap[p.soloShareLevel] ?? 0) : 0)
           : (parseInt(p.contractedFrequency) || 0);
         const ytd = ytdMap.get(p.id) ?? 0;
-        const expectedYtd = freq * currentMaxWeek;
+        const expectedYtd = freq * Math.min(currentMaxWeek, 36);
         const deficit = expectedYtd - ytd;
         const ballsBrought = ballMap.get(p.id) ?? 0;
         const weeksPlayed = Object.keys(weeklyMap.get(p.id) ?? {}).length;
