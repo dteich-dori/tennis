@@ -79,6 +79,7 @@ export default function SchedulePage() {
   const [violations, setViolations] = useState<{
     rule: string;
     severity: "error" | "warning";
+    gameId: number;
     gameNumber: number;
     date: string;
     playerName: string;
@@ -979,7 +980,27 @@ export default function SchedulePage() {
                     </thead>
                     <tbody>
                       {violations.map((v, idx) => (
-                        <tr key={idx} className="border-t border-red-100">
+                        <tr
+                          key={idx}
+                          className={`border-t border-red-100 ${v.gameId > 0 ? "cursor-pointer hover:bg-red-50" : ""}`}
+                          onClick={
+                            v.gameId > 0
+                              ? () => {
+                                  const el = document.getElementById(`game-${v.gameId}`);
+                                  if (el) {
+                                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                    el.classList.add("bg-yellow-200");
+                                    setTimeout(() => {
+                                      el.classList.remove("bg-yellow-200");
+                                      el.classList.add("transition-colors", "duration-1000");
+                                      setTimeout(() => el.classList.remove("transition-colors", "duration-1000"), 1000);
+                                    }, 1500);
+                                  }
+                                }
+                              : undefined
+                          }
+                          title={v.gameId > 0 ? "Click to jump to this game" : undefined}
+                        >
                           <td className="py-1 pr-2">
                             {v.severity === "error" ? (
                               <span className="text-red-600" title="Error">&#9888;</span>
@@ -987,7 +1008,13 @@ export default function SchedulePage() {
                               <span className="text-amber-500" title="Warning">&#9888;</span>
                             )}
                           </td>
-                          <td className="py-1 pr-2 font-medium text-red-800">{v.rule}</td>
+                          <td className="py-1 pr-2 font-medium text-red-800">
+                            {v.gameId > 0 ? (
+                              <span className="underline decoration-dotted">{v.rule}</span>
+                            ) : (
+                              v.rule
+                            )}
+                          </td>
                           <td className="py-1 pr-2">{v.playerName}</td>
                           <td className="py-1 pr-2">{v.date ? formatDisplayDate(v.date) : "-"}</td>
                           <td className="py-1 text-muted">{v.detail}</td>
@@ -1223,6 +1250,7 @@ export default function SchedulePage() {
                       {dateGames.map((game, gameIdx) => (
                         <tr
                           key={game.id}
+                          id={`game-${game.id}`}
                           className={`border-b border-border ${
                             game.status === "holiday"
                               ? "bg-amber-50"
