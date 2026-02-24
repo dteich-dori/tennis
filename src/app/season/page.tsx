@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import JSZip from "jszip";
 
 interface Season {
   id: number;
@@ -69,6 +70,10 @@ export default function SeasonPage() {
   const [donsBallsSummary, setDonsBallsSummary] = useState<
     { playerId: number; totalGames: number; ballsBrought: number; expected: number }[] | null
   >(null);
+
+  // Download backup state
+  const [backupDownloading, setBackupDownloading] = useState(false);
+  const [backupDownloadMessage, setBackupDownloadMessage] = useState("");
 
   // Clear all assignments state
   const [clearingAll, setClearingAll] = useState(false);
@@ -245,33 +250,72 @@ export default function SeasonPage() {
     }
   };
 
+  // Download a ZIP backup of all database tables
+  const downloadBackup = async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/backup", { method: "POST" });
+      const data = (await res.json()) as {
+        success?: boolean;
+        tables?: Record<string, string>;
+        counts?: { players: number; courtSchedules: number; games: number; assignments: number };
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.tables) {
+        return false;
+      }
+
+      const zip = new JSZip();
+      for (const [name, csv] of Object.entries(data.tables)) {
+        if (csv) {
+          zip.file(`${name}.csv`, csv);
+        }
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const now = new Date();
+      const datePart = now.toISOString().split("T")[0];
+      const timePart = now.toTimeString().split(" ")[0].replace(/:/g, "");
+      const filename = `tennis-backup-${datePart}_${timePart}.zip`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    setBackupDownloading(true);
+    setBackupDownloadMessage("");
+    const ok = await downloadBackup();
+    setBackupDownloadMessage(ok ? "Backup downloaded." : "Backup failed.");
+    setBackupDownloading(false);
+    if (ok) {
+      setTimeout(() => setBackupDownloadMessage(""), 5000);
+    }
+  };
+
   const handleResetSeason = async () => {
     if (!activeSeason || resetConfirmText !== "DELETE") return;
 
-    // Step 1: Create automatic backup
+    // Step 1: Download backup
     setResetStatus("backing-up");
     setBackupResult("");
-    try {
-      const backupRes = await fetch("/api/backup", { method: "POST" });
-      const backupData = (await backupRes.json()) as {
-        success?: boolean;
-        folder?: string;
-        counts?: { players: number; courtSchedules: number; games: number };
-        error?: string;
-      };
-      if (!backupRes.ok || !backupData.success) {
-        setResetStatus("error");
-        setBackupResult(`Backup failed: ${backupData.error ?? "Unknown error"}. Reset cancelled.`);
-        return;
-      }
-      setBackupResult(
-        `Backup saved to Backup/${backupData.folder}/ (${backupData.counts?.players ?? 0} players, ${backupData.counts?.courtSchedules ?? 0} courts, ${backupData.counts?.games ?? 0} games)`
-      );
-    } catch {
+    const ok = await downloadBackup();
+    if (!ok) {
       setResetStatus("error");
-      setBackupResult("Backup failed: could not reach server. Reset cancelled.");
+      setBackupResult("Backup download failed. Reset cancelled.");
       return;
     }
+    setBackupResult("Backup ZIP downloaded.");
 
     // Step 2: Perform the reset
     setResetStatus("resetting");
@@ -668,10 +712,20 @@ export default function SeasonPage() {
           >
             {activeSeason ? "Update Season" : "Create Season"}
           </button>
+          {activeSeason && (
+            <button
+              onClick={handleDownloadBackup}
+              disabled={backupDownloading}
+              title="Downloads a ZIP file containing CSV backups of all database tables"
+              className="border-2 border-primary text-primary px-4 py-2 rounded text-sm hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              {backupDownloading ? "Downloading..." : "Download Backup"}
+            </button>
+          )}
           {activeSeason && !showResetConfirm && (
             <button
               onClick={() => setShowResetConfirm(true)}
-              title="Permanently deletes the season, all holidays, games, and assignments. A backup is created automatically before reset."
+              title="Permanently deletes the season, all holidays, games, and assignments. A backup is downloaded automatically before reset."
               className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors"
             >
               Reset Season
@@ -688,6 +742,18 @@ export default function SeasonPage() {
             </button>
           )}
         </div>
+
+        {backupDownloadMessage && (
+          <div
+            className={`border rounded px-4 py-2 mt-3 text-sm ${
+              backupDownloadMessage.includes("failed")
+                ? "bg-red-50 border-red-200 text-red-800"
+                : "bg-green-50 border-green-200 text-green-800"
+            }`}
+          >
+            {backupDownloadMessage}
+          </div>
+        )}
 
         {clearAllMessage && (
           <div
@@ -708,7 +774,7 @@ export default function SeasonPage() {
               This will permanently delete the season, all holidays, and any generated games. Players and court schedules will be preserved.
             </p>
             <p className="text-sm text-muted mb-2">
-              A full backup will be created automatically before the reset.
+              A backup ZIP will be downloaded automatically before the reset.
             </p>
             {resetStatus === "" && (
               <>
@@ -744,12 +810,12 @@ export default function SeasonPage() {
             )}
             {resetStatus === "backing-up" && (
               <p className="text-sm font-medium text-blue-600 mt-2">
-                Creating backup...
+                Downloading backup...
               </p>
             )}
             {resetStatus === "resetting" && (
               <p className="text-sm font-medium text-blue-600 mt-2">
-                Backup complete. Resetting season...
+                Backup downloaded. Resetting season...
               </p>
             )}
             {resetStatus === "done" && (
