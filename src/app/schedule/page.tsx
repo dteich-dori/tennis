@@ -99,7 +99,18 @@ export default function SchedulePage() {
   const [playerCounts, setPlayerCounts] = useState<Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>>({});
   const [showPlayerInfo, setShowPlayerInfo] = useState(false);
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
-  const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd">("owed");
+  const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
+
+  // Game explain modal state
+  const [explainModal, setExplainModal] = useState<{
+    loading: boolean;
+    data: {
+      game: { gameNumber: number; date: string; dayOfWeek: string; startTime: string; courtNumber: number; group: string; weekNumber: number };
+      composition: string;
+      players: { slot: number; name: string; skillLevel: string; isDerated: boolean; contractedFrequency: string; weeklyOwed: number; ytdDeficit: number; notes: string[] }[];
+      notes: string[];
+    } | null;
+  } | null>(null);
 
   // Previous week games (for "once per 2 weeks" derated pairing check)
   const [prevWeekGames, setPrevWeekGames] = useState<Game[]>([]);
@@ -1260,7 +1271,27 @@ export default function SchedulePage() {
                           }`}
                         >
                           <td className="p-2 text-muted">
-                            {game.gameNumber}
+                            {game.assignments.length > 0 ? (
+                              <button
+                                className="hover:text-primary hover:underline cursor-pointer font-medium"
+                                title="Click to see assignment logic"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setExplainModal({ loading: true, data: null });
+                                  try {
+                                    const res = await fetch(`/api/games/explain?gameId=${game.id}`);
+                                    const data = await res.json();
+                                    setExplainModal({ loading: false, data });
+                                  } catch {
+                                    setExplainModal(null);
+                                  }
+                                }}
+                              >
+                                {game.gameNumber}
+                              </button>
+                            ) : (
+                              game.gameNumber
+                            )}
                           </td>
                           <td className="p-2">{game.startTime}</td>
                           <td className="p-2">{game.courtNumber}</td>
@@ -1345,11 +1376,17 @@ export default function SchedulePage() {
                                   {isActive && (
                                     <div
                                       ref={dropdownRef}
-                                      className="absolute top-full left-0 z-50 bg-white border border-border rounded-lg shadow-lg w-64 mt-1"
+                                      className="absolute top-full left-0 z-50 bg-white border border-border rounded-lg shadow-lg w-72 mt-1"
                                     >
                                       <div className="flex justify-between px-2 py-0.5 text-xs text-muted font-semibold border-b border-border bg-gray-50">
                                         <span>Player</span>
                                         <span className="flex gap-3">
+                                          <span
+                                            className={`w-6 text-center cursor-pointer hover:text-primary select-none ${dropdownSort === "level" || dropdownSort === "levelDesc" ? "text-primary underline" : ""}`}
+                                            onClick={(e) => { e.stopPropagation(); setDropdownSort(dropdownSort === "level" ? "levelDesc" : "level"); }}
+                                          >
+                                            Lvl {dropdownSort === "level" ? "▲" : dropdownSort === "levelDesc" ? "▼" : ""}
+                                          </span>
                                           <span
                                             className={`w-8 text-center cursor-pointer hover:text-primary select-none ${dropdownSort === "owed" ? "text-primary underline" : ""}`}
                                             onClick={(e) => { e.stopPropagation(); setDropdownSort("owed"); }}
@@ -1411,6 +1448,16 @@ export default function SchedulePage() {
                                               const bOwed = bFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
                                               const aYtdOwed = aFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
                                               const bYtdOwed = bFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
+
+                                              const skillOrder: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+
+                                              if (dropdownSort === "level" || dropdownSort === "levelDesc") {
+                                                const aSkill = skillOrder[a.skillLevel] ?? 9;
+                                                const bSkill = skillOrder[b.skillLevel] ?? 9;
+                                                if (aSkill !== bSkill) return dropdownSort === "level" ? aSkill - bSkill : bSkill - aSkill;
+                                                if (bOwed !== aOwed) return bOwed - aOwed;
+                                                return a.lastName.localeCompare(b.lastName);
+                                              }
 
                                               if (dropdownSort === "ytd") {
                                                 // Sort by YTD owed descending, then WTD owed, then name
@@ -1503,6 +1550,7 @@ export default function SchedulePage() {
                                                   )}
                                                 </span>
                                                 <span className="flex gap-3 text-xs text-muted">
+                                                  <span className="w-6 text-center" title={`Skill level: ${p.skillLevel || "—"}`}>{p.skillLevel || "—"}</span>
                                                   <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
                                                   <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
                                                 </span>
@@ -1538,9 +1586,19 @@ export default function SchedulePage() {
                                         const assignedInDropdown = new Set([
                                           ...allAvail.filter((p) => p.contractedFrequency !== "0").map((p) => p.id),
                                         ]);
+                                        const skillOrder: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
                                         const subs = allAvail
                                           .filter((p) => p.contractedFrequency === "0" && !assignedInDropdown.has(p.id))
-                                          .sort((a, b) => a.lastName.localeCompare(b.lastName));
+                                          .sort((a, b) => {
+                                            if (dropdownSort === "level" || dropdownSort === "levelDesc") {
+                                              const aSkill = skillOrder[a.skillLevel] ?? 9;
+                                              const bSkill = skillOrder[b.skillLevel] ?? 9;
+                                              if (aSkill !== bSkill) return dropdownSort === "level" ? aSkill - bSkill : bSkill - aSkill;
+                                              return a.lastName.localeCompare(b.lastName);
+                                            }
+                                            // Default: alphabetical by last name
+                                            return a.lastName.localeCompare(b.lastName);
+                                          });
                                         if (subs.length === 0) return null;
                                         return (
                                           <div className="border-t border-purple-300">
@@ -1563,7 +1621,11 @@ export default function SchedulePage() {
                                                     )}
                                                     {p.lastName}, {p.firstName}
                                                   </span>
-                                                  <span className="text-xs text-muted">{p.skillLevel}</span>
+                                                  <span className="flex gap-3 text-xs text-muted">
+                                                    <span className="w-6 text-center">{p.skillLevel || "—"}</span>
+                                                    <span className="w-8 text-center">—</span>
+                                                    <span className="w-8 text-center">—</span>
+                                                  </span>
                                                 </button>
                                               ))}
                                             </div>
@@ -1691,6 +1753,73 @@ export default function SchedulePage() {
                 {extraGamesData.rows.length} extra game{extraGamesData.rows.length !== 1 ? "s" : ""} found
                 &middot; Through week {extraGamesData.currentMaxWeek} of {season?.totalWeeks ?? 36}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Game Explain Modal */}
+      {explainModal && (
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4" onClick={() => setExplainModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {explainModal.loading ? (
+              <div className="p-8 text-center text-muted">Loading...</div>
+            ) : explainModal.data ? (
+              <>
+                {/* Header */}
+                <div className="sticky top-0 bg-white border-b border-border px-5 py-3 flex justify-between items-start rounded-t-xl">
+                  <div>
+                    <h2 className="font-bold text-lg">
+                      Game #{explainModal.data.game.gameNumber}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {explainModal.data.game.dayOfWeek} {explainModal.data.game.date} · {explainModal.data.game.startTime} · Court {explainModal.data.game.courtNumber} · {explainModal.data.game.group === "solo" ? "Solo" : "Don's"} · Week {explainModal.data.game.weekNumber}
+                    </p>
+                  </div>
+                  <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-xl leading-none p-1">✕</button>
+                </div>
+
+                {/* Composition & game notes */}
+                <div className="px-5 py-3 border-b border-border bg-gray-50">
+                  <div className="text-sm font-semibold mb-1">Composition: {explainModal.data.composition}</div>
+                  {explainModal.data.notes.map((note, i) => (
+                    <div key={i} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700" : "text-muted"}`}>{note}</div>
+                  ))}
+                </div>
+
+                {/* Players */}
+                <div className="px-5 py-3">
+                  {explainModal.data.players.map((p, i) => (
+                    <div key={i} className={`mb-3 ${i < explainModal.data!.players.length - 1 ? "pb-3 border-b border-border/50" : ""}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="bg-gray-200 text-gray-600 text-[10px] font-bold rounded px-1.5 py-0.5">
+                          Slot {p.slot}
+                        </span>
+                        <span className="font-semibold text-sm">{p.name}</span>
+                        {p.skillLevel && (
+                          <span className="bg-primary/10 text-primary text-[10px] font-bold rounded px-1.5 py-0.5">
+                            {p.skillLevel}
+                          </span>
+                        )}
+                        {p.isDerated && (
+                          <span className="bg-orange-100 text-orange-600 text-[10px] font-bold rounded px-1.5 py-0.5">
+                            DERATED
+                          </span>
+                        )}
+                      </div>
+                      <div className="ml-1 space-y-0.5">
+                        {p.notes.map((note, j) => (
+                          <div key={j} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700 font-medium" : note.startsWith("🎾") || note.startsWith("⚡") ? "text-blue-700" : "text-muted"}`}>
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="p-8 text-center text-danger">Failed to load game data</div>
             )}
           </div>
         </div>
