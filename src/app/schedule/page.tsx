@@ -101,13 +101,13 @@ export default function SchedulePage() {
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
   const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
 
-  // Game explain modal state
+  // Game explain floating panel state
   const [explainModal, setExplainModal] = useState<{
     loading: boolean;
+    position: { top: number; left: number };
     data: {
       game: { gameNumber: number; date: string; dayOfWeek: string; startTime: string; courtNumber: number; group: string; weekNumber: number };
       composition: string;
-      players: { slot: number; name: string; skillLevel: string; isDerated: boolean; contractedFrequency: string; weeklyOwed: number; ytdDeficit: number; notes: string[] }[];
       notes: string[];
     } | null;
   } | null>(null);
@@ -784,6 +784,14 @@ export default function SchedulePage() {
               </button>
             )}
             <button
+              onClick={() => handleBalanceBallsPreview("dons")}
+              disabled={balanceBallsLoading || games.length === 0}
+              className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
+              title="Balance ball-bringing duty across Don's group players"
+            >
+              {balanceBallsLoading && balanceBallsGroup === "dons" ? "..." : "Balls Don's"}
+            </button>
+            <button
               onClick={() => setShowPlayerInfo(true)}
               className="px-4 py-2 font-semibold rounded-lg shadow-sm transition-colors text-sm bg-blue-500 text-white hover:bg-blue-600"
             >
@@ -814,14 +822,6 @@ export default function SchedulePage() {
               }`}
             >
               {bonusMode === "bonusAll" ? "✓ Bonus All" : "Bonus All"}
-            </button>
-            <button
-              onClick={() => handleBalanceBallsPreview("dons")}
-              disabled={balanceBallsLoading || games.length === 0}
-              className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
-              title="Balance ball-bringing duty across Don's group players"
-            >
-              {balanceBallsLoading && balanceBallsGroup === "dons" ? "..." : "Balls Don's"}
             </button>
             <button
               onClick={() => handleCheckCompliance("dons")}
@@ -1026,7 +1026,31 @@ export default function SchedulePage() {
                               v.rule
                             )}
                           </td>
-                          <td className="py-1 pr-2">{v.playerName}</td>
+                          <td className="py-1 pr-2">
+                            {v.gameId > 0 ? (
+                              <button
+                                className="text-primary underline decoration-dotted hover:decoration-solid"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const el = document.getElementById(`game-${v.gameId}`);
+                                  if (el) {
+                                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                    el.classList.add("bg-yellow-200");
+                                    setTimeout(() => {
+                                      el.classList.remove("bg-yellow-200");
+                                      el.classList.add("transition-colors", "duration-1000");
+                                      setTimeout(() => el.classList.remove("transition-colors", "duration-1000"), 1000);
+                                    }, 1500);
+                                  }
+                                }}
+                                title={`Jump to game #${v.gameNumber}`}
+                              >
+                                {v.playerName}
+                              </button>
+                            ) : (
+                              v.playerName
+                            )}
+                          </td>
                           <td className="py-1 pr-2">{v.date ? formatDisplayDate(v.date) : "-"}</td>
                           <td className="py-1 text-muted">{v.detail}</td>
                         </tr>
@@ -1277,11 +1301,14 @@ export default function SchedulePage() {
                                 title="Click to see assignment logic"
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  setExplainModal({ loading: true, data: null });
+                                  const rect = (e.target as HTMLElement).closest("tr")!.getBoundingClientRect();
+                                  const top = rect.bottom + window.scrollY + 4;
+                                  const left = rect.left + window.scrollX;
+                                  setExplainModal({ loading: true, position: { top, left }, data: null });
                                   try {
                                     const res = await fetch(`/api/games/explain?gameId=${game.id}`);
                                     const data = await res.json();
-                                    setExplainModal({ loading: false, data });
+                                    setExplainModal({ loading: false, position: { top, left }, data });
                                   } catch {
                                     setExplainModal(null);
                                   }
@@ -1758,71 +1785,37 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* Game Explain Modal */}
+      {/* Game Explain Floating Panel */}
       {explainModal && (
-        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4" onClick={() => setExplainModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <>
+          <div className="fixed inset-0 z-[99]" onClick={() => setExplainModal(null)} />
+          <div
+            className="absolute z-[100] bg-white border border-border rounded-lg shadow-xl w-80 max-h-60 overflow-y-auto"
+            style={{ top: explainModal.position.top, left: explainModal.position.left }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {explainModal.loading ? (
-              <div className="p-8 text-center text-muted">Loading...</div>
+              <div className="p-4 text-center text-muted text-sm">Loading...</div>
             ) : explainModal.data ? (
               <>
-                {/* Header */}
-                <div className="sticky top-0 bg-white border-b border-border px-5 py-3 flex justify-between items-start rounded-t-xl">
+                <div className="flex justify-between items-start px-3 py-2 border-b border-border bg-gray-50 rounded-t-lg">
                   <div>
-                    <h2 className="font-bold text-lg">
-                      Game #{explainModal.data.game.gameNumber}
-                    </h2>
-                    <p className="text-sm text-muted">
-                      {explainModal.data.game.dayOfWeek} {explainModal.data.game.date} · {explainModal.data.game.startTime} · Court {explainModal.data.game.courtNumber} · {explainModal.data.game.group === "solo" ? "Solo" : "Don's"} · Week {explainModal.data.game.weekNumber}
-                    </p>
+                    <span className="font-bold text-sm">Game #{explainModal.data.game.gameNumber}</span>
+                    <span className="text-xs text-muted ml-2">{explainModal.data.composition}</span>
                   </div>
-                  <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-xl leading-none p-1">✕</button>
+                  <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-sm leading-none ml-2">✕</button>
                 </div>
-
-                {/* Composition & game notes */}
-                <div className="px-5 py-3 border-b border-border bg-gray-50">
-                  <div className="text-sm font-semibold mb-1">Composition: {explainModal.data.composition}</div>
+                <div className="px-3 py-2 space-y-0.5">
                   {explainModal.data.notes.map((note, i) => (
-                    <div key={i} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700" : "text-muted"}`}>{note}</div>
-                  ))}
-                </div>
-
-                {/* Players */}
-                <div className="px-5 py-3">
-                  {explainModal.data.players.map((p, i) => (
-                    <div key={i} className={`mb-3 ${i < explainModal.data!.players.length - 1 ? "pb-3 border-b border-border/50" : ""}`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="bg-gray-200 text-gray-600 text-[10px] font-bold rounded px-1.5 py-0.5">
-                          Slot {p.slot}
-                        </span>
-                        <span className="font-semibold text-sm">{p.name}</span>
-                        {p.skillLevel && (
-                          <span className="bg-primary/10 text-primary text-[10px] font-bold rounded px-1.5 py-0.5">
-                            {p.skillLevel}
-                          </span>
-                        )}
-                        {p.isDerated && (
-                          <span className="bg-orange-100 text-orange-600 text-[10px] font-bold rounded px-1.5 py-0.5">
-                            DERATED
-                          </span>
-                        )}
-                      </div>
-                      <div className="ml-1 space-y-0.5">
-                        {p.notes.map((note, j) => (
-                          <div key={j} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700 font-medium" : note.startsWith("🎾") || note.startsWith("⚡") ? "text-blue-700" : "text-muted"}`}>
-                            {note}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <div key={i} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700 font-medium" : "text-muted"}`}>{note}</div>
                   ))}
                 </div>
               </>
             ) : (
-              <div className="p-8 text-center text-danger">Failed to load game data</div>
+              <div className="p-4 text-center text-danger text-sm">Failed to load</div>
             )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

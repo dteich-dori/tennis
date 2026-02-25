@@ -44,6 +44,7 @@ export default function SeasonPage() {
 
   // Don's auto-assign all state
   const [donsAssigning, setDonsAssigning] = useState(false);
+  const [donsAssigningWeek, setDonsAssigningWeek] = useState<number | null>(null);
   const [donsAssignMessage, setDonsAssignMessage] = useState("");
   const [donsAssignLog, setDonsAssignLog] = useState<
     { type: string; week?: number; message: string }[]
@@ -338,35 +339,104 @@ export default function SeasonPage() {
   const handleDonsAssignAll = async () => {
     if (!activeSeason) return;
     setDonsAssigning(true);
+    setDonsAssigningWeek(null);
     setDonsAssignMessage("");
     setDonsAssignLog([]);
+
     try {
-      const res = await fetch("/api/games/auto-assign-all", {
+      // First, determine which weeks need assignment by calling the info endpoint
+      const infoRes = await fetch("/api/games/auto-assign-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: activeSeason.id }),
+        body: JSON.stringify({ seasonId: activeSeason.id, infoOnly: true }),
       });
-      const data = (await res.json()) as {
-        success?: boolean;
-        weeksAssigned?: number;
-        weeksSkipped?: number;
-        totalAssigned?: number;
-        totalSlots?: number;
-        totalUnfilled?: number;
+      const infoData = (await infoRes.json()) as {
+        weeksToAssign?: number[];
+        weeksSkipped?: number[];
         error?: string;
         log?: { type: string; week?: number; message: string }[];
       };
-      if (!res.ok) {
-        setDonsAssignMessage(`Error: ${data.error}`);
-        if (data.log) setDonsAssignLog(data.log);
-      } else {
-        setDonsAssignMessage(
-          `Assigned ${data.weeksAssigned} week(s): ${data.totalAssigned} of ${data.totalSlots} slots filled.${
-            data.weeksSkipped ? ` ${data.weeksSkipped} week(s) skipped.` : ""
-          }${data.totalUnfilled ? ` ${data.totalUnfilled} unfilled.` : ""}`
-        );
-        setDonsAssignLog(data.log ?? []);
+
+      if (!infoRes.ok || !infoData.weeksToAssign) {
+        // Fall back to the old behavior
+        setDonsAssignMessage(`Error: ${infoData.error ?? "Failed to get week info"}`);
+        if (infoData.log) setDonsAssignLog(infoData.log);
+        setDonsAssigning(false);
+        return;
       }
+
+      const weeksToAssign = infoData.weeksToAssign;
+      const weeksSkipped = infoData.weeksSkipped ?? [];
+      const log: { type: string; week?: number; message: string }[] = [];
+
+      if (weeksSkipped.length > 0) {
+        log.push({ type: "info", message: `Skipping ${weeksSkipped.length} week(s) with existing assignments: ${weeksSkipped.join(", ")}` });
+        setDonsAssignLog([...log]);
+      }
+
+      if (weeksToAssign.length === 0) {
+        setDonsAssignMessage("All weeks already have Don's assignments. Nothing to do.");
+        setDonsAssignLog(log);
+        setDonsAssigning(false);
+        return;
+      }
+
+      let totalAssigned = 0;
+      let totalSlots = 0;
+      let totalUnfilled = 0;
+      let weeksAssignedCount = 0;
+      let stopped = false;
+
+      for (const week of weeksToAssign) {
+        if (stopped) break;
+        setDonsAssigningWeek(week);
+
+        try {
+          const res = await fetch("/api/games/auto-assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            log.push({ type: "error", week, message: `Week ${week}: ${data.error || "Failed"}` });
+            if (data.error?.includes("Solo games must be fully assigned")) {
+              log.push({ type: "error", message: "Stopping: Solo games must be fully assigned before Don's auto-assign." });
+              stopped = true;
+            }
+          } else {
+            const filled = data.assignedCount ?? 0;
+            const slots = data.totalSlots ?? 0;
+            const unfilled = data.unfilled ?? 0;
+            totalAssigned += filled;
+            totalSlots += slots;
+            totalUnfilled += unfilled;
+            weeksAssignedCount++;
+            log.push({ type: unfilled > 0 ? "warning" : "info", week, message: `Week ${week}: ${filled}/${slots} slots filled${unfilled > 0 ? ` (${unfilled} unfilled)` : ""}` });
+            if (data.log) {
+              for (const entry of data.log) {
+                if (entry.type === "warning" || entry.type === "error") {
+                  log.push({ type: entry.type, week, message: `  ${entry.message}` });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          log.push({ type: "error", week, message: `Week ${week}: ${String(err)}` });
+        }
+
+        setDonsAssignLog([...log]);
+        setDonsAssignMessage(`Assigned ${weeksAssignedCount} of ${weeksToAssign.length} week(s)...`);
+      }
+
+      setDonsAssigningWeek(null);
+      setDonsAssignMessage(
+        `Assigned ${weeksAssignedCount} week(s): ${totalAssigned} of ${totalSlots} slots filled.${
+          weeksSkipped.length ? ` ${weeksSkipped.length} week(s) skipped.` : ""
+        }${totalUnfilled ? ` ${totalUnfilled} unfilled.` : ""}`
+      );
+      setDonsAssignLog(log);
     } catch {
       setDonsAssignMessage("Failed to auto-assign Don's games.");
     }
@@ -1046,7 +1116,15 @@ export default function SeasonPage() {
               title="Auto-assign all Don's games for every unassigned week. Solo games must be assigned first."
               className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
             >
-              {donsAssigning ? "Assigning..." : "Auto-Assign Don's"}
+              {donsAssigning ? (donsAssigningWeek ? `Assigning Wk ${donsAssigningWeek}...` : "Preparing...") : "Auto-Assign Don's"}
+            </button>
+            <button
+              onClick={handleBalanceDonsBalls}
+              disabled={donsBallsBalancing || donsAssigning}
+              title="Redistributes ball-bringing duty across all Don's games for the entire season so each player brings balls for about 1/4 of their games."
+              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+            >
+              {donsBallsBalancing ? "Balancing..." : "Balance Don\u2019s Balls"}
             </button>
             <button
               onClick={handleClearDonsAssignAll}
@@ -1090,6 +1168,51 @@ export default function SeasonPage() {
                   {entry.week ? `Week ${entry.week}: ` : ""}{entry.message}
                 </div>
               ))}
+            </div>
+          )}
+
+          {donsBallsMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                donsBallsMessage.startsWith("Error") ||
+                donsBallsMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {donsBallsMessage}
+            </div>
+          )}
+
+          {donsBallsSummary && donsBallsSummary.length > 0 && (
+            <div className="mt-3 border border-border rounded overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 border-b border-border">Player</th>
+                    <th className="text-right px-3 py-2 border-b border-border">Games</th>
+                    <th className="text-right px-3 py-2 border-b border-border">Expected</th>
+                    <th className="text-right px-3 py-2 border-b border-border">Balls</th>
+                    <th className="text-right px-3 py-2 border-b border-border">Diff</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donsBallsSummary.map((row) => {
+                    const diff = row.ballsBrought - row.expected;
+                    return (
+                      <tr key={row.playerId} className="border-b border-border">
+                        <td className="px-3 py-1.5">{playerNameMap.get(row.playerId) ?? `Player #${row.playerId}`}</td>
+                        <td className="text-right px-3 py-1.5">{row.totalGames}</td>
+                        <td className="text-right px-3 py-1.5">{row.expected}</td>
+                        <td className="text-right px-3 py-1.5 font-medium">{row.ballsBrought}</td>
+                        <td className={`text-right px-3 py-1.5 font-medium ${diff > 0 ? "text-red-600" : diff < 0 ? "text-amber-600" : "text-green-600"}`}>
+                          {diff > 0 ? `+${diff}` : diff}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -1212,69 +1335,6 @@ export default function SeasonPage() {
         </div>
       )}
 
-      {/* Balance Don's Balls */}
-      {activeSeason && totalGames > 0 && (
-        <div className="border border-border rounded-lg p-6 mb-6">
-          <h2 className="font-semibold mb-4">Balance Don&apos;s Balls</h2>
-          <p className="text-sm text-muted mb-3">
-            Balances ball-bringing duty across all Don&apos;s games for the entire season.
-            Each player brings balls for approximately &frac14; of their games. Works with partial assignments.
-          </p>
-          <button
-            onClick={handleBalanceDonsBalls}
-            disabled={donsBallsBalancing}
-            title="Redistributes ball-bringing duty across all Don's games for the entire season so each player brings balls for about 1/4 of their games. Works even with partial assignments."
-            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-          >
-            {donsBallsBalancing ? "Balancing..." : "Balance Don\u2019s Balls"}
-          </button>
-
-          {donsBallsMessage && (
-            <div
-              className={`border rounded px-4 py-2 mt-3 text-sm ${
-                donsBallsMessage.startsWith("Error") ||
-                donsBallsMessage.startsWith("Failed")
-                  ? "bg-red-50 border-red-200 text-red-800"
-                  : "bg-green-50 border-green-200 text-green-800"
-              }`}
-            >
-              {donsBallsMessage}
-            </div>
-          )}
-
-          {donsBallsSummary && donsBallsSummary.length > 0 && (
-            <div className="mt-3 border border-border rounded overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-3 py-2 border-b border-border">Player</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Games</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Expected</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Balls</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Diff</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {donsBallsSummary.map((row) => {
-                    const diff = row.ballsBrought - row.expected;
-                    return (
-                      <tr key={row.playerId} className="border-b border-border">
-                        <td className="px-3 py-1.5">{playerNameMap.get(row.playerId) ?? `Player #${row.playerId}`}</td>
-                        <td className="text-right px-3 py-1.5">{row.totalGames}</td>
-                        <td className="text-right px-3 py-1.5">{row.expected}</td>
-                        <td className="text-right px-3 py-1.5 font-medium">{row.ballsBrought}</td>
-                        <td className={`text-right px-3 py-1.5 font-medium ${diff > 0 ? "text-red-600" : diff < 0 ? "text-amber-600" : "text-green-600"}`}>
-                          {diff > 0 ? `+${diff}` : diff}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

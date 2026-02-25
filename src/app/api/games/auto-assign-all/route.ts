@@ -17,7 +17,7 @@ interface LogEntry {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId } = (await request.json()) as { seasonId: number };
+    const { seasonId, infoOnly } = (await request.json()) as { seasonId: number; infoOnly?: boolean };
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
@@ -81,6 +81,15 @@ export async function POST(request: NextRequest) {
       } else {
         weeksToAssign.push(w);
       }
+    }
+
+    // Info-only mode: return which weeks need assignment without doing anything
+    if (infoOnly) {
+      return NextResponse.json({
+        success: true,
+        weeksToAssign,
+        weeksSkipped,
+      });
     }
 
     if (weeksSkipped.length > 0) {
