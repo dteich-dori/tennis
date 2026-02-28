@@ -482,7 +482,7 @@ export async function POST(request: NextRequest) {
               if (pb.owed !== pa.owed) return pb.owed - pa.owed;
               if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
               if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
-              return a.lastName.localeCompare(b.lastName);
+              return Math.random() - 0.5;
             });
 
             for (let slot = 1; slot <= 4; slot++) {
@@ -599,7 +599,7 @@ export async function POST(request: NextRequest) {
           // Fewer playable days left = higher priority (don't miss their chance)
           if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
           if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
-          return a.lastName.localeCompare(b.lastName);
+          return Math.random() - 0.5;
         });
       };
 
