@@ -116,12 +116,17 @@ export function generatePairingMatrixPdf(
   const cellFontSize = cellSize >= 20 ? 7 : cellSize >= 16 ? 6 : 5;
   const nameFontSize = cellSize >= 20 ? 7 : cellSize >= 16 ? 6 : 5;
 
-  // Determine max count for color scaling
-  let maxCount = 0;
-  for (const p of pairings) {
-    if (p.count > maxCount) maxCount = p.count;
+  // Color bands by count range (groups of 5)
+  // Light green → darker green → yellow → orange → red
+  function getCellColor(count: number): [number, number, number] {
+    if (count <= 0) return [255, 255, 255]; // white
+    if (count <= 5) return [220, 245, 220]; // light green
+    if (count <= 10) return [170, 220, 170]; // medium green
+    if (count <= 15) return [255, 245, 180]; // light yellow
+    if (count <= 20) return [255, 210, 140]; // orange
+    if (count <= 25) return [255, 170, 130]; // dark orange / light red
+    return [255, 140, 140]; // red for 26+
   }
-  if (maxCount === 0) maxCount = 1; // avoid division by zero
 
   // --- Draw header ---
   doc.setFontSize(13);
@@ -133,7 +138,7 @@ export function generatePairingMatrixPdf(
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 100, 100);
   doc.text(
-    "Brooklake (973) 377-2235 x137   brooklaketennis.com     |     Green = shared games     Red = do-not-pair violation     Gray = self",
+    "Brooklake (973) 377-2235 x137   brooklaketennis.com     |     Green (1-10)  Yellow (11-15)  Orange (16-20)  Red (21+)     DNP violation = bold red     Gray = self",
     pageWidth / 2,
     34,
     { align: "center" }
@@ -185,24 +190,17 @@ export function generatePairingMatrixPdf(
         const isDnp = dnpSet.has(key);
 
         if (isDnp && count > 0) {
-          // DNP violation — red
-          doc.setFillColor(255, 180, 180);
+          // DNP violation — bold red
+          doc.setFillColor(255, 130, 130);
           doc.rect(x, y, cellSize, cellSize, "F");
         } else if (isDnp && count === 0) {
           // DNP but no violation — light pink
           doc.setFillColor(255, 240, 240);
           doc.rect(x, y, cellSize, cellSize, "F");
-        } else if (count > 0) {
-          // Green shade based on count
-          const intensity = Math.min(count / maxCount, 1);
-          const r = Math.round(230 - intensity * 100); // 230 -> 130
-          const g = Math.round(250 - intensity * 30); // 250 -> 220
-          const b = Math.round(230 - intensity * 100); // 230 -> 130
-          doc.setFillColor(r, g, b);
-          doc.rect(x, y, cellSize, cellSize, "F");
         } else {
-          // 0 games — white
-          doc.setFillColor(255, 255, 255);
+          // Color band based on count (green → yellow → orange → red)
+          const [cr, cg, cb] = getCellColor(count);
+          doc.setFillColor(cr, cg, cb);
           doc.rect(x, y, cellSize, cellSize, "F");
         }
 

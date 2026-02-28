@@ -72,6 +72,10 @@ export default function SeasonPage() {
     { playerId: number; totalGames: number; ballsBrought: number; expected: number }[] | null
   >(null);
 
+  // Don's pairings balance state
+  const [donsPairingsBalancing, setDonsPairingsBalancing] = useState(false);
+  const [donsPairingsMessage, setDonsPairingsMessage] = useState("");
+
   // Download backup state
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupDownloadMessage, setBackupDownloadMessage] = useState("");
@@ -644,6 +648,40 @@ export default function SeasonPage() {
     setDonsBallsBalancing(false);
   };
 
+  const handleBalanceDonsPairings = async () => {
+    if (!activeSeason) return;
+    setDonsPairingsBalancing(true);
+    setDonsPairingsMessage("");
+    try {
+      const res = await fetch("/api/games/balance-pairings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as {
+        swaps?: number;
+        mutations?: number;
+        imbalanceBefore?: number;
+        imbalanceAfter?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        setDonsPairingsMessage(`Error: ${data.error}`);
+      } else {
+        const improvement =
+          data.imbalanceBefore && data.imbalanceAfter
+            ? ` Imbalance: ${data.imbalanceBefore} → ${data.imbalanceAfter}`
+            : "";
+        setDonsPairingsMessage(
+          `Balanced pairings: ${data.swaps} swap${data.swaps !== 1 ? "s" : ""}, ${data.mutations} assignment${data.mutations !== 1 ? "s" : ""} updated.${improvement}`
+        );
+      }
+    } catch {
+      setDonsPairingsMessage("Failed to balance pairings.");
+    }
+    setDonsPairingsBalancing(false);
+  };
+
   const totalWeeks = activeSeason?.totalWeeks ?? 36;
 
   const endDateDisplay = startDate && validateMonday(startDate)
@@ -1127,6 +1165,14 @@ export default function SeasonPage() {
               {donsBallsBalancing ? "Balancing..." : "Balance Don\u2019s Balls"}
             </button>
             <button
+              onClick={handleBalanceDonsPairings}
+              disabled={donsPairingsBalancing || donsAssigning}
+              title="Swaps same-level players between same-day games to even out pairing frequencies across the season. Run after auto-assign. Re-run Balance Balls after if needed."
+              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+            >
+              {donsPairingsBalancing ? "Balancing..." : "Balance Pairings"}
+            </button>
+            <button
               onClick={handleClearDonsAssignAll}
               disabled={donsAssigning}
               title="Removes all Don's player assignments for the entire season. Solo assignments are not affected."
@@ -1213,6 +1259,19 @@ export default function SeasonPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {donsPairingsMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                donsPairingsMessage.startsWith("Error") ||
+                donsPairingsMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {donsPairingsMessage}
             </div>
           )}
         </div>

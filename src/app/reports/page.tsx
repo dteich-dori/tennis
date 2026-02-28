@@ -5,6 +5,7 @@ import { generatePlayersListPdf } from "@/lib/reports/playersListPdf";
 import { generatePlayerStatsPdf } from "@/lib/reports/playerStatsPdf";
 import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf } from "@/lib/reports/gamesByDatePdf";
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
+import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 
 interface Season {
   id: number;
@@ -22,6 +23,8 @@ interface Player {
   email: string | null;
   isActive: boolean;
   contractedFrequency: string;
+  skillLevel: string;
+  blockedDays: number[];
 }
 
 interface GameAssignment {
@@ -202,6 +205,43 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handlePotentialPlayersReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("potentialPlayers");
+
+    try {
+      const [playersRes, courtsRes] = await Promise.all([
+        fetch(`/api/players?seasonId=${season.id}`),
+        fetch(`/api/courts?seasonId=${season.id}`),
+      ]);
+
+      if (!playersRes.ok) {
+        setError("Failed to load players data.");
+        setGenerating(null);
+        return;
+      }
+      const players = (await playersRes.json()) as Player[];
+      const activePlayers = players.filter((p) => p.isActive);
+
+      if (activePlayers.length === 0) {
+        setError("No active players found.");
+        setGenerating(null);
+        return;
+      }
+
+      const courtSlots = courtsRes.ok
+        ? ((await courtsRes.json()) as { dayOfWeek: number; isSolo: boolean }[])
+        : [];
+
+      generatePotentialPlayersPdf(activePlayers, season, courtSlots);
+    } catch {
+      setError("Failed to generate Potential Players report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -333,6 +373,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "playersList" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Potential Players Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Potential Players List</h2>
+          <p className="text-sm text-muted mb-4">
+            All players and subs with skill level, contract type, and blocked days for next season planning.
+          </p>
+          <button
+            onClick={handlePotentialPlayersReport}
+            disabled={generating === "potentialPlayers"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "potentialPlayers" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
       </div>
