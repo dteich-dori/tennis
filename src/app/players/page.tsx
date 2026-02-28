@@ -508,20 +508,19 @@ export default function PlayersPage() {
 
     const csv = [header, ...rows].join("\n");
 
-    // Save to TennisScheduler/Backup directory via API
+    // Download as a file in the browser
     setExportMessage("");
     try {
-      const res = await fetch("/api/export-csv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: "players.csv", content: csv }),
-      });
-      const data = await res.json() as { success?: boolean; path?: string; error?: string };
-      if (data.success) {
-        setExportMessage(`Players CSV saved to: ${data.path}`);
-      } else {
-        setExportMessage(`Export failed: ${data.error || "Unknown error"}`);
-      }
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "players.csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExportMessage("Players CSV downloaded.");
     } catch (err) {
       setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
