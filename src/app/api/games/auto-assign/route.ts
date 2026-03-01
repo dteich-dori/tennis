@@ -194,9 +194,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Load previous week games for derated pairing check (maxDeratedPerWeek)
-    const [seasonRow] = await database.select().from(games).where(and(eq(games.seasonId, seasonId), eq(games.weekNumber, 1)));
-    const seasonData = await database.select().from(games).where(eq(games.seasonId, seasonId));
-    // Get the actual season record for maxDeratedPerWeek
     const { seasons } = await import("@/db/schema");
     const [seasonRecord] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
     const maxDeratedPerWeek = seasonRecord?.maxDeratedPerWeek;
@@ -222,6 +219,58 @@ export async function POST(request: NextRequest) {
         ...g,
         assignments: prevByGame.get(g.id) ?? [],
       }));
+    }
+
+    // 6b. Load historical pairing counts (all prior weeks) for pairing diversity
+    // pairingCounts[pairKey(a,b)] = number of times players a & b shared a game
+    const pairingCounts = new Map<string, number>();
+    function pairKey(a: number, b: number): string {
+      return a < b ? `${a}:${b}` : `${b}:${a}`;
+    }
+    {
+      // Load all assigned Don's games from weeks BEFORE this one
+      const priorGames = await database.select().from(games)
+        .where(and(eq(games.seasonId, seasonId), eq(games.status, "normal"), eq(games.group, "dons"), sql`${games.weekNumber} < ${weekNumber}`));
+      const priorIds = priorGames.map((g) => g.id);
+      let priorAssignments: { gameId: number; playerId: number }[] = [];
+      for (let i = 0; i < priorIds.length; i += BATCH) {
+        const batch = priorIds.slice(i, i + BATCH);
+        const rows = await database.select({ gameId: gameAssignments.gameId, playerId: gameAssignments.playerId })
+          .from(gameAssignments).where(inArray(gameAssignments.gameId, batch));
+        priorAssignments.push(...rows);
+      }
+      // Group by game and count pairs
+      const priorByGame = new Map<number, number[]>();
+      for (const a of priorAssignments) {
+        const arr = priorByGame.get(a.gameId) ?? [];
+        arr.push(a.playerId);
+        priorByGame.set(a.gameId, arr);
+      }
+      for (const playerIds of priorByGame.values()) {
+        for (let i = 0; i < playerIds.length; i++) {
+          for (let j = i + 1; j < playerIds.length; j++) {
+            const key = pairKey(playerIds[i], playerIds[j]);
+            pairingCounts.set(key, (pairingCounts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+    }
+
+    // Helper: get total pairing count between a candidate and players already in a game
+    function getPairingPenalty(candidateId: number, assignedIds: number[]): number {
+      let total = 0;
+      for (const id of assignedIds) {
+        total += pairingCounts.get(pairKey(candidateId, id)) ?? 0;
+      }
+      return total;
+    }
+
+    // Helper: update pairing counts when a player is assigned to a game
+    function recordPairings(newPlayerId: number, existingPlayerIds: number[]): void {
+      for (const id of existingPlayerIds) {
+        const key = pairKey(newPlayerId, id);
+        pairingCounts.set(key, (pairingCounts.get(key) ?? 0) + 1);
+      }
     }
 
     // 7. Run the assignment algorithm
@@ -415,117 +464,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 7b. Pre-scan: find any game slot where exactly 4 C players are available.
-    // Lock those in first before the main day-by-day loop, since they are tightly constrained.
-    {
-      // Check derated pairing compatibility among a group of candidates.
-      // getAvailablePlayers only checks candidates vs players already IN the game,
-      // but for the pre-scan the game is empty — so we must check all pairs within
-      // the candidate group to ensure no derated pairing violations.
-      function areDeratedCompatible(candidates: PlayerData[], game: GameData): boolean {
-        if (maxDeratedPerWeek == null) return true;
-
-        const gamesToCheck = [...donsGames.map((g) => ({
-          ...g,
-          assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
-        }))];
-        if (maxDeratedPerWeek === 2) {
-          gamesToCheck.push(...prevWeekGamesData.map((g) => ({
-            ...g,
-            assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
-          })));
-        }
-
-        for (let i = 0; i < candidates.length; i++) {
-          for (let j = i + 1; j < candidates.length; j++) {
-            const a = candidates[i];
-            const b = candidates[j];
-            // Only matters when one is derated and the other isn't
-            if (a.isDerated === b.isDerated) continue;
-
-            // Check if they were already paired in current or previous week games
-            for (const g of gamesToCheck) {
-              if (g.status !== "normal") continue;
-              if (g.id === game.id) continue;
-              const aInGame = g.assignments.some((asn) => asn.playerId === a.id);
-              const bInGame = g.assignments.some((asn) => asn.playerId === b.id);
-              if (aInGame && bInGame) return false;
-            }
-          }
-        }
-        return true;
-      }
-
-      let preAssigned = false;
-      do {
-        preAssigned = false;
-        for (const game of donsGames) {
-          const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          if (currentAssigned.length > 0) continue; // skip already-assigned games
-
-          // Get all C players available for this game who still owe games this week
-          const availableC = getAvailablePlayers(game, currentAssigned, true).filter(
-            (p) => p.skillLevel === "C"
-          );
-
-          if (availableC.length === 4 && areDeratedCompatible(availableC, game)) {
-            log.push({
-              type: "info",
-              day: DAYS[game.dayOfWeek],
-              message: `Pre-scan: Game #${game.gameNumber} has exactly 4 C players available — locking in: ${availableC.map((p) => p.lastName).join(", ")}`,
-            });
-
-            const sorted = [...availableC].sort((a, b) => {
-              const pa = getPlayerPriority(a, game);
-              const pb = getPlayerPriority(b, game);
-              if (pa.mustPlay !== pb.mustPlay) return pa.mustPlay ? -1 : 1;
-              if (pb.owed !== pa.owed) return pb.owed - pa.owed;
-              if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
-              if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
-              return Math.random() - 0.5;
-            });
-
-            for (let slot = 1; slot <= 4; slot++) {
-              const player = sorted[slot - 1];
-              try {
-                const result = await database.insert(gameAssignments).values({
-                  gameId: game.id,
-                  slotPosition: slot,
-                  playerId: player.id,
-                  isPrefill: false,
-                }).returning();
-
-                createdAssignmentIds.push(result[0].id);
-                const state = gameAssignmentState.get(game.id) ?? [];
-                state.push(player.id);
-                gameAssignmentState.set(game.id, state);
-
-                const wtd = (wtdDonsCounts.get(player.id) ?? 0) + 1;
-                wtdDonsCounts.set(player.id, wtd);
-                const dates = assignedDates.get(player.id) ?? new Set();
-                dates.add(game.date);
-                assignedDates.set(player.id, dates);
-
-                const ytdEntry = ytdCounts.get(player.id) ?? { ytdDons: 0, ytdSolo: 0 };
-                ytdEntry.ytdDons += 1;
-                ytdCounts.set(player.id, ytdEntry);
-              } catch (err) {
-                log.push({ type: "error", day: DAYS[game.dayOfWeek], message: `Pre-scan: Failed to assign ${player.lastName} to game #${game.gameNumber}: ${err}` });
-              }
-            }
-            preAssigned = true;
-          } else if (availableC.length === 4) {
-            log.push({
-              type: "info",
-              day: DAYS[game.dayOfWeek],
-              message: `Pre-scan: Game #${game.gameNumber} has 4 C players but derated pairing conflict — skipping pre-assign`,
-            });
-          }
-        }
-        // Re-scan: assigning one game may create new "exactly 4" situations elsewhere
-      } while (preAssigned);
-    }
-
     // 8. Assign day by day, game by game
     // Strategy: process tightest days first (fewest surplus players) so 2+ players
     // are reserved for days that need them most, leaving easier days for non-2+ players.
@@ -556,79 +494,36 @@ export async function POST(request: NextRequest) {
 
     for (const [date, dateGames] of dayEntries) {
       const dow = dateGames[0].dayOfWeek;
-      const soloOnDate = soloAssignedByDate.get(date) ?? new Set();
 
-      // Get all players available on this date (not yet assigned on this date)
-      // Include players who deserve a game: 2+ contract, or WTD owed > 0
-      const dayPool = contractedPlayers.filter((p) => {
-        if (soloOnDate.has(p.id)) return false;
-        const pDates = assignedDates.get(p.id) ?? new Set();
-        if (pDates.has(date)) return false;
-        if (p.blockedDays.includes(dow)) return false;
-        if (p.vacations.some((v) => date >= v.startDate && date <= v.endDate)) return false;
-        // Only assign players who deserve games
-        if (p.contractedFrequency === "2+") return true; // always eligible for extras
-        const freq = parseInt(p.contractedFrequency) || 0;
-        const wtd = wtdDonsCounts.get(p.id) ?? 0;
-        if (freq - wtd > 0) return true; // still owe games this week
-        return false;
-      });
-
-      // Filter out games already fully assigned by the pre-scan
       const openGames = dateGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length < 4);
-      const preFilledOnDay = dateGames.length - openGames.length;
-      if (preFilledOnDay > 0) {
-        log.push({ type: "info", day: DAYS[dow], message: `${preFilledOnDay} game(s) already filled by pre-scan, ${openGames.length} remaining` });
-      }
 
-      // Separate C players and A/B players for skill-level grouping
-      const cPlayers = dayPool.filter((p) => p.skillLevel === "C");
-      const abPlayers = dayPool.filter((p) => p.skillLevel === "A" || p.skillLevel === "B");
-
-      // Determine how many C-only games we can form (need 4 C players per game)
-      // Then 2B+2C mixed games, then remaining are A/B games
-      const numGames = openGames.length;
-
-      // Sort C players by priority (owed desc)
+      // Sort players by priority:
+      //   1. mustPlay (critical — only 1 day left and still owe)
+      //   2. owed (more owed = higher priority)
+      //   3. pairing diversity (fewer prior pairings with game members = higher priority)
+      //   4. playableDaysLeft (fewer = higher priority)
+      //   5. ytdDeficit (more behind = higher priority)
+      //   6. random tiebreaker
       const sortByPriority = (players: PlayerData[], game: GameData) => {
+        const currentAssignedIds = gameAssignmentState.get(game.id) ?? [];
         return [...players].sort((a, b) => {
           const pa = getPlayerPriority(a, game);
           const pb = getPlayerPriority(b, game);
           if (pa.mustPlay !== pb.mustPlay) return pa.mustPlay ? -1 : 1;
           if (pb.owed !== pa.owed) return pb.owed - pa.owed;
-          // Fewer playable days left = higher priority (don't miss their chance)
+          // Pairing diversity: prefer candidates who've been paired LESS with current game members
+          if (currentAssignedIds.length > 0) {
+            const penaltyA = getPairingPenalty(a.id, currentAssignedIds);
+            const penaltyB = getPairingPenalty(b.id, currentAssignedIds);
+            if (penaltyA !== penaltyB) return penaltyA - penaltyB;
+          }
           if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
           if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
           return Math.random() - 0.5;
         });
       };
 
-      // Plan the day: figure out game compositions
-      // Count C players who need games this week (WTD owed > 0)
-      const cOwing = cPlayers.filter((p) => {
-        const freq = parseInt(p.contractedFrequency) || 0;
-        const wtd = wtdDonsCounts.get(p.id) ?? 0;
-        return freq - wtd > 0;
-      });
-      const bPlayers = abPlayers.filter((p) => p.skillLevel === "B");
-
-      // How many full C games can we make? (4 C players each)
-      const fullCGames = Math.min(Math.floor(cOwing.length / 4), numGames);
-      // Remaining C players after full C games
-      const remainingC = cOwing.length - fullCGames * 4;
-      // Mixed games: pairs of 2C + 2B (need remaining C in pairs)
-      const pairedMixedGames = Math.min(Math.floor(remainingC / 2), Math.floor(bPlayers.length / 2), numGames - fullCGames);
-      // If there's still an odd C player left who owes, give them their own mixed game (1C + 3B)
-      const unpairedC = remainingC - pairedMixedGames * 2;
-      const extraMixedGames = (unpairedC > 0 && (numGames - fullCGames - pairedMixedGames) > 0) ? Math.min(unpairedC, numGames - fullCGames - pairedMixedGames) : 0;
-      const mixedGames = pairedMixedGames + extraMixedGames;
-      // Rest are A/B games
-      const abGames = numGames - fullCGames - mixedGames;
-
-      // Assign games in order: C games first, then mixed, then A/B
-      let gameIdx = 0;
-
-      // Track used players on this day (including those already assigned by pre-scan)
+      // Track used players on this day
       const usedOnDay = new Set<number>();
       for (const g of dateGames) {
         const assigned = gameAssignmentState.get(g.id) ?? [];
@@ -647,6 +542,8 @@ export async function POST(request: NextRequest) {
 
           createdAssignmentIds.push(result[0].id);
           const state = gameAssignmentState.get(game.id) ?? [];
+          // Update pairing counts with all players already in this game
+          recordPairings(playerId, state);
           state.push(playerId);
           gameAssignmentState.set(game.id, state);
 
@@ -670,199 +567,52 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // --- C-only games ---
-      for (let i = 0; i < fullCGames && gameIdx < openGames.length; i++, gameIdx++) {
-        const game = openGames[gameIdx];
-
+      // --- Unified assignment: all games treated equally, B and C in one pool ---
+      for (const game of openGames) {
         for (let slot = 1; slot <= 4; slot++) {
-          // Re-filter after each assignment (DNP etc. may change)
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          // First pass: only players who still owe their contracted minimum
-          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
-            (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
-          );
-          // Second pass: if no owed-first players, allow 2+ extras
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
-              (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
-            );
-          }
-          // Third pass (bonus): allow 2+ players who already played today to take a bonus game
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, true).filter(
-              (p) => p.skillLevel === "C"
-            );
-          }
-          const prioritized = sortByPriority(eligible, game);
 
-          if (prioritized.length > 0) {
-            const chosen = prioritized[0];
-            if (usedOnDay.has(chosen.id)) {
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
-            }
-            await assignPlayer(game, chosen.id, slot);
-          } else {
-            log.push({
-              type: "warning",
-              day: DAYS[dow],
-              message: `Game #${game.gameNumber} slot ${slot}: no eligible C player available`,
+          // Check current game composition for A-protection rule
+          const currentPlayers = currentAssigned.map((id) => contractedPlayers.find((p) => p.id === id));
+          const hasC = currentPlayers.some((p) => p?.skillLevel === "C");
+          const hasA = currentPlayers.some((p) => p?.skillLevel === "A");
+          const bCount = currentPlayers.filter((p) => p?.skillLevel === "B").length;
+          const aCount = currentPlayers.filter((p) => p?.skillLevel === "A").length;
+
+          // A-protection: if game has C player, block A unless 2+ B present and 0 A already
+          const blockA = hasC && (bCount < 2 || aCount >= 1);
+          // C-protection: if game has A player, block C unless 2+ B present and 0 C already
+          const cCount = currentPlayers.filter((p) => p?.skillLevel === "C").length;
+          const blockC = hasA && (bCount < 2 || cCount >= 1);
+
+          // First pass: only players with zero Don's games this week (everyone gets at least 1)
+          let eligible = getAvailablePlayers(game, currentAssigned, true).filter((p) => {
+            if (usedOnDay.has(p.id)) return false;
+            if (blockA && p.skillLevel === "A") return false;
+            if (blockC && p.skillLevel === "C") return false;
+            return true;
+          });
+          // Second pass: players who still owe games (freq - wtd > 0), including 2+ players
+          // who haven't hit their minimum of 2 yet. Does NOT include 2+ extras beyond minimum.
+          if (eligible.length === 0) {
+            eligible = getAvailablePlayers(game, currentAssigned, false).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              if (blockA && p.skillLevel === "A") return false;
+              if (blockC && p.skillLevel === "C") return false;
+              // Block 2+ players who've already met their minimum — no over-assignment
+              if (p.contractedFrequency === "2+") {
+                const wtd = wtdDonsCounts.get(p.id) ?? 0;
+                if (wtd >= 2) return false;
+              }
+              return true;
             });
           }
-        }
-      }
+          // No bonus/extras pass — leave unfilled slots for manual assignment
 
-      // --- Mixed games (2C+2B paired, then 1C+3B for remaining odd C players) ---
-      for (let i = 0; i < mixedGames && gameIdx < openGames.length; i++, gameIdx++) {
-        const game = openGames[gameIdx];
-        const isPairedMixed = i < pairedMixedGames; // First pairedMixedGames are 2C+2B, rest are 1C+3B
-
-        // Assign C players first (2 for paired, 1 for unpaired)
-        const cSlotsNeeded = isPairedMixed ? 2 : 1;
-        for (let slot = 1; slot <= cSlotsNeeded; slot++) {
-          const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          // First pass: only players who still owe their contracted minimum
-          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
-            (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
-          );
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
-              (p) => p.skillLevel === "C" && !usedOnDay.has(p.id)
-            );
-          }
-          // Bonus pass: allow 2+ C players who already played today
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, true).filter(
-              (p) => p.skillLevel === "C"
-            );
-          }
           const prioritized = sortByPriority(eligible, game);
-          if (prioritized.length > 0) {
-            const chosen = prioritized[0];
-            if (usedOnDay.has(chosen.id)) {
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
-            }
-            await assignPlayer(game, chosen.id, slot);
-          } else {
-            log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: no eligible C player for mixed game` });
-          }
-        }
-
-        // Then fill remaining slots with B players (prefer B, fall back to A/B)
-        for (let slot = cSlotsNeeded + 1; slot <= 4; slot++) {
-          const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-          // First pass: only players who still owe their contracted minimum
-          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
-            (p) => p.skillLevel === "B" && !usedOnDay.has(p.id)
-          );
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
-              (p) => p.skillLevel === "B" && !usedOnDay.has(p.id)
-            );
-          }
-          const prioritized = sortByPriority(eligible, game);
-          if (prioritized.length > 0) {
-            await assignPlayer(game, prioritized[0].id, slot);
-          } else {
-            // Fall back to any A/B player
-            // Allow at most 1 A player in a mixed game with C players,
-            // but only if there are already 2+ B players in the game (target: 1A+1C+2B)
-            const currentPlayerIds = gameAssignmentState.get(game.id) ?? [];
-            const hasC = currentPlayerIds.some((id) => contractedPlayers.find((p) => p.id === id)?.skillLevel === "C");
-            const bCount = currentPlayerIds.filter((id) => contractedPlayers.find((p) => p.id === id)?.skillLevel === "B").length;
-            const aCount = currentPlayerIds.filter((id) => contractedPlayers.find((p) => p.id === id)?.skillLevel === "A").length;
-            // Block A if: game has C players AND (fewer than 2 B players already, OR already has an A)
-            const blockA = hasC && (bCount < 2 || aCount >= 1);
-
-            // First pass: owed-only
-            let fallback = getAvailablePlayers(game, currentAssigned, true).filter(
-              (p) => {
-                if (usedOnDay.has(p.id)) return false;
-                if (blockA && p.skillLevel === "A") return false;
-                return p.skillLevel === "A" || p.skillLevel === "B";
-              }
-            );
-            if (fallback.length === 0) {
-              fallback = getAvailablePlayers(game, currentAssigned, false).filter(
-                (p) => {
-                  if (usedOnDay.has(p.id)) return false;
-                  if (blockA && p.skillLevel === "A") return false;
-                  return p.skillLevel === "A" || p.skillLevel === "B";
-                }
-              );
-            }
-            // Bonus pass: allow 2+ A/B players who already played today
-            if (fallback.length === 0) {
-              fallback = getAvailablePlayers(game, currentAssigned, false, true).filter(
-                (p) => {
-                  if (blockA && p.skillLevel === "A") return false;
-                  return p.skillLevel === "A" || p.skillLevel === "B";
-                }
-              );
-            }
-            const fbSorted = sortByPriority(fallback, game);
-            if (fbSorted.length > 0) {
-              const chosen = fbSorted[0];
-              if (chosen.skillLevel === "A" && hasC) {
-                log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (A) assigned to mixed game with C — no B players available` });
-              }
-              if (usedOnDay.has(chosen.id)) {
-                log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
-              }
-              await assignPlayer(game, chosen.id, slot);
-            } else {
-              log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: no eligible B/A player for mixed game` });
-            }
-          }
-        }
-      }
-
-      // --- A/B games ---
-      for (; gameIdx < openGames.length; gameIdx++) {
-        const game = openGames[gameIdx];
-
-        for (let slot = 1; slot <= 4; slot++) {
-          const currentAssigned = gameAssignmentState.get(game.id) ?? [];
-
-          // First pass: only players who still owe their contracted minimum
-          let eligible = getAvailablePlayers(game, currentAssigned, true).filter(
-            (p) => !usedOnDay.has(p.id)
-          );
-          // Second pass: if no owed-first players, allow 2+ extras
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false).filter(
-              (p) => !usedOnDay.has(p.id)
-            );
-          }
-          // Third pass (bonus): allow 2+ players who already played today
-          if (eligible.length === 0) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, true);
-          }
-
-          // Prefer A/B players, then fall back to C if they can play with current group
-          const abEligible = eligible.filter((p) => p.skillLevel === "A" || p.skillLevel === "B");
-          const prioritized = sortByPriority(abEligible.length > 0 ? abEligible : eligible, game);
 
           if (prioritized.length > 0) {
             const chosen = prioritized[0];
-            // If choosing a C player for an A/B game, log a warning
-            if (chosen.skillLevel === "C") {
-              const currentPlayers = currentAssigned.map((id) => contractedPlayers.find((p) => p.id === id));
-              const hasA = currentPlayers.some((p) => p?.skillLevel === "A");
-              if (hasA) {
-                // C can't play with A — skip this player
-                const nonC = prioritized.filter((p) => p.skillLevel !== "C");
-                if (nonC.length > 0) {
-                  const nonCChosen = nonC[0];
-                  if (usedOnDay.has(nonCChosen.id)) {
-                    log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${nonCChosen.lastName} assigned as BONUS (extra game on same day)` });
-                  }
-                  await assignPlayer(game, nonCChosen.id, slot);
-                } else {
-                  log.push({ type: "warning", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: only C players available but game has A players — slot left empty` });
-                }
-                continue;
-              }
-            }
             if (usedOnDay.has(chosen.id)) {
               log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
@@ -871,7 +621,7 @@ export async function POST(request: NextRequest) {
             log.push({
               type: "warning",
               day: DAYS[dow],
-              message: `Game #${game.gameNumber} slot ${slot}: no eligible player available — slot left empty`,
+              message: `Game #${game.gameNumber} slot ${slot}: no player who still owes games is available — slot left empty for manual assignment`,
             });
           }
         }
@@ -883,11 +633,8 @@ export async function POST(request: NextRequest) {
     const filled = createdAssignmentIds.length;
     const unfilled = totalSlots - filled;
 
-    if (unfilled > 0) {
-      log.push({ type: "warning", message: `${unfilled} of ${totalSlots} Don's slots could not be filled.` });
-    } else {
-      log.push({ type: "info", message: `All ${totalSlots} Don's slots filled successfully.` });
-    }
+    // Summary is conveyed via the assignedCount/totalSlots in the response
+    // and by the per-slot warnings above — no need for a duplicate summary line.
 
     return NextResponse.json({
       success: true,

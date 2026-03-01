@@ -1090,7 +1090,7 @@ export default function SchedulePage() {
                 </button>
               </div>
               <div className="space-y-0.5 max-h-64 overflow-y-auto">
-                {autoAssignLog.map((entry, idx) => (
+                {autoAssignLog.filter((e) => e.type === "warning" || e.type === "error").map((entry, idx) => (
                   <div
                     key={idx}
                     className={`text-xs flex items-start gap-2 ${
