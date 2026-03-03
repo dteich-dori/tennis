@@ -103,9 +103,9 @@ export function generateGamesByDatePdf(
   ];
   const colHeaders = ["Game", "Time", "Ct", "Group", "Player 1 (*)", "Player 2", "Player 3", "Player 4"];
 
-  const rowHeight = 13;
-  const dateHeaderHeight = 14;
-  const tableHeaderHeight = 14;
+  const rowHeight = 15;
+  const dateHeaderHeight = 15;
+  const tableHeaderHeight = 15;
 
   // Group games by week
   const gamesByWeek = new Map<number, Game[]>();
@@ -139,7 +139,7 @@ export function generateGamesByDatePdf(
   }
 
   function drawTableHeaderRow() {
-    doc.setFontSize(6.5);
+    doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.setFillColor(240, 240, 240);
     doc.rect(marginLeft, currentY, tableWidth, tableHeaderHeight, "F");
@@ -149,7 +149,7 @@ export function generateGamesByDatePdf(
 
     let x = marginLeft;
     for (let i = 0; i < colHeaders.length; i++) {
-      doc.text(colHeaders[i], x + 2, currentY + 10);
+      doc.text(colHeaders[i], x + 2, currentY + 11);
       x += colWidths[i];
     }
     currentY += tableHeaderHeight;
@@ -184,10 +184,10 @@ export function generateGamesByDatePdf(
     }
 
     // Week header
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text(`Week ${weekNum}`, marginLeft, currentY + 10);
+    doc.text(`Week ${weekNum}`, marginLeft, currentY + 11);
     currentY += dateHeaderHeight;
 
     for (let dateIdx = 0; dateIdx < dates.length; dateIdx++) {
@@ -201,19 +201,19 @@ export function generateGamesByDatePdf(
       if (currentY + neededForHeader > pageHeight - 40) {
         startNewPage();
         // Reprint week header on new page
-        doc.setFontSize(9);
+        doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 10);
+        doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 11);
         currentY += dateHeaderHeight;
         // Always draw column header after a page break
         drawTableHeaderRow();
       }
 
       // Date subheader
-      doc.setFontSize(7.5);
+      doc.setFontSize(8.5);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(80, 80, 80);
-      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 9);
+      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 10);
       doc.setTextColor(0, 0, 0);
       currentY += dateHeaderHeight - 2;
 
@@ -224,7 +224,7 @@ export function generateGamesByDatePdf(
 
       // Game rows
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.9);
+      doc.setFontSize(8);
 
       for (let rowIdx = 0; rowIdx < dateGames.length; rowIdx++) {
         const game = dateGames[rowIdx];
@@ -232,13 +232,13 @@ export function generateGamesByDatePdf(
         // Page break check
         if (currentY + rowHeight > pageHeight - 40) {
           startNewPage();
-          doc.setFontSize(9);
+          doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
-          doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 10);
+          doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 11);
           currentY += dateHeaderHeight;
           drawTableHeaderRow();
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(6.9);
+          doc.setFontSize(8);
         }
 
         const isEarlyGame = game.startTime < "10:00";
@@ -273,7 +273,7 @@ export function generateGamesByDatePdf(
         }
 
         let x = marginLeft;
-        const textY = currentY + 9;
+        const textY = currentY + 11;
 
         // Game #
         doc.text(String(game.gameNumber), x + 2, textY);

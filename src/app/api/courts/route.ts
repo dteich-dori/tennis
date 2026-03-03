@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { courtSchedules } from "@/db/schema";
+import { courtSchedules, games } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -123,6 +123,25 @@ export async function PUT(request: NextRequest) {
       .set({ dayOfWeek, courtNumber, startTime, isSolo })
       .where(eq(courtSchedules.id, id))
       .returning();
+
+    // Cascade changes to existing game records that were generated from this court slot
+    const old = current[0];
+    await database
+      .update(games)
+      .set({
+        dayOfWeek,
+        courtNumber,
+        startTime,
+        group: isSolo ? "solo" : "dons",
+      })
+      .where(
+        and(
+          eq(games.seasonId, old.seasonId),
+          eq(games.dayOfWeek, old.dayOfWeek),
+          eq(games.courtNumber, old.courtNumber),
+          eq(games.startTime, old.startTime)
+        )
+      );
 
     return NextResponse.json(result[0]);
   } catch (err) {
