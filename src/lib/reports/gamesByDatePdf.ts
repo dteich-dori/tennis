@@ -253,7 +253,7 @@ export function generateGamesByDatePdf(
           doc.setFillColor(240, 240, 240);
           doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
         } else if (isEarlyGame) {
-          doc.setFillColor(255, 255, 102);
+          doc.setFillColor(255, 255, 200);
           doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
         } else if (rowIdx % 2 === 1) {
           doc.setFillColor(248, 248, 248);
@@ -524,7 +524,7 @@ export function generateGamesByDateWorksheetPdf(
           doc.setFillColor(240, 240, 240);
           doc.rect(marginLeft, currentY, tableWidth, effectiveRowHeight, "F");
         } else if (isEarlyGame) {
-          doc.setFillColor(255, 255, 102);
+          doc.setFillColor(255, 255, 200);
           doc.rect(marginLeft, currentY, tableWidth, effectiveRowHeight, "F");
         } else if (rowIdx % 2 === 1) {
           doc.setFillColor(248, 248, 248);

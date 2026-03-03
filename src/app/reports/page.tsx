@@ -7,6 +7,7 @@ import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf } from "@/lib/r
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
+import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
 
 interface Season {
   id: number;
@@ -271,6 +272,44 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleGamesByPlayerReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("gamesByPlayer");
+
+    try {
+      const [gamesRes, playersRes] = await Promise.all([
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/players?seasonId=${season.id}`),
+      ]);
+
+      if (!gamesRes.ok || !playersRes.ok) {
+        setError("Failed to load data for Games By Player report.");
+        setGenerating(null);
+        return;
+      }
+
+      const allGames = (await gamesRes.json()) as { id: number; gameNumber: number; seasonId: number; weekNumber: number; date: string; dayOfWeek: number; startTime: string; courtNumber: number; group: string; status: string; holidayName?: string; assignments: { id: number; gameId: number; playerId: number; slotPosition: number; isPrefill: boolean }[] }[];
+      const allPlayers = (await playersRes.json()) as { id: number; firstName: string; lastName: string; contractedFrequency: string; skillLevel: string; isActive: boolean }[];
+
+      const activePlayers = allPlayers.filter((p) => p.isActive);
+      const normalGames = allGames.filter((g) => g.status === "normal");
+
+      const hasAssignments = normalGames.some((g) => g.assignments.length > 0);
+      if (!hasAssignments) {
+        setError("No player game assignments found. Assign players to games first.");
+        setGenerating(null);
+        return;
+      }
+
+      generateGamesByPlayerPdf(activePlayers, allPlayers, normalGames, season);
+    } catch {
+      setError("Failed to generate Games By Player report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -349,6 +388,21 @@ export default function ReportsPage() {
               {generating === "gamesByDate-worksheet" ? "Generating..." : "Worksheet"}
             </button>
           </div>
+        </div>
+
+        {/* Games By Player Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Games By Player</h2>
+          <p className="text-sm text-muted mb-4">
+            Per-player listing of all game assignments with date, time, court, and co-players.
+          </p>
+          <button
+            onClick={handleGamesByPlayerReport}
+            disabled={generating === "gamesByPlayer"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "gamesByPlayer" ? "Generating..." : "Generate PDF"}
+          </button>
         </div>
 
         {/* Player Statistics Report Card */}
