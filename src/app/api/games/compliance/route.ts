@@ -462,8 +462,8 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Solo: report any YTD deficit for all solo share players
-      // Compute YTD counts for solo games across the season up to this week
+      // Solo: report any STD (season-total) deficit for all solo share players
+      // Compute STD counts for solo games across the entire season
       const ytdSoloRows = await database
         .select({
           playerId: gameAssignments.playerId,
@@ -496,13 +496,13 @@ export async function GET(request: NextRequest) {
         if (actualYtd < expectedYtd) {
           const freqLabel = freq < 1 ? `1 per ${Math.round(1 / freq)} weeks` : `${freq}/week`;
           violations.push({
-            rule: "YTD deficit",
+            rule: "STD deficit",
             severity: "warning",
             gameId: 0,
             gameNumber: 0,
             date: "",
             playerName: playerName(p.id),
-            detail: `Solo (${freqLabel}): ${actualYtd} YTD games, expected ${expectedYtd}`,
+            detail: `Solo (${freqLabel}): ${actualYtd} STD games, expected ${expectedYtd}`,
           });
         }
       }

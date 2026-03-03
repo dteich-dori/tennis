@@ -6,6 +6,7 @@ import { generatePlayerStatsPdf } from "@/lib/reports/playerStatsPdf";
 import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf } from "@/lib/reports/gamesByDatePdf";
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
+import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 
 interface Season {
   id: number;
@@ -242,6 +243,34 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleCourtScheduleReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("courtSchedule");
+
+    try {
+      const res = await fetch(`/api/courts?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to load court schedule data.");
+        setGenerating(null);
+        return;
+      }
+      const courts = (await res.json()) as { id: number; dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[];
+
+      if (courts.length === 0) {
+        setError("No court schedules found for this season.");
+        setGenerating(null);
+        return;
+      }
+
+      generateCourtSchedulePdf(courts, season);
+    } catch {
+      setError("Failed to generate Court Schedule report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -326,7 +355,7 @@ export default function ReportsPage() {
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Player Statistics</h2>
           <p className="text-sm text-muted mb-4">
-            Games played YTD, contract info, ball-bringing counts.
+            Games played STD (season total), contract info, ball-bringing counts.
           </p>
           <div className="flex gap-2">
             <button
@@ -388,6 +417,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "potentialPlayers" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Court Schedule Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Court Schedule</h2>
+          <p className="text-sm text-muted mb-4">
+            Weekly court layout showing days, times, court numbers, and group assignments (Dons / Solo).
+          </p>
+          <button
+            onClick={handleCourtScheduleReport}
+            disabled={generating === "courtSchedule"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "courtSchedule" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
       </div>

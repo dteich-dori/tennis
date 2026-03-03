@@ -7,8 +7,8 @@ interface PlayerStat {
   frequency: string;
   skillLevel: string;
   soloShareLevel: string | null;
-  ytd: number;
-  expectedYtd: number;
+  std: number;
+  expectedStd: number;
   deficit: number;
   ballsBrought: number;
   weeksPlayed: number;
@@ -73,14 +73,14 @@ export function generatePlayerStatsPdf(
     ? [
         { header: "Player", width: tableWidth * 0.35 },
         { header: "Contract", width: tableWidth * 0.15 },
-        { header: "YTD", width: tableWidth * 0.15 },
+        { header: "STD", width: tableWidth * 0.15 },
         { header: "Extra", width: tableWidth * 0.15 },
         { header: "Ball Count", width: tableWidth * 0.20 },
       ]
     : [
         { header: "Player", width: tableWidth * 0.40 },
         { header: "Share", width: tableWidth * 0.20 },
-        { header: "YTD", width: tableWidth * 0.20 },
+        { header: "STD", width: tableWidth * 0.20 },
         { header: "Ball Count", width: tableWidth * 0.20 },
       ];
 
@@ -159,20 +159,20 @@ export function generatePlayerStatsPdf(
         ? (stat.soloShareLevel ? stat.soloShareLevel.charAt(0).toUpperCase() + stat.soloShareLevel.slice(1) : "—")
         : (freq === 0 ? "Sub" : String(freq));
 
-      const extra = Math.max(0, stat.ytd - (freq * Math.min(currentMaxWeek, 36)));
+      const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
 
       const values = group === "dons"
         ? [
             stat.lastName,
             contractValue,
-            String(stat.ytd),
+            String(stat.std),
             extra > 0 ? String(extra) : "—",
             String(stat.ballsBrought),
           ]
         : [
             stat.lastName,
             contractValue,
-            String(stat.ytd),
+            String(stat.std),
             String(stat.ballsBrought),
           ];
 
@@ -194,7 +194,7 @@ export function generatePlayerStatsPdf(
       drawTableHeader();
     }
 
-    const totalYtd = sectionStats.reduce((sum, s) => sum + s.ytd, 0);
+    const totalStd = sectionStats.reduce((sum, s) => sum + s.std, 0);
     const totalBalls = sectionStats.reduce((sum, s) => sum + s.ballsBrought, 0);
 
     // Compute total for contract/share column
@@ -214,7 +214,7 @@ export function generatePlayerStatsPdf(
 
     const totalExtra = sectionStats.reduce((sum, s) => {
       const freq = parseInt(s.frequency) || 0;
-      return sum + Math.max(0, s.ytd - (freq * Math.min(currentMaxWeek, 36)));
+      return sum + Math.max(0, s.std - (freq * Math.min(currentMaxWeek, 36)));
     }, 0);
 
     // Line above totals row
@@ -235,14 +235,14 @@ export function generatePlayerStatsPdf(
       ? [
           "Total",
           contractTotal,
-          String(totalYtd),
+          String(totalStd),
           totalExtra > 0 ? String(totalExtra) : "—",
           String(totalBalls),
         ]
       : [
           "Total",
           contractTotal,
-          String(totalYtd),
+          String(totalStd),
           String(totalBalls),
         ];
     let tx = marginLeft;
@@ -280,13 +280,13 @@ export function generatePlayerStatsPdf(
     currentY += 8;
 
     // Count players by skill level for contract players
-    const levelCounts: Record<string, { count: number; totalFreq: number; totalYtd: number }> = {};
+    const levelCounts: Record<string, { count: number; totalFreq: number; totalStd: number }> = {};
     for (const s of contractPlayers) {
       const level = s.skillLevel || "?";
-      if (!levelCounts[level]) levelCounts[level] = { count: 0, totalFreq: 0, totalYtd: 0 };
+      if (!levelCounts[level]) levelCounts[level] = { count: 0, totalFreq: 0, totalStd: 0 };
       levelCounts[level].count++;
       levelCounts[level].totalFreq += (s.frequency === "2+" ? 2 : (parseInt(s.frequency) || 0));
-      levelCounts[level].totalYtd += s.ytd;
+      levelCounts[level].totalStd += s.std;
     }
 
     // Sort levels: A, B, C
@@ -302,7 +302,7 @@ export function generatePlayerStatsPdf(
       { header: "Level", width: tableWidth * 0.25 },
       { header: "Players", width: tableWidth * 0.25 },
       { header: "Contracts", width: tableWidth * 0.25 },
-      { header: "YTD Games", width: tableWidth * 0.25 },
+      { header: "STD Games", width: tableWidth * 0.25 },
     ];
 
     // Summary header
@@ -326,14 +326,14 @@ export function generatePlayerStatsPdf(
     doc.setFontSize(9);
     let grandCount = 0;
     let grandFreq = 0;
-    let grandYtd = 0;
+    let grandStd = 0;
 
     for (let ri = 0; ri < sortedLevels.length; ri++) {
       const level = sortedLevels[ri];
       const data = levelCounts[level];
       grandCount += data.count;
       grandFreq += data.totalFreq;
-      grandYtd += data.totalYtd;
+      grandStd += data.totalStd;
 
       if (ri % 2 === 1) {
         doc.setFillColor(248, 248, 248);
@@ -342,7 +342,7 @@ export function generatePlayerStatsPdf(
       doc.setDrawColor(220, 220, 220);
       doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
 
-      const vals = [level, String(data.count), String(data.totalFreq), String(data.totalYtd)];
+      const vals = [level, String(data.count), String(data.totalFreq), String(data.totalStd)];
       let rx = marginLeft;
       for (let ci = 0; ci < summCols.length; ci++) {
         doc.text(vals[ci], rx + 4, currentY + 11);
@@ -353,7 +353,7 @@ export function generatePlayerStatsPdf(
 
     // Add subs row if any
     if (substitutes.length > 0) {
-      const subYtd = substitutes.reduce((sum, s) => sum + s.ytd, 0);
+      const subStd = substitutes.reduce((sum, s) => sum + s.std, 0);
       const ri = sortedLevels.length;
       if (ri % 2 === 1) {
         doc.setFillColor(248, 248, 248);
@@ -362,14 +362,14 @@ export function generatePlayerStatsPdf(
       doc.setDrawColor(220, 220, 220);
       doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
 
-      const vals = ["Sub", String(substitutes.length), "—", String(subYtd)];
+      const vals = ["Sub", String(substitutes.length), "—", String(subStd)];
       let rx = marginLeft;
       for (let ci = 0; ci < summCols.length; ci++) {
         doc.text(vals[ci], rx + 4, currentY + 11);
         rx += summCols[ci].width;
       }
       grandCount += substitutes.length;
-      grandYtd += subYtd;
+      grandStd += subStd;
       currentY += rowHeight;
     }
 
@@ -384,7 +384,7 @@ export function generatePlayerStatsPdf(
     doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
 
     doc.setFont("helvetica", "bold");
-    const totVals = ["Total", String(grandCount), String(grandFreq), String(grandYtd)];
+    const totVals = ["Total", String(grandCount), String(grandFreq), String(grandStd)];
     let gtx = marginLeft;
     for (let ci = 0; ci < summCols.length; ci++) {
       doc.text(totVals[ci], gtx + 4, currentY + 11);

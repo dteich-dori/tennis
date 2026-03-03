@@ -292,9 +292,7 @@ export async function POST(request: NextRequest) {
     // firstGameOnly: if true, only include players with ZERO Don's games this week
     //   (ensures every contracted player gets at least 1 game before anyone gets a 2nd).
     //   If false, include all players who still owe games or are 2+ eligible for extras.
-    // bonusMode: if true, allows 2+ players to play a BONUS game on a day they've already played.
-    //   Only 2+ players are eligible in bonus mode. All other constraints still apply.
-    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false, bonusMode = false): PlayerData[] {
+    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false): PlayerData[] {
       const assignedInGame = new Set(currentAssignments);
       const assignedOnDate = new Set<number>();
       // Players assigned to other games on same date
@@ -311,15 +309,8 @@ export async function POST(request: NextRequest) {
       return contractedPlayers.filter((p) => {
         if (assignedInGame.has(p.id)) return false;
 
-        // In bonus mode, only 2+ players are eligible, and they CAN play on a date
-        // they've already played (that's the whole point of bonus).
-        // In normal mode, no one can play twice on the same date.
-        if (bonusMode) {
-          if (p.contractedFrequency !== "2+") return false;
-          // 2+ players CAN be on the same date — skip the assignedOnDate check
-        } else {
-          if (assignedOnDate.has(p.id)) return false;
-        }
+        // No player can play twice on the same date
+        if (assignedOnDate.has(p.id)) return false;
 
         // Frequency / owed check
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
@@ -465,8 +456,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. Assign day by day, game by game
-    // Strategy: process tightest days first (fewest surplus players) so 2+ players
-    // are reserved for days that need them most, leaving easier days for non-2+ players.
+    // Strategy: process tightest days first (fewest surplus players) so the most
+    // constrained days get first pick from the full pool of unassigned players.
     const dayEntries = [...gamesByDate.entries()];
     dayEntries.sort((a, b) => {
       const [dateA, gamesA] = a;
@@ -579,9 +570,9 @@ export async function POST(request: NextRequest) {
           const bCount = currentPlayers.filter((p) => p?.skillLevel === "B").length;
           const aCount = currentPlayers.filter((p) => p?.skillLevel === "A").length;
 
-          // A-protection: if game has C player, block A unless 2+ B present and 0 A already
+          // A-protection: if game has C player, block A unless 2B present and 0 A already
           const blockA = hasC && (bCount < 2 || aCount >= 1);
-          // C-protection: if game has A player, block C unless 2+ B present and 0 C already
+          // C-protection: if game has A player, block C unless 2B present and 0 C already
           const cCount = currentPlayers.filter((p) => p?.skillLevel === "C").length;
           const blockC = hasA && (bCount < 2 || cCount >= 1);
 

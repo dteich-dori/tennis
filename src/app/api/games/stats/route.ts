@@ -6,10 +6,10 @@ import { eq, and, sql } from "drizzle-orm";
 /**
  * GET /api/games/stats?seasonId=1&group=dons
  * Returns per-player statistics for the entire season filtered by group:
- *   - ytd: total games assigned
+ *   - std: season-total games assigned (all weeks)
  *   - contracted: contracted frequency
- *   - expectedYtd: freq * weeksWithAssignments
- *   - deficit: expectedYtd - ytd
+ *   - expectedStd: freq * weeksWithAssignments
+ *   - deficit: expectedStd - std
  *   - weeklyBreakdown: games per week
  *   - ballsBrought: slot 1 count (ball-bringing duty)
  */
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     const currentMaxWeek = maxWeekRow?.maxWeek ?? 0;
 
-    // YTD count per player
+    // STD (Season-Total-to-Date) count per player — all weeks in the season
     const ytdRows = await database
       .select({
         playerId: gameAssignments.playerId,
@@ -65,9 +65,9 @@ export async function GET(request: NextRequest) {
       .where(gameFilter)
       .groupBy(gameAssignments.playerId);
 
-    const ytdMap = new Map<number, number>();
+    const stdMap = new Map<number, number>();
     for (const row of ytdRows) {
-      ytdMap.set(row.playerId, row.count);
+      stdMap.set(row.playerId, row.count);
     }
 
     // Ball-bringing count (slot 1 assignments) per player
@@ -121,9 +121,9 @@ export async function GET(request: NextRequest) {
         const freq = group === "solo"
           ? (p.soloShareLevel ? (soloShareFreqMap[p.soloShareLevel] ?? 0) : 0)
           : (parseInt(p.contractedFrequency) || 0);
-        const ytd = ytdMap.get(p.id) ?? 0;
-        const expectedYtd = freq * Math.min(currentMaxWeek, 36);
-        const deficit = expectedYtd - ytd;
+        const std = stdMap.get(p.id) ?? 0;
+        const expectedStd = freq * Math.min(currentMaxWeek, 36);
+        const deficit = expectedStd - std;
         const ballsBrought = ballMap.get(p.id) ?? 0;
         const weeksPlayed = Object.keys(weeklyMap.get(p.id) ?? {}).length;
 
@@ -134,8 +134,8 @@ export async function GET(request: NextRequest) {
           frequency: p.contractedFrequency,
           skillLevel: p.skillLevel,
           soloShareLevel: p.soloShareLevel,
-          ytd,
-          expectedYtd,
+          std,
+          expectedStd,
           deficit,
           ballsBrought,
           weeksPlayed,

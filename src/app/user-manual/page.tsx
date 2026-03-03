@@ -964,8 +964,8 @@ export default function UserManualPage() {
                   Separate reports for Don&apos;s Group and Solo Group.
                 </li>
                 <li>
-                  Per-player metrics: games played YTD, expected YTD, deficit, balls brought
-                  (slot 1 count), YTD cap, and skill level summary.
+                  Per-player metrics: games played STD (season total), expected STD, deficit, balls brought
+                  (slot 1 count), and skill level summary.
                 </li>
               </ul>
 
