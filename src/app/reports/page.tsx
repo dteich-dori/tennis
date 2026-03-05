@@ -8,6 +8,7 @@ import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
+import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
 
 interface Season {
   id: number;
@@ -117,7 +118,7 @@ export default function ReportsPage() {
         setGenerating(null);
         return;
       }
-      const data = (await res.json()) as { stats: unknown[]; currentMaxWeek: number };
+      const data = (await res.json()) as { stats: unknown[]; currentMaxWeek: number; incompleteGameCount?: number };
 
       if (!data.stats || data.stats.length === 0) {
         setError("No player statistics available for this group.");
@@ -125,7 +126,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group, season.totalWeeks ?? 36);
+      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group, season.totalWeeks ?? 36, data.incompleteGameCount ?? 0);
     } catch {
       setError("Failed to generate Player Statistics report.");
     }
@@ -310,6 +311,34 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleCompositionReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("composition");
+
+    try {
+      const res = await fetch(`/api/games/composition?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to load composition data.");
+        setGenerating(null);
+        return;
+      }
+      const data = await res.json();
+
+      if (!data.compositions || data.totalGames === 0) {
+        setError("No complete games found for composition analysis. Assign players to games first.");
+        setGenerating(null);
+        return;
+      }
+
+      generateCompositionPdf(data);
+    } catch {
+      setError("Failed to generate Composition Analysis report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -441,6 +470,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "pairingMatrix" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Composition Analysis Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Composition Analysis</h2>
+          <p className="text-sm text-muted mb-4">
+            Skill-level composition of all completed games (e.g. AAAB, AABB). Includes A+C combination detail.
+          </p>
+          <button
+            onClick={handleCompositionReport}
+            disabled={generating === "composition"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "composition" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
 

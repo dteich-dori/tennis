@@ -113,6 +113,20 @@ export async function GET(request: NextRequest) {
     // Solo share frequency mapping
     const soloShareFreqMap: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
 
+    // Count incomplete games (normal games with fewer than 4 assignments)
+    const incompleteRows = await database
+      .select({
+        gameId: games.id,
+        assignmentCount: sql<number>`count(${gameAssignments.id})`.as("assignmentCount"),
+      })
+      .from(games)
+      .leftJoin(gameAssignments, eq(gameAssignments.gameId, games.id))
+      .where(gameFilter)
+      .groupBy(games.id)
+      .having(sql`count(${gameAssignments.id}) < 4`);
+
+    const incompleteGameCount = incompleteRows.length;
+
     // Build stats
     const stats = allPlayers
       .sort((a, b) => a.lastName.localeCompare(b.lastName))
@@ -146,6 +160,7 @@ export async function GET(request: NextRequest) {
       stats,
       currentMaxWeek,
       totalPlayers: allPlayers.length,
+      incompleteGameCount,
     });
   } catch (err) {
     console.error("[games/stats GET] error:", err);

@@ -238,6 +238,13 @@ export default function UserManualPage() {
                   and player assignments.
                 </li>
                 <li>
+                  <span className="font-semibold">Regeneration resets the season to 36 base weeks.</span>{" "}
+                  If makeup weeks (37, 38) were previously added, totalWeeks and endDate are reset
+                  back to the 36-week baseline. You must re-add makeup weeks manually via the{" "}
+                  <span className="font-semibold">Add Makeup Week</span> button after regenerating.
+                  This prevents auto-assigning players to extra weeks that require manual scheduling.
+                </li>
+                <li>
                   Games are numbered sequentially across the entire season.
                 </li>
               </ul>
@@ -323,10 +330,35 @@ export default function UserManualPage() {
                 can be edited or deleted at any time. The table displays all slots sorted by
                 day, then time, then court number.
               </p>
+
+              <h3 className="font-semibold mb-2">Editing Court Slots (Cascade Updates)</h3>
+              <p className="text-sm leading-relaxed mb-3">
+                When you edit a court slot (change group, time, court number, or day), the change
+                automatically <span className="font-semibold">cascades to all existing games</span>{" "}
+                that match the old slot values. Player assignments are preserved &mdash; you do not
+                need to clear assignments before editing.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-3">
+                <li>
+                  <span className="font-semibold">Change Solo &harr; Don&apos;s</span> &mdash; All
+                  matching games update their group field. Players remain assigned.
+                </li>
+                <li>
+                  <span className="font-semibold">Change time or court number</span> &mdash; All
+                  matching games update accordingly. Assignments stay intact.
+                </li>
+                <li>
+                  <span className="font-semibold">Delete a slot</span> &mdash; Removes only the
+                  court schedule entry. Existing games from that slot remain as orphans (they will
+                  not be regenerated if games are regenerated later).
+                </li>
+              </ul>
               <div className="bg-blue-50 border border-blue-200 rounded px-4 py-3 text-sm">
                 <span className="font-semibold">Tip:</span> Define all court slots before generating
-                games. If you add new slots after game generation, you will need to regenerate games
-                (which removes all existing assignments).
+                games. If you need to <span className="font-semibold">add new</span> slots after
+                game generation, you will need to regenerate games (which removes all existing
+                assignments). However, <span className="font-semibold">editing</span> existing slots
+                cascades automatically without affecting assignments.
               </div>
             </div>
           </section>
@@ -630,7 +662,7 @@ export default function UserManualPage() {
 
               <h3 className="font-semibold mb-2">Step 4: Player Priority Scoring</h3>
               <p className="text-sm leading-relaxed mb-2">
-                Each eligible player receives a priority score used for sorting:
+                Each eligible player receives a priority score used for sorting (in this order):
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
@@ -642,16 +674,23 @@ export default function UserManualPage() {
                   higher priority (frequency &minus; WTD count).
                 </li>
                 <li>
+                  <span className="font-semibold">Pairing Diversity</span> &mdash; The algorithm
+                  loads all historical pairing counts from prior weeks. Candidates who have been
+                  paired <span className="font-semibold">fewer</span> times with the players already
+                  assigned to this game are preferred. This maximizes variety across the season.
+                </li>
+                <li>
                   <span className="font-semibold">Playable Days Left</span> &mdash; Fewer remaining
                   options = higher priority (most constrained players assigned first).
                 </li>
                 <li>
-                  <span className="font-semibold">YTD Deficit</span> &mdash; Higher deficit =
-                  higher priority (expected games &minus; actual YTD count).
+                  <span className="font-semibold">STD Deficit</span> &mdash; Higher deficit =
+                  higher priority (expected games &minus; actual season-to-date count).
                 </li>
                 <li>
-                  <span className="font-semibold">Alphabetical</span> &mdash; Last name as
-                  tiebreaker.
+                  <span className="font-semibold">Random Tiebreaker</span> &mdash; When all other
+                  factors are equal, a random tiebreaker prevents alphabetical bias and improves
+                  pairing variety over time.
                 </li>
               </ul>
 
@@ -663,46 +702,58 @@ export default function UserManualPage() {
                 where most needed before less constrained days.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 6: Game Composition Planning</h3>
+              <h3 className="font-semibold mb-2">Step 6: Skill-Level Composition Rules</h3>
               <p className="text-sm leading-relaxed mb-2">
-                For each day, the algorithm plans game compositions based on skill levels:
+                As each game slot is filled, the algorithm checks the current game composition
+                and applies A/C protection rules to maintain balanced skill levels:
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
-                  <span className="font-semibold">C-only games</span> &mdash; Groups of 4 C-level
-                  players (when enough C players owe games).
+                  <span className="font-semibold">A-protection</span> &mdash; If the game already
+                  contains a C-level player, A-level players are blocked from being added (unless
+                  the game already has 2 B-level players and 0 A-level players, which provides
+                  sufficient buffering).
                 </li>
                 <li>
-                  <span className="font-semibold">Mixed games</span> &mdash; 2 C players + 2 B
-                  players, or 1 C + 3 B for odd remainders.
+                  <span className="font-semibold">C-protection</span> &mdash; If the game already
+                  contains an A-level player, C-level players are blocked from being added (unless
+                  the game already has 2 B-level players and 0 C-level players).
                 </li>
                 <li>
-                  <span className="font-semibold">A/B games</span> &mdash; Remaining games filled
-                  with A and B level players. C players are blocked from A-level pairings; A
-                  players are blocked from mixed games containing C players.
+                  <span className="font-semibold">B &amp; D players</span> &mdash; B and D players
+                  are never blocked by composition rules. They form the bridge between A and C
+                  groups and fill all game types freely.
                 </li>
               </ul>
+              <p className="text-sm leading-relaxed mb-4">
+                These rules are applied per-slot as the game fills, allowing natural groupings to
+                emerge: A/B games, B/C games, all-B games, and (rarely) mixed A+C games when at
+                least 2 B players provide a buffer.
+              </p>
 
-              <h3 className="font-semibold mb-2">Step 7: Three-Pass Assignment</h3>
+              <h3 className="font-semibold mb-2">Step 7: Two-Pass Assignment (No Over-Assignment)</h3>
               <p className="text-sm leading-relaxed mb-2">
-                For each game slot, the algorithm runs three passes to fill all 4 positions:
+                For each game slot, the algorithm runs two passes to fill all 4 positions:
               </p>
               <ol className="list-decimal list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
                   <span className="font-semibold">First-game-only pass</span> &mdash; Only considers
-                  players who have not yet played this week (WTD = 0). This spreads assignments
-                  across the most players possible.
+                  players who have not yet played any Don&apos;s game this week (WTD = 0). This
+                  ensures every contracted player gets at least one game before anyone gets a second.
                 </li>
                 <li>
                   <span className="font-semibold">All-owed pass</span> &mdash; Expands to any player
-                  who still owes games or is a 2+ player.
-                </li>
-                <li>
-                  <span className="font-semibold">Bonus pass</span> &mdash; Allows 2+ frequency
-                  players to take a bonus game on the same day (overrides the one-per-day rule for 2+
-                  players only).
+                  who still owes games (frequency &minus; WTD &gt; 0). For 2+ players, this pass
+                  caps them at their minimum of 2 games per week &mdash; once a 2+ player has
+                  2 games, they are blocked from further automatic assignment.
                 </li>
               </ol>
+              <p className="text-sm leading-relaxed mb-4">
+                There is intentionally <span className="font-semibold">no bonus pass</span>. If no
+                eligible player is found after both passes, the slot is left empty for manual
+                assignment. This prevents over-assignment and keeps bonus/extra games under manual
+                control via the Schedule page&apos;s Bonus and Bonus All modes.
+              </p>
 
               <h3 className="font-semibold mb-2">Step 8: Summary</h3>
               <p className="text-sm leading-relaxed">
@@ -786,9 +837,16 @@ export default function UserManualPage() {
                   Shuffles candidates using the seeded RNG.
                 </li>
                 <li>
-                  Stable-sorts by <span className="font-semibold">deficit</span> descending: (share
-                  level frequency &times; current week) &minus; actual assignments so far. Players
-                  who are most behind their expected pace play first.
+                  Stable-sorts by <span className="font-semibold">normalized deficit</span>{" "}
+                  descending. The raw deficit is (share frequency &times; current week) &minus;
+                  actual assignments. This is then{" "}
+                  <span className="font-semibold">divided by the player&apos;s frequency</span>{" "}
+                  (1.0 for full-share, 0.5 for half-share) so both types compete on equal footing.
+                  Without normalization, full-share players always have larger absolute deficits and
+                  win every tiebreak, causing half-share players to fall behind (e.g., 15 games
+                  instead of 18 over a 36-week season). With normalization, a half-share player who
+                  is 1 game behind (normalized = 2.0) correctly ranks above a full-share player who
+                  is 1 game behind (normalized = 1.0).
                 </li>
                 <li>
                   Assigns the top candidate and updates their assignment count and date tracking.
@@ -954,9 +1012,17 @@ export default function UserManualPage() {
                   Solo games are shown in orange. Holiday games show the holiday name.
                 </li>
                 <li>
-                  9:00 AM games are highlighted in fluorescent yellow.
+                  Early games (9:00 AM) are highlighted with a pale yellow background for
+                  easy identification.
                 </li>
               </ul>
+
+              <h3 className="font-semibold mb-2">Games By Player</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A per-player listing showing every game assignment for the season. Each entry
+                includes the date, time, court number, and co-players. Useful for distributing
+                individual schedules to players.
+              </p>
 
               <h3 className="font-semibold mb-2">Player Statistics</h3>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
@@ -970,14 +1036,43 @@ export default function UserManualPage() {
               </ul>
 
               <h3 className="font-semibold mb-2">Pairing Matrix</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li>
+                  An N&times;N grid showing how many Don&apos;s group games each pair of players shared.
+                </li>
+                <li>
+                  <span className="font-semibold">Color-coded bands</span> indicate pairing
+                  frequency: green (low) &rarr; yellow &rarr; orange &rarr; red (high), making it
+                  easy to spot over-paired or under-paired combinations at a glance.
+                </li>
+                <li>
+                  Do-not-pair violations are highlighted in red.
+                </li>
+              </ul>
+
+              <h3 className="font-semibold mb-2">Composition Analysis</h3>
               <p className="text-sm leading-relaxed mb-4">
-                An N&times;N grid showing how many Don&apos;s group games each pair of players shared.
-                Do-not-pair violations are highlighted in red.
+                Shows the skill-level composition breakdown of all completed games (e.g., AABB,
+                ABBB, BBCC, BBBC). Includes detail on A+C combination occurrences to help
+                evaluate whether composition rules are working as intended.
               </p>
 
               <h3 className="font-semibold mb-2">Players List</h3>
               <p className="text-sm leading-relaxed mb-4">
                 A printable roster of all active contract players and substitutes with contact info.
+              </p>
+
+              <h3 className="font-semibold mb-2">Potential Players</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A planning report listing all players and subs with their skill level, contract
+                type, and blocked days. Useful for next-season planning and evaluating player
+                availability patterns.
+              </p>
+
+              <h3 className="font-semibold mb-2">Court Schedule</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A printable PDF of the weekly court layout showing all days, times, court numbers,
+                and group assignments (Don&apos;s or Solo).
               </p>
 
               <h3 className="font-semibold mb-2">Extra Games</h3>

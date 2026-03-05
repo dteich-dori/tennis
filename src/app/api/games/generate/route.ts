@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, seasons, holidays, courtSchedules } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 /**
  * POST /api/games/generate
@@ -54,8 +54,25 @@ export async function POST(request: NextRequest) {
     // 4. Delete any existing games for this season (regeneration)
     await database.delete(games).where(eq(games.seasonId, seasonId));
 
-    // 5. Generate games
+    // 5. Reset to base 36 weeks (extra weeks must be added manually via Add Week)
+    const BASE_WEEKS = 36;
     const startDate = new Date(season.startDate + "T00:00:00");
+
+    // Recalculate end date based on 36 weeks
+    const baseEndDate = new Date(startDate);
+    baseEndDate.setDate(baseEndDate.getDate() + (BASE_WEEKS * 7) - 1);
+    const baseEndDateStr = formatDate(baseEndDate);
+
+    // Update season back to 36 weeks
+    await database
+      .update(seasons)
+      .set({
+        totalWeeks: BASE_WEEKS,
+        endDate: baseEndDateStr,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(seasons.id, seasonId));
+
     const gamesToInsert: {
       gameNumber: number;
       seasonId: number;
@@ -71,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     let gameNumber = 1;
 
-    const totalWeeks = season.totalWeeks ?? 36;
+    const totalWeeks = BASE_WEEKS;
 
     for (let week = 1; week <= totalWeeks; week++) {
       // Calculate the Monday of this week
@@ -88,9 +105,8 @@ export async function POST(request: NextRequest) {
 
         const dateStr = formatDate(gameDate);
 
-        // Check if this date is within the season range
-        const endDate = new Date(season.endDate + "T00:00:00");
-        if (gameDate > endDate) continue;
+        // Check if this date is within the season range (using reset base end date)
+        if (gameDate > baseEndDate) continue;
 
         // Determine status
         const isHoliday = holidayDates.has(dateStr);

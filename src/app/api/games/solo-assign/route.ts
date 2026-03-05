@@ -370,8 +370,10 @@ export async function POST(request: NextRequest) {
             return true;
           });
 
-          // Shuffle first, then stable-sort by deficit so equal-deficit
-          // players are randomized instead of always alphabetical
+          // Shuffle first, then stable-sort by normalized deficit so
+          // half-share and full-share players compete on equal footing.
+          // Without normalization, full-share players always have larger
+          // absolute deficits and win tiebreakers, starving half-share players.
           const shuffled = shuffle([...candidates]);
           const sorted = shuffled.sort((a, b) => {
             const aFreq = a.soloShareLevel === "full" ? 1.0 : 0.5;
@@ -382,7 +384,11 @@ export async function POST(request: NextRequest) {
             const bActual = assignmentCounts.get(b.id) ?? 0;
             const aDeficit = aExpected - aActual;
             const bDeficit = bExpected - bActual;
-            return bDeficit - aDeficit;
+            // Normalize by frequency: missing 1 of 18 (half) is proportionally
+            // worse than missing 1 of 36 (full), so half-share gets priority
+            const aNormalized = aDeficit / aFreq;
+            const bNormalized = bDeficit / bFreq;
+            return bNormalized - aNormalized;
           });
 
           if (sorted.length > 0) {

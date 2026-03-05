@@ -24,7 +24,8 @@ export function generatePlayerStatsPdf(
   season: Season,
   currentMaxWeek: number,
   group: "dons" | "solo",
-  totalWeeks = 36
+  totalWeeks = 36,
+  incompleteGameCount = 0
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -60,13 +61,30 @@ export function generatePlayerStatsPdf(
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
     doc.text(`Through Week ${currentMaxWeek} of ${totalWeeks}`, pageWidth / 2, 72, { align: "center" });
+
+    // STD legend + optional incomplete count on same line
+    doc.setFontSize(8);
+    if (group === "dons" && incompleteGameCount > 0) {
+      const stdPart = "STD = Season Totals          ";
+      const incompletePart = `Incomplete Games: ${incompleteGameCount}`;
+      const totalWidth = doc.getTextWidth(stdPart + incompletePart);
+      const startX = (pageWidth - totalWidth) / 2;
+      doc.text(stdPart, startX, 84);
+      doc.setTextColor(180, 0, 0);
+      doc.text(incompletePart, startX + doc.getTextWidth(stdPart), 84);
+      doc.setTextColor(100, 100, 100);
+    } else {
+      doc.text("STD = Season Totals", pageWidth / 2, 84, { align: "center" });
+    }
+
     doc.setTextColor(0, 0, 0);
   }
 
   // Draw header on first page
   drawPageHeader();
 
-  let currentY = 88;
+  const contentStartY = 98;
+  let currentY = contentStartY;
 
   // --- Column layout ---
   const columns = group === "dons"
@@ -115,7 +133,7 @@ export function generatePlayerStatsPdf(
     if (currentY + 50 > pageHeight - 40) {
       doc.addPage();
       drawPageHeader();
-      currentY = 88;
+      currentY = contentStartY;
     }
 
     // Section title
@@ -138,7 +156,7 @@ export function generatePlayerStatsPdf(
       if (currentY + rowHeight > pageHeight - 40) {
         doc.addPage();
         drawPageHeader();
-        currentY = 88;
+        currentY = contentStartY;
         drawTableHeader();
       }
 
@@ -190,7 +208,7 @@ export function generatePlayerStatsPdf(
     if (currentY + rowHeight > pageHeight - 40) {
       doc.addPage();
       drawPageHeader();
-      currentY = 88;
+      currentY = contentStartY;
       drawTableHeader();
     }
 
@@ -271,7 +289,7 @@ export function generatePlayerStatsPdf(
     if (currentY + 100 > pageHeight - 40) {
       doc.addPage();
       drawPageHeader();
-      currentY = 88;
+      currentY = contentStartY;
     }
 
     doc.setFontSize(12);
