@@ -134,7 +134,7 @@ export function generateGamesByDatePdf(
     }
     isFirstPage = false;
     drawPageHeader();
-    currentY = 48;
+    currentY = 44;
     weeksOnPage = 0;
   }
 
@@ -172,9 +172,9 @@ export function generateGamesByDatePdf(
     const dates = Array.from(byDate.keys()).sort();
 
     // Estimate space needed for this week
-    // Only 1 table header row per week (not per day), saves vertical space
+    // First day heading is merged with week header to save vertical space
     const estimatedHeight = dateHeaderHeight + tableHeaderHeight +
-      weekGames.length * rowHeight + dates.length * dateHeaderHeight + 8;
+      weekGames.length * rowHeight + (dates.length - 1) * dateHeaderHeight + 8;
 
     // Check if we need a new page (2 weeks per page)
     if (weeksOnPage >= 2 || (currentY > 0 && currentY + estimatedHeight > pageHeight - 40)) {
@@ -183,43 +183,40 @@ export function generateGamesByDatePdf(
       startNewPage();
     }
 
-    // Week header
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Week ${weekNum}`, marginLeft, currentY + 11);
-    currentY += dateHeaderHeight;
-
     for (let dateIdx = 0; dateIdx < dates.length; dateIdx++) {
       const date = dates[dateIdx];
       const dateGames = byDate.get(date)!;
       const dow = dateGames[0].dayOfWeek;
       const isFirstDate = dateIdx === 0;
 
-      // Check space for date header + (table header if first) + at least 1 row
+      // Check space for header + column header (if first/page-break) + at least 1 row
       const neededForHeader = dateHeaderHeight + (isFirstDate ? tableHeaderHeight : 0) + rowHeight;
       if (currentY + neededForHeader > pageHeight - 40) {
         startNewPage();
-        // Reprint week header on new page
+        // Combined week + day header on new page
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 11);
+        doc.setTextColor(0, 0, 0);
+        const contLabel = isFirstDate ? `Week ${weekNum}` : `Week ${weekNum} (cont.)`;
+        doc.text(`${contLabel} \u2014 ${DAYS[dow]} ${formatDisplayDate(date)}`, marginLeft, currentY + 11);
         currentY += dateHeaderHeight;
-        // Always draw column header after a page break
         drawTableHeaderRow();
-      }
-
-      // Date subheader
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(80, 80, 80);
-      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 10);
-      doc.setTextColor(0, 0, 0);
-      currentY += dateHeaderHeight - 2;
-
-      // Column header row only for the first date of the week (Monday covers the rest)
-      if (isFirstDate) {
+      } else if (isFirstDate) {
+        // Combined week + first day header on one line
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Week ${weekNum} \u2014 ${DAYS[dow]} ${formatDisplayDate(date)}`, marginLeft, currentY + 11);
+        currentY += dateHeaderHeight;
         drawTableHeaderRow();
+      } else {
+        // Subsequent date subheader
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(80, 80, 80);
+        doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 10);
+        doc.setTextColor(0, 0, 0);
+        currentY += dateHeaderHeight - 2;
       }
 
       // Game rows
@@ -234,7 +231,8 @@ export function generateGamesByDatePdf(
           startNewPage();
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
-          doc.text(`Week ${weekNum} (cont.)`, marginLeft, currentY + 11);
+          doc.setTextColor(0, 0, 0);
+          doc.text(`Week ${weekNum} (cont.) \u2014 ${DAYS[dow]} ${formatDisplayDate(date)}`, marginLeft, currentY + 11);
           currentY += dateHeaderHeight;
           drawTableHeaderRow();
           doc.setFont("helvetica", "normal");

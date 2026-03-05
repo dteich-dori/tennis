@@ -176,6 +176,27 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleRenumberGames = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("renumber");
+
+    try {
+      const res = await fetch(`/api/games/renumber?seasonId=${season.id}`, { method: "POST" });
+      if (!res.ok) {
+        setError("Failed to renumber games.");
+        setGenerating(null);
+        return;
+      }
+      const data = (await res.json()) as { totalGames: number };
+      setError(`Games renumbered successfully (${data.totalGames} games).`);
+    } catch {
+      setError("Failed to renumber games.");
+    }
+
+    setGenerating(null);
+  };
+
   const handlePairingMatrixReport = async () => {
     if (!season) return;
     setError("");
@@ -415,6 +436,13 @@ export default function ReportsPage() {
               className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
             >
               {generating === "gamesByDate-worksheet" ? "Generating..." : "Worksheet"}
+            </button>
+            <button
+              onClick={handleRenumberGames}
+              disabled={generating === "renumber"}
+              className="border border-border text-sm px-4 py-2 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+            >
+              {generating === "renumber" ? "Renumbering..." : "Renumber"}
             </button>
           </div>
         </div>
