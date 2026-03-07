@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `no_early_games` integer DEFAULT false NOT NULL;

@@ -17,6 +17,7 @@ interface SoloPlayerData {
   firstName: string;
   lastName: string;
   soloShareLevel: string; // "full" or "half"
+  noEarlyGames: boolean;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -175,6 +176,7 @@ export async function POST(request: NextRequest) {
       firstName: p.firstName,
       lastName: p.lastName,
       soloShareLevel: p.soloShareLevel!,
+      noEarlyGames: p.noEarlyGames,
       blockedDays: blockedByPlayer.get(p.id) ?? [],
       vacations: vacsByPlayer.get(p.id) ?? [],
       doNotPair: dnpByPlayer.get(p.id) ?? [],
@@ -286,6 +288,7 @@ export async function POST(request: NextRequest) {
         // Check if designated can play ANY game this week
         const designatedCanPlayAny = weekGames.some((g) => {
           if (designated.blockedDays.includes(g.dayOfWeek)) return false;
+          if (designated.noEarlyGames && g.startTime < "10:00") return false;
           if (
             designated.vacations.some(
               (v) => g.date >= v.startDate && g.date <= v.endDate
@@ -301,6 +304,7 @@ export async function POST(request: NextRequest) {
           // Fallback to partner
           const fallbackCanPlayAny = weekGames.some((g) => {
             if (fallback.blockedDays.includes(g.dayOfWeek)) return false;
+            if (fallback.noEarlyGames && g.startTime < "10:00") return false;
             if (
               fallback.vacations.some(
                 (v) => g.date >= v.startDate && g.date <= v.endDate
@@ -349,6 +353,9 @@ export async function POST(request: NextRequest) {
 
             // Blocked day
             if (p.blockedDays.includes(game.dayOfWeek)) return false;
+
+            // No early games
+            if (p.noEarlyGames && game.startTime < "10:00") return false;
 
             // On vacation
             if (

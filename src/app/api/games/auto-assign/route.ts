@@ -12,6 +12,7 @@ interface PlayerData {
   skillLevel: string;
   isDerated: boolean;
   noConsecutiveDays: boolean;
+  noEarlyGames: boolean;
   soloShareLevel: string | null;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
@@ -327,6 +328,9 @@ export async function POST(request: NextRequest) {
 
         // Blocked day
         if (p.blockedDays.includes(game.dayOfWeek)) return false;
+
+        // No early games
+        if (p.noEarlyGames && game.startTime < "10:00") return false;
 
         // Vacation
         if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;

@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
       skillLevel,
       noConsecutiveDays,
       isDerated,
+      noEarlyGames,
       soloShareLevel,
       blockedDays,
       vacations,
@@ -200,6 +201,7 @@ export async function POST(request: NextRequest) {
         skillLevel: skillLevel ?? "C",
         noConsecutiveDays: noConsecutiveDays ?? false,
         isDerated: isDerated ?? false,
+        noEarlyGames: noEarlyGames ?? false,
         soloShareLevel,
       })
       .returning();
@@ -274,6 +276,7 @@ export async function PUT(request: NextRequest) {
       skillLevel,
       noConsecutiveDays,
       isDerated,
+      noEarlyGames,
       soloShareLevel,
       blockedDays,
       vacations,
@@ -309,6 +312,7 @@ export async function PUT(request: NextRequest) {
       skillLevel: skillLevel ?? currentPlayer.skillLevel,
       noConsecutiveDays: noConsecutiveDays !== undefined ? noConsecutiveDays : currentPlayer.noConsecutiveDays,
       isDerated: isDerated !== undefined ? isDerated : currentPlayer.isDerated,
+      noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
       soloShareLevel: soloShareLevel !== undefined ? soloShareLevel : currentPlayer.soloShareLevel,
     };
 

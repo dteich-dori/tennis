@@ -87,7 +87,8 @@ export function generateGamesByDatePdf(
 
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 40, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 38, { align: "center" });
+    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 46, { align: "center" });
   }
 
   // Column layout: Game# | Time | Ct | Group | Player1 🎾 | Player2 | Player3 | Player4
@@ -384,12 +385,14 @@ export function generateGamesByDateWorksheetPdf(
 
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 50, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 48, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 58, { align: "center" });
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text(`Week ${weekNum}`, marginLeft, 70);
+    doc.text(`Week ${weekNum}`, marginLeft, 72);
   }
 
   // Column layout — wider rows for write-in space
@@ -460,7 +463,7 @@ export function generateGamesByDateWorksheetPdf(
     }
     isFirstPage = false;
     drawPageHeader(weekNum);
-    currentY = 74;
+    currentY = 76;
 
     // Group by date
     const byDate = new Map<string, Game[]>();
@@ -479,7 +482,7 @@ export function generateGamesByDateWorksheetPdf(
       if (currentY + dateHeaderHeight + tableHeaderHeight + totalRowHeight > pageHeight - 40) {
         doc.addPage();
         drawPageHeader(weekNum);
-        currentY = 74;
+        currentY = 76;
       }
 
       // Date subheader

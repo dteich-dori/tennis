@@ -9,4 +9,5 @@ export const emailSettings = sqliteTable("email_settings", {
   fromName: text("from_name").notNull().default("Tennis Club"),
   replyTo: text("reply_to").notNull().default(""),
   testEmail: text("test_email").notNull().default(""),
+  questionnaireUrl: text("questionnaire_url").notNull().default(""),
 });

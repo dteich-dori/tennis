@@ -46,7 +46,9 @@ export function generatePlayersListPdf(
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 58, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 56, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 66, { align: "center" });
   }
 
   // Draw header on first page

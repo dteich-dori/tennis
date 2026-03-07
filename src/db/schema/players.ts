@@ -16,6 +16,7 @@ export const players = sqliteTable("players", {
   skillLevel: text("skill_level").notNull().default("C"), // "A", "B", "C", "D"
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   isDerated: integer("is_derated", { mode: "boolean" }).notNull().default(false),
+  noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
   soloShareLevel: text("solo_share_level"), // "full", "half", or null
 });
 

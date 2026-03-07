@@ -49,6 +49,7 @@ export default function CommunicationsPage() {
   const [fromName, setFromName] = useState("Tennis Club");
   const [replyTo, setReplyTo] = useState("");
   const [testEmail, setTestEmail] = useState("");
+  const [questionnaireUrl, setQuestionnaireUrl] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
 
   // Compose
@@ -83,10 +84,11 @@ export default function CommunicationsPage() {
   // Load settings
   const loadSettings = useCallback(async (seasonId: number) => {
     const res = await fetch(`/api/communications/settings?seasonId=${seasonId}`);
-    const data = (await res.json()) as { fromName: string; replyTo: string; testEmail: string };
+    const data = (await res.json()) as { fromName: string; replyTo: string; testEmail: string; questionnaireUrl: string };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
     setTestEmail(data.testEmail || "");
+    setQuestionnaireUrl(data.questionnaireUrl || "");
   }, []);
 
   // Load recipients for selected group
@@ -131,7 +133,7 @@ export default function CommunicationsPage() {
     const res = await fetch("/api/communications/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail }),
+      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, questionnaireUrl }),
     });
     if (res.ok) {
       setSettingsMessage("Settings saved.");
@@ -328,6 +330,16 @@ export default function CommunicationsPage() {
                 />
               </div>
             </div>
+            <div className="mt-3">
+              <label className="block text-xs font-medium mb-1">Questionnaire URL (Google Forms)</label>
+              <input
+                type="url"
+                value={questionnaireUrl}
+                onChange={(e) => setQuestionnaireUrl(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                placeholder="https://docs.google.com/forms/d/e/..."
+              />
+            </div>
             <div className="mt-3 flex items-center gap-3">
               <button
                 onClick={handleSaveSettings}
@@ -399,27 +411,44 @@ export default function CommunicationsPage() {
             )}
           </div>
 
-          {/* Load template dropdown */}
-          {templates.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium mb-1">Load Template</label>
-              <select
-                className="border border-border rounded px-3 py-1.5 text-sm w-64"
-                value=""
-                onChange={(e) => {
-                  const t = templates.find((t) => t.id === parseInt(e.target.value));
-                  if (t) handleLoadTemplate(t);
-                }}
-              >
-                <option value="">— Select a template —</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Load template / Send Questionnaire */}
+          <div className="flex items-end gap-4">
+            {templates.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Load Template</label>
+                <select
+                  className="border border-border rounded px-3 py-1.5 text-sm w-64"
+                  value=""
+                  onChange={(e) => {
+                    const t = templates.find((t) => t.id === parseInt(e.target.value));
+                    if (t) handleLoadTemplate(t);
+                  }}
+                >
+                  <option value="">— Select a template —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                if (!questionnaireUrl.trim()) {
+                  alert("Please set a Questionnaire URL in Email Settings first.");
+                  return;
+                }
+                setSubject("Brooklake Tennis \u2014 Player Questionnaire");
+                setMessageBody(
+                  `Please take a moment to fill out the following questionnaire:\n\n${questionnaireUrl}\n\nThank you!`
+                );
+              }}
+              className="px-4 py-1.5 border border-primary text-primary rounded text-sm hover:bg-blue-50 transition-colors"
+            >
+              Send Questionnaire
+            </button>
+          </div>
 
           {/* Subject */}
           <div>

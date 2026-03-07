@@ -18,6 +18,7 @@ interface Player {
   skillLevel: string;
   noConsecutiveDays: boolean;
   isDerated: boolean;
+  noEarlyGames: boolean;
   soloShareLevel: string | null;
   soloPairId: number | null;
   blockedDays: number[];
@@ -47,6 +48,7 @@ const emptyPlayer = {
   skillLevel: "C",
   noConsecutiveDays: false,
   isDerated: false,
+  noEarlyGames: false,
   soloShareLevel: "",
   soloPairId: null as number | null,
   blockedDays: [] as number[],
@@ -133,6 +135,7 @@ export default function PlayersPage() {
       skillLevel: player.skillLevel,
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
+      noEarlyGames: player.noEarlyGames,
       soloShareLevel: player.soloShareLevel ?? "",
       soloPairId: player.soloPairId ?? null,
       blockedDays: player.blockedDays,
@@ -284,6 +287,7 @@ export default function PlayersPage() {
       isActive: boolean | null;
       isDerated: boolean | null;
       noConsecutiveDays: boolean | null;
+      noEarlyGames: boolean | null;
       blockedDays: number[];
       vacations: { startDate: string; endDate: string }[];
       doNotPairNames: string[];
@@ -347,6 +351,7 @@ export default function PlayersPage() {
         isActive: null,
         isDerated: null,
         noConsecutiveDays: null,
+        noEarlyGames: null,
         blockedDays: [],
         vacations: [],
         doNotPairNames: [],
@@ -354,7 +359,8 @@ export default function PlayersPage() {
 
       if (isFullBackup) {
         // columns: 0=Last, 1=First, 2=Cell, 3=Home, 4=Email, 5=Skill, 6=Freq,
-        //          7=Solo Share, 8=Solo Pair, 9=Active, 10=Derated, 11=No Consec, 12=Blocked, 13=Vacations, 14=DoNotPair
+        //          7=Solo Share, 8=Solo Pair, 9=Active, 10=Derated, 11=No Consec,
+        //          12=No Early Games, 13=Blocked, 14=Vacations, 15=DoNotPair
         const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
         const skill = fields[5] ?? "";
@@ -382,12 +388,16 @@ export default function PlayersPage() {
         if (noConsec === "yes") player.noConsecutiveDays = true;
         else if (noConsec === "no") player.noConsecutiveDays = false;
 
-        const blockedStr = fields[12] ?? "";
+        const noEarly = (fields[12] ?? "").toLowerCase();
+        if (noEarly === "yes") player.noEarlyGames = true;
+        else if (noEarly === "no") player.noEarlyGames = false;
+
+        const blockedStr = fields[13] ?? "";
         if (blockedStr) {
           player.blockedDays = blockedStr.split(";").map((d) => DAY_MAP[d.trim()]).filter((d) => d !== undefined);
         }
 
-        const vacStr = fields[13] ?? "";
+        const vacStr = fields[14] ?? "";
         if (vacStr) {
           player.vacations = vacStr.split(";").map((v) => {
             const parts = v.trim().split(" to ");
@@ -397,7 +407,7 @@ export default function PlayersPage() {
           }).filter((v): v is { startDate: string; endDate: string } => v !== null);
         }
 
-        const dnpStr = fields[14] ?? "";
+        const dnpStr = fields[15] ?? "";
         if (dnpStr) {
           player.doNotPairNames = dnpStr.split(";").map((n) => n.trim()).filter(Boolean);
         }
@@ -468,7 +478,7 @@ export default function PlayersPage() {
       return val;
     };
 
-    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Share,Solo Pair,Active,Derated,No Consecutive Days,Blocked Days,Vacations,Does Not Play With";
+    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Share,Solo Pair,Active,Derated,No Consecutive Days,No Early Games,Blocked Days,Vacations,Does Not Play With";
     const rows = sortedPlayers.map((p) => {
       const blockedDays = p.blockedDays.map((d) => FULL_DAYS[d]).join("; ") || "";
       const vacations = p.vacations.map((v) => `${v.startDate} to ${v.endDate}`).join("; ") || "";
@@ -500,6 +510,7 @@ export default function PlayersPage() {
         p.isActive ? "Yes" : "No",
         p.isDerated ? "Yes" : "No",
         p.noConsecutiveDays ? "Yes" : "No",
+        p.noEarlyGames ? "Yes" : "No",
         esc(blockedDays),
         esc(vacations),
         esc(doNotPair),
@@ -721,6 +732,14 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, isDerated: e.target.checked })}
                 />
                 Derated
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.noEarlyGames}
+                  onChange={(e) => setForm({ ...form, noEarlyGames: e.target.checked })}
+                />
+                No early games
               </label>
             </div>
           </div>

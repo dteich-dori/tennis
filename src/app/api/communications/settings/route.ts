@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         fromName: "Tennis Club",
         replyTo: "",
         testEmail: "",
+        questionnaireUrl: "",
       });
     }
 
@@ -42,8 +43,9 @@ export async function PUT(request: NextRequest) {
       fromName: string;
       replyTo: string;
       testEmail: string;
+      questionnaireUrl: string;
     };
-    const { seasonId, fromName, replyTo, testEmail } = body;
+    const { seasonId, fromName, replyTo, testEmail, questionnaireUrl } = body;
 
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
@@ -61,7 +63,7 @@ export async function PUT(request: NextRequest) {
       // Update
       const result = await database
         .update(emailSettings)
-        .set({ fromName, replyTo, testEmail })
+        .set({ fromName, replyTo, testEmail, questionnaireUrl })
         .where(eq(emailSettings.seasonId, seasonId))
         .returning();
       return NextResponse.json(result[0]);
@@ -69,7 +71,7 @@ export async function PUT(request: NextRequest) {
       // Insert
       const result = await database
         .insert(emailSettings)
-        .values({ seasonId, fromName, replyTo, testEmail })
+        .values({ seasonId, fromName, replyTo, testEmail, questionnaireUrl })
         .returning();
       return NextResponse.json(result[0], { status: 201 });
     }

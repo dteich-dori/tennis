@@ -140,7 +140,9 @@ export function generateGamesByPlayerPdf(
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 50, { align: "center" });
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 48, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 58, { align: "center" });
   }
 
   function startNewPage() {
@@ -149,7 +151,7 @@ export function generateGamesByPlayerPdf(
     }
     isFirstPage = false;
     drawPageHeader();
-    currentY = 62;
+    currentY = 68;
   }
 
   function drawTableHeaderRow() {

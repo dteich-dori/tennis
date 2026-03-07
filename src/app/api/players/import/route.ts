@@ -18,6 +18,7 @@ interface ImportPlayer {
   isActive?: boolean | null;
   isDerated?: boolean | null;
   noConsecutiveDays?: boolean | null;
+  noEarlyGames?: boolean | null;
   blockedDays?: number[];
   vacations?: { startDate: string; endDate: string }[];
   doNotPairNames?: string[];
@@ -101,6 +102,9 @@ export async function POST(request: NextRequest) {
           if (p.noConsecutiveDays !== null && p.noConsecutiveDays !== undefined && p.noConsecutiveDays !== current.noConsecutiveDays) {
             updates.noConsecutiveDays = p.noConsecutiveDays;
           }
+          if (p.noEarlyGames !== null && p.noEarlyGames !== undefined && p.noEarlyGames !== current.noEarlyGames) {
+            updates.noEarlyGames = p.noEarlyGames;
+          }
         }
 
         if (Object.keys(updates).length > 0) {
@@ -145,6 +149,7 @@ export async function POST(request: NextRequest) {
           skillLevel: (isFullBackup && p.skillLevel) || "C",
           noConsecutiveDays: isFullBackup && p.noConsecutiveDays !== null && p.noConsecutiveDays !== undefined ? p.noConsecutiveDays : false,
           isDerated: isFullBackup && p.isDerated !== null && p.isDerated !== undefined ? p.isDerated : false,
+          noEarlyGames: isFullBackup && p.noEarlyGames !== null && p.noEarlyGames !== undefined ? p.noEarlyGames : false,
           soloShareLevel: isFullBackup ? (p.soloShareLevel || null) : null,
         }).returning();
 
