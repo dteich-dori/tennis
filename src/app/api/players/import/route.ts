@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerSoloPairs } from "@/db/schema";
+import { players, playerBlockedDays, playerVacations, playerDoNotPair } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
 
@@ -13,8 +13,7 @@ interface ImportPlayer {
   // Full backup fields (optional — only present when importing our own CSV export)
   skillLevel?: string | null;
   contractedFrequency?: string | null;
-  soloShareLevel?: string | null;
-  soloPairName?: string | null;
+  soloGames?: number | null;
   isActive?: boolean | null;
   isDerated?: boolean | null;
   noConsecutiveDays?: boolean | null;
@@ -90,8 +89,8 @@ export async function POST(request: NextRequest) {
           if (p.contractedFrequency && p.contractedFrequency !== current.contractedFrequency) {
             updates.contractedFrequency = p.contractedFrequency;
           }
-          if (p.soloShareLevel !== undefined) {
-            updates.soloShareLevel = p.soloShareLevel;
+          if (p.soloGames !== undefined) {
+            updates.soloGames = p.soloGames || null;
           }
           if (p.isActive !== null && p.isActive !== undefined && p.isActive !== current.isActive) {
             updates.isActive = p.isActive;
@@ -150,7 +149,7 @@ export async function POST(request: NextRequest) {
           noConsecutiveDays: isFullBackup && p.noConsecutiveDays !== null && p.noConsecutiveDays !== undefined ? p.noConsecutiveDays : false,
           isDerated: isFullBackup && p.isDerated !== null && p.isDerated !== undefined ? p.isDerated : false,
           noEarlyGames: isFullBackup && p.noEarlyGames !== null && p.noEarlyGames !== undefined ? p.noEarlyGames : false,
-          soloShareLevel: isFullBackup ? (p.soloShareLevel || null) : null,
+          soloGames: isFullBackup ? (p.soloGames || null) : null,
         }).returning();
 
         const newPlayer = result[0];
@@ -174,8 +173,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Second pass (full backup only): restore do-not-pair and solo pairs
-    // These need all players to exist first so we can resolve names → IDs
+    // Second pass (full backup only): restore do-not-pair
     if (isFullBackup) {
       for (const p of importPlayers) {
         const nameKey = `${p.lastName.toLowerCase()}, ${p.firstName.toLowerCase()}`;
@@ -194,36 +192,6 @@ export async function POST(request: NextRequest) {
             await database.insert(playerDoNotPair).values(
               dnpIds.map((pairedId) => ({ playerId, pairedPlayerId: pairedId }))
             );
-          }
-        }
-
-        // Restore solo pair (name is "LastName, FirstName")
-        if (p.soloPairName) {
-          const partnerId = playerIdByName.get(p.soloPairName.toLowerCase());
-          if (partnerId) {
-            // Check if pair already exists (since pairs are bidirectional,
-            // we only create it once — when processing the first of the two partners)
-            const existingPair = await database
-              .select()
-              .from(playerSoloPairs)
-              .where(
-                and(
-                  eq(playerSoloPairs.playerId, playerId),
-                  eq(playerSoloPairs.pairedPlayerId, partnerId)
-                )
-              );
-            if (existingPair.length === 0) {
-              // Remove any existing solo pairs for both players
-              await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, playerId));
-              await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, playerId));
-              await database.delete(playerSoloPairs).where(eq(playerSoloPairs.playerId, partnerId));
-              await database.delete(playerSoloPairs).where(eq(playerSoloPairs.pairedPlayerId, partnerId));
-              // Create bidirectional link
-              await database.insert(playerSoloPairs).values([
-                { playerId, pairedPlayerId: partnerId },
-                { playerId: partnerId, pairedPlayerId: playerId },
-              ]);
-            }
           }
         }
       }

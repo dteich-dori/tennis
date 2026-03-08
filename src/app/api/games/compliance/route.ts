@@ -307,7 +307,7 @@ export async function GET(request: NextRequest) {
       const g = gameMap.get(a.gameId);
       if (!g || g.status !== "normal" || g.group !== "solo") continue;
       const p = playerMap.get(a.playerId);
-      if (p && !p.soloShareLevel) {
+      if (p && !p.soloGames) {
         violations.push({
           rule: "Solo eligibility",
           severity: "error",
@@ -315,7 +315,7 @@ export async function GET(request: NextRequest) {
           gameNumber: g.gameNumber,
           date: g.date,
           playerName: playerName(a.playerId),
-          detail: "No solo share level set but assigned to a solo game",
+          detail: "No solo games target set but assigned to a solo game",
         });
       }
     }
@@ -439,14 +439,11 @@ export async function GET(request: NextRequest) {
       weeklyCount.set(a.playerId, (weeklyCount.get(a.playerId) ?? 0) + 1);
     }
 
-    const soloShareFreq: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
-
     if (group === "solo") {
-      // Solo: only report WTD=0 for full-share players (not partial share)
+      // Solo: report WTD=0 for full-share (36 games) players
       for (const [, p] of playerMap) {
         if (!p.isActive) continue;
-        if (!p.soloShareLevel) continue;
-        if (p.soloShareLevel !== "full") continue; // only full-share players
+        if (!p.soloGames || p.soloGames < 36) continue; // only full-share players
         if (p.contractedFrequency === "0") continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count === 0) {
@@ -457,13 +454,12 @@ export async function GET(request: NextRequest) {
             gameNumber: 0,
             date: "",
             playerName: playerName(p.id),
-            detail: `Solo: full-share player with 0 games this week`,
+            detail: `Solo: full-share player (${p.soloGames} games) with 0 games this week`,
           });
         }
       }
 
-      // Solo: report any STD (season-total) deficit for all solo share players
-      // Compute STD counts for solo games across the entire season
+      // Solo: report STD deficit for all solo players
       const ytdSoloRows = await database
         .select({
           playerId: gameAssignments.playerId,
@@ -487,14 +483,11 @@ export async function GET(request: NextRequest) {
 
       for (const [, p] of playerMap) {
         if (!p.isActive) continue;
-        if (!p.soloShareLevel) continue;
+        if (!p.soloGames) continue;
         if (p.contractedFrequency === "0") continue; // skip subs
-        const freq = soloShareFreq[p.soloShareLevel] ?? 0;
-        if (freq === 0) continue;
-        const expectedYtd = freq * Math.min(wk, 36);
+        const expectedYtd = (p.soloGames / 36) * Math.min(wk, 36);
         const actualYtd = ytdSoloCount.get(p.id) ?? 0;
         if (actualYtd < expectedYtd) {
-          const freqLabel = freq < 1 ? `1 per ${Math.round(1 / freq)} weeks` : `${freq}/week`;
           violations.push({
             rule: "STD deficit",
             severity: "warning",
@@ -502,7 +495,7 @@ export async function GET(request: NextRequest) {
             gameNumber: 0,
             date: "",
             playerName: playerName(p.id),
-            detail: `Solo (${freqLabel}): ${actualYtd} STD games, expected ${expectedYtd}`,
+            detail: `Solo (${p.soloGames} games target): ${actualYtd} STD games, expected ~${Math.round(expectedYtd)}`,
           });
         }
       }

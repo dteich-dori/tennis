@@ -19,8 +19,7 @@ interface Player {
   noConsecutiveDays: boolean;
   isDerated: boolean;
   noEarlyGames: boolean;
-  soloShareLevel: string | null;
-  soloPairId: number | null;
+  soloGames: number | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -49,8 +48,7 @@ const emptyPlayer = {
   noConsecutiveDays: false,
   isDerated: false,
   noEarlyGames: false,
-  soloShareLevel: "",
-  soloPairId: null as number | null,
+  soloGames: null as number | null,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -71,7 +69,7 @@ export default function PlayersPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<
     { firstName: string; lastName: string; cellNumber: string | null; homeNumber: string | null; email: string | null;
-      skillLevel: string | null; contractedFrequency: string | null; soloShareLevel: string | null; soloPairName: string | null;
+      skillLevel: string | null; contractedFrequency: string | null; soloGames: number | null;
       isActive: boolean | null; isDerated: boolean | null; noConsecutiveDays: boolean | null;
       blockedDays: number[]; vacations: { startDate: string; endDate: string }[]; doNotPairNames: string[];
     }[] | null
@@ -136,8 +134,7 @@ export default function PlayersPage() {
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
-      soloShareLevel: player.soloShareLevel ?? "",
-      soloPairId: player.soloPairId ?? null,
+      soloGames: player.soloGames ?? null,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
@@ -171,8 +168,7 @@ export default function PlayersPage() {
       cellNumber: form.cellNumber || null,
       homeNumber: form.homeNumber || null,
       email: form.email || null,
-      soloShareLevel: form.soloShareLevel || null,
-      soloPairId: form.soloShareLevel === "half" ? form.soloPairId : null,
+      soloGames: form.soloGames || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
       doNotPair: form.doNotPair,
     };
@@ -282,8 +278,7 @@ export default function PlayersPage() {
       email: string | null;
       skillLevel: string | null;
       contractedFrequency: string | null;
-      soloShareLevel: string | null;
-      soloPairName: string | null;
+      soloGames: number | null;
       isActive: boolean | null;
       isDerated: boolean | null;
       noConsecutiveDays: boolean | null;
@@ -346,8 +341,7 @@ export default function PlayersPage() {
         email: email || null,
         skillLevel: null,
         contractedFrequency: null,
-        soloShareLevel: null,
-        soloPairName: null,
+        soloGames: null,
         isActive: null,
         isDerated: null,
         noConsecutiveDays: null,
@@ -370,11 +364,12 @@ export default function PlayersPage() {
         if (freq === "Sub") player.contractedFrequency = "0";
         else if (["1", "2", "2+"].includes(freq)) player.contractedFrequency = freq;
 
-        const solo = (fields[7] ?? "").toLowerCase();
-        if (solo === "full" || solo === "half") player.soloShareLevel = solo;
+        const soloRaw = (fields[7] ?? "").trim().toLowerCase();
+        if (soloRaw === "full") player.soloGames = 36;
+        else if (soloRaw === "half") player.soloGames = 18;
+        else { const n = parseInt(soloRaw); if (!isNaN(n) && n >= 1 && n <= 36) player.soloGames = n; }
 
-        const soloPairRaw = fields[8] ?? "";
-        if (soloPairRaw) player.soloPairName = soloPairRaw;
+        // fields[8] was Solo Pair — skip (pairs removed)
 
         const active = (fields[9] ?? "").toLowerCase();
         if (active === "yes") player.isActive = true;
@@ -478,7 +473,7 @@ export default function PlayersPage() {
       return val;
     };
 
-    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Share,Solo Pair,Active,Derated,No Consecutive Days,No Early Games,Blocked Days,Vacations,Does Not Play With";
+    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Games,,Active,Derated,No Consecutive Days,No Early Games,Blocked Days,Vacations,Does Not Play With";
     const rows = sortedPlayers.map((p) => {
       const blockedDays = p.blockedDays.map((d) => FULL_DAYS[d]).join("; ") || "";
       const vacations = p.vacations.map((v) => `${v.startDate} to ${v.endDate}`).join("; ") || "";
@@ -490,12 +485,7 @@ export default function PlayersPage() {
         .filter(Boolean)
         .join("; ") || "";
       const freq = p.contractedFrequency === "0" ? "Sub" : p.contractedFrequency;
-      const solo = p.soloShareLevel
-        ? p.soloShareLevel.charAt(0).toUpperCase() + p.soloShareLevel.slice(1)
-        : "";
-      const soloPair = p.soloPairId
-        ? (() => { const match = players.find((pl) => pl.id === p.soloPairId); return match ? `${match.lastName}, ${match.firstName}` : ""; })()
-        : "";
+      const soloGames = p.soloGames ? String(p.soloGames) : "";
 
       return [
         esc(p.lastName),
@@ -505,8 +495,8 @@ export default function PlayersPage() {
         esc(p.email ?? ""),
         p.skillLevel,
         freq,
-        solo,
-        esc(soloPair),
+        soloGames,
+        "", // placeholder for removed Solo Pair column (maintains column positions)
         p.isActive ? "Yes" : "No",
         p.isDerated ? "Yes" : "No",
         p.noConsecutiveDays ? "Yes" : "No",
@@ -697,16 +687,38 @@ export default function PlayersPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-muted mb-1">Solo Share</label>
-              <select
-                value={form.soloShareLevel}
-                onChange={(e) => setForm({ ...form, soloShareLevel: e.target.value })}
-                className="border border-border rounded px-3 py-2 text-sm w-full"
-              >
-                <option value="">None</option>
-                <option value="full">Full</option>
-                <option value="half">Half</option>
-              </select>
+              <label className="block text-sm text-muted mb-1">Solo Games</label>
+              <div className="flex gap-2">
+                <select
+                  value={form.soloGames === 36 ? "36" : form.soloGames === 18 ? "18" : form.soloGames ? "custom" : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "") setForm({ ...form, soloGames: null });
+                    else if (v === "custom") setForm({ ...form, soloGames: form.soloGames || 1 });
+                    else setForm({ ...form, soloGames: parseInt(v) });
+                  }}
+                  className="border border-border rounded px-3 py-2 text-sm flex-1"
+                >
+                  <option value="">None</option>
+                  <option value="36">Full (36)</option>
+                  <option value="18">Half (18)</option>
+                  <option value="custom">Custom...</option>
+                </select>
+                {form.soloGames !== null && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={36}
+                    value={form.soloGames}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value);
+                      if (!isNaN(n) && n >= 1 && n <= 36) setForm({ ...form, soloGames: n });
+                      else if (e.target.value === "") setForm({ ...form, soloGames: null });
+                    }}
+                    className="border border-border rounded px-3 py-2 text-sm w-20"
+                  />
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4 pt-6">
               <label className="flex items-center gap-2 text-sm">
@@ -878,59 +890,6 @@ export default function PlayersPage() {
             </select>
           </div>
 
-          {/* Solo Pair Partner (only for half-share players) */}
-          {form.soloShareLevel === "half" && (
-            <div className="mb-4">
-              <label className="block text-sm text-muted mb-2">Solo Pair Partner</label>
-              {form.soloPairId ? (() => {
-                const partner = players.find((pl) => pl.id === form.soloPairId);
-                return (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    <span className="inline-flex items-center gap-1 bg-orange-50 border border-orange-200 text-orange-800 rounded px-2 py-0.5 text-xs">
-                      {partner ? `${partner.lastName}, ${partner.firstName}` : `Player #${form.soloPairId}`}
-                      <button
-                        onClick={() => setForm({ ...form, soloPairId: null })}
-                        className="text-orange-500 hover:text-orange-700 font-bold ml-1"
-                      >
-                        x
-                      </button>
-                    </span>
-                  </div>
-                );
-              })() : (
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const selectedId = parseInt(e.target.value);
-                    if (selectedId) {
-                      setForm({ ...form, soloPairId: selectedId });
-                    }
-                  }}
-                  className="border border-border rounded px-3 py-1.5 text-sm w-64"
-                >
-                  <option value="">+ Select partner...</option>
-                  {players
-                    .filter(
-                      (p) =>
-                        p.id !== editingId &&
-                        p.isActive &&
-                        p.soloShareLevel === "half"
-                    )
-                    .sort((a, b) => a.lastName.localeCompare(b.lastName))
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.lastName}, {p.firstName}
-                        {p.soloPairId ? ` (paired with ${players.find((pl) => pl.id === p.soloPairId)?.lastName ?? "?"})` : ""}
-                      </option>
-                    ))}
-                </select>
-              )}
-              <p className="text-xs text-muted mt-1">
-                Half-share players must be paired. The pair alternates odd/even weeks.
-              </p>
-            </div>
-          )}
-
           <div className="flex gap-3">
             <button
               onClick={handleSave}
@@ -992,21 +951,8 @@ export default function PlayersPage() {
                 <td className="px-2 py-1">{player.skillLevel}</td>
                 <td className="px-2 py-1">{player.contractedFrequency === "0" ? "Sub" : player.contractedFrequency}</td>
                 <td className="px-2 py-1">
-                  {player.soloShareLevel
-                    ? (<>
-                        <span className="text-orange-600">{player.soloShareLevel.charAt(0).toUpperCase() + player.soloShareLevel.slice(1)}</span>
-                        {player.soloShareLevel === "half" && player.soloPairId && (() => {
-                          const partner = players.find((p) => p.id === player.soloPairId);
-                          return partner ? (
-                            <span className="text-xs text-muted ml-1" title={`Paired with ${partner.firstName} ${partner.lastName}`}>
-                              ({partner.lastName})
-                            </span>
-                          ) : null;
-                        })()}
-                        {player.soloShareLevel === "half" && !player.soloPairId && (
-                          <span className="text-xs text-red-500 ml-1" title="No pair partner assigned">⚠</span>
-                        )}
-                      </>)
+                  {player.soloGames
+                    ? <span className="text-orange-600">{player.soloGames}</span>
                     : "-"}
                 </td>
                 <td className="px-2 py-1">{player.isActive ? "Yes" : "No"}</td>
@@ -1126,7 +1072,7 @@ export default function PlayersPage() {
                           <>
                             <td className="px-3 py-1.5 border-b border-border">{p.skillLevel ?? ""}</td>
                             <td className="px-3 py-1.5 border-b border-border">{p.contractedFrequency === "0" ? "Sub" : (p.contractedFrequency ?? "")}</td>
-                            <td className="px-3 py-1.5 border-b border-border">{p.soloShareLevel ?? ""}</td>
+                            <td className="px-3 py-1.5 border-b border-border">{p.soloGames ?? ""}</td>
                             <td className="px-3 py-1.5 border-b border-border">{p.isActive === false ? "No" : "Yes"}</td>
                           </>
                         ) : (

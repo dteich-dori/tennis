@@ -13,7 +13,7 @@ interface PlayerData {
   isDerated: boolean;
   noConsecutiveDays: boolean;
   noEarlyGames: boolean;
-  soloShareLevel: string | null;
+  soloGames: number | null;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   doNotPair: number[];

@@ -128,6 +128,7 @@ export function generateGamesByDatePdf(
   let currentY = 0;
   let weeksOnPage = 0;
   let isFirstPage = true;
+  let gameCounter = 0;
 
   function startNewPage() {
     if (!isFirstPage) {
@@ -274,8 +275,9 @@ export function generateGamesByDatePdf(
         let x = marginLeft;
         const textY = currentY + 11;
 
-        // Game #
-        doc.text(String(game.gameNumber), x + 2, textY);
+        // Game # (sequential based on display order)
+        gameCounter++;
+        doc.text(String(gameCounter), x + 2, textY);
         x += colWidths[0];
 
         // Time
@@ -450,6 +452,7 @@ export function generateGamesByDateWorksheetPdf(
 
   let currentY = 0;
   let isFirstPage = true;
+  let gameCounter = 0;
 
   const weeks = Array.from(gamesByWeek.keys()).sort((a, b) => a - b)
     .filter((w) => w >= weekStart && w <= weekEnd);
@@ -562,8 +565,9 @@ export function generateGamesByDateWorksheetPdf(
 
         let x = marginLeft;
 
-        // Game #
-        doc.text(String(game.gameNumber), x + 2, currentY + 9);
+        // Game # (sequential based on display order)
+        gameCounter++;
+        doc.text(String(gameCounter), x + 2, currentY + 9);
         x += colWidths[0];
 
         // Time

@@ -51,7 +51,7 @@ interface Player {
   isActive: boolean;
   contractedFrequency: string;
   skillLevel: string;
-  soloShareLevel: string | null;
+  soloGames: number | null;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   noConsecutiveDays: boolean;
@@ -499,11 +499,10 @@ export default function SchedulePage() {
   };
 
   // Get the effective weekly frequency for a player in a given group
-  // For dons: uses contract frequency. For solo: uses solo share level.
-  const soloShareFreq: Record<string, number> = { full: 1, half: 0.5 };
+  // For dons: uses contract frequency. For solo: uses soloGames / 36.
   const getEffectiveFreq = (player: Player, gameGroup: string): number => {
     if (gameGroup === "solo") {
-      return player.soloShareLevel ? (soloShareFreq[player.soloShareLevel] ?? 0) : 0;
+      return player.soloGames ? player.soloGames / 36 : 0;
     }
     return parseInt(player.contractedFrequency) || 0;
   };
@@ -545,8 +544,8 @@ export default function SchedulePage() {
       // Already playing another game on the same date (one game per day rule)
       if (sameDatePlayerIds.has(p.id)) return false;
 
-      // Solo games require a non-zero solo share
-      if (game.group === "solo" && !p.soloShareLevel) return false;
+      // Solo games require soloGames > 0
+      if (game.group === "solo" && !p.soloGames) return false;
 
       // Day of week blocked
       if (p.blockedDays?.some((bd) => bd === game.dayOfWeek))

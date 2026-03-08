@@ -6,12 +6,13 @@ interface PlayerStat {
   firstName: string;
   frequency: string;
   skillLevel: string;
-  soloShareLevel: string | null;
+  soloGames: number | null;
   std: number;
   expectedStd: number;
   deficit: number;
   ballsBrought: number;
   weeksPlayed: number;
+  fridayCount: number;
 }
 
 interface Season {
@@ -96,10 +97,12 @@ export function generatePlayerStatsPdf(
         { header: "Ball Count", width: tableWidth * 0.20 },
       ]
     : [
-        { header: "Player", width: tableWidth * 0.40 },
-        { header: "Share", width: tableWidth * 0.20 },
-        { header: "STD", width: tableWidth * 0.20 },
-        { header: "Ball Count", width: tableWidth * 0.20 },
+        { header: "Player", width: tableWidth * 0.34 },
+        { header: "Share", width: tableWidth * 0.14 },
+        { header: "STD", width: tableWidth * 0.14 },
+        { header: "Tue", width: tableWidth * 0.12 },
+        { header: "Fri", width: tableWidth * 0.12 },
+        { header: "Ball Count", width: tableWidth * 0.14 },
       ];
 
   const rowHeight = 18;
@@ -172,9 +175,9 @@ export function generatePlayerStatsPdf(
 
       const freq = parseInt(stat.frequency) || 0;
 
-      // For solo group, show solo share level; for dons group, show contract frequency
+      // For solo group, show soloGames target; for dons group, show contract frequency
       const contractValue = group === "solo"
-        ? (stat.soloShareLevel ? stat.soloShareLevel.charAt(0).toUpperCase() + stat.soloShareLevel.slice(1) : "—")
+        ? (stat.soloGames ? String(stat.soloGames) : "—")
         : (freq === 0 ? "Sub" : String(freq));
 
       const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
@@ -191,6 +194,8 @@ export function generatePlayerStatsPdf(
             stat.lastName,
             contractValue,
             String(stat.std),
+            String(stat.std - stat.fridayCount),
+            String(stat.fridayCount),
             String(stat.ballsBrought),
           ];
 
@@ -218,11 +223,9 @@ export function generatePlayerStatsPdf(
     // Compute total for contract/share column
     let contractTotal = "";
     if (group === "solo") {
-      const shareValues: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
-      const totalShare = sectionStats.reduce((sum, s) => {
-        return sum + (s.soloShareLevel ? (shareValues[s.soloShareLevel] ?? 0) : 0);
-      }, 0);
-      contractTotal = String(totalShare % 1 === 0 ? totalShare : totalShare.toFixed(2));
+      const totalGames = sectionStats.reduce((sum, s) => sum + (s.soloGames ?? 0), 0);
+      const totalShares = totalGames / 36;
+      contractTotal = `${totalGames} (${totalShares % 1 === 0 ? totalShares : totalShares.toFixed(1)} shares)`;
     } else {
       const totalContracts = sectionStats.reduce((sum, s) => {
         return sum + (parseInt(s.frequency) || 0);
@@ -257,12 +260,17 @@ export function generatePlayerStatsPdf(
           totalExtra > 0 ? String(totalExtra) : "—",
           String(totalBalls),
         ]
-      : [
-          "Total",
-          contractTotal,
-          String(totalStd),
-          String(totalBalls),
-        ];
+      : (() => {
+          const totalFri = sectionStats.reduce((sum, s) => sum + s.fridayCount, 0);
+          return [
+            "Total",
+            contractTotal,
+            String(totalStd),
+            String(totalStd - totalFri),
+            String(totalFri),
+            String(totalBalls),
+          ];
+        })();
     let tx = marginLeft;
     for (let i = 0; i < columns.length; i++) {
       doc.text(totalsValues[i], tx + 4, currentY + 11);

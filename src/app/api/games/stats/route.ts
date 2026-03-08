@@ -38,9 +38,9 @@ export async function GET(request: NextRequest) {
       .from(players)
       .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
 
-    // For solo group, only include players with a non-null soloShareLevel
+    // For solo group, only include players with soloGames > 0
     const allPlayers = group === "solo"
-      ? allPlayersRaw.filter((p) => p.soloShareLevel != null)
+      ? allPlayersRaw.filter((p) => p.soloGames != null && p.soloGames > 0)
       : allPlayersRaw;
 
     // Get the highest week number that has any assignments (current progress)
@@ -110,8 +110,32 @@ export async function GET(request: NextRequest) {
       weeklyMap.get(row.playerId)![row.weekNumber] = row.count;
     }
 
-    // Solo share frequency mapping
-    const soloShareFreqMap: Record<string, number> = { full: 1, half: 0.5, quarter: 0.25, eighth: 0.125 };
+    // Total weeks in solo season (for frequency calculation)
+    const SOLO_TOTAL_WEEKS = 36;
+
+    // Friday game count per player (solo group only — for Tue/Fri split tracking)
+    const fridayMap = new Map<number, number>();
+    if (group === "solo") {
+      const fridayFilter = and(
+        eq(games.seasonId, sid),
+        eq(games.status, "normal"),
+        eq(games.group, "solo"),
+        eq(games.dayOfWeek, 5) // Friday
+      );
+      const fridayRows = await database
+        .select({
+          playerId: gameAssignments.playerId,
+          count: sql<number>`count(*)`.as("count"),
+        })
+        .from(gameAssignments)
+        .innerJoin(games, eq(gameAssignments.gameId, games.id))
+        .where(fridayFilter)
+        .groupBy(gameAssignments.playerId);
+
+      for (const row of fridayRows) {
+        fridayMap.set(row.playerId, row.count);
+      }
+    }
 
     // Count incomplete games (normal games with fewer than 4 assignments)
     const incompleteRows = await database
@@ -131,12 +155,17 @@ export async function GET(request: NextRequest) {
     const stats = allPlayers
       .sort((a, b) => a.lastName.localeCompare(b.lastName))
       .map((p) => {
-        // Use solo share frequency for solo group, contracted frequency for dons
-        const freq = group === "solo"
-          ? (p.soloShareLevel ? (soloShareFreqMap[p.soloShareLevel] ?? 0) : 0)
-          : (parseInt(p.contractedFrequency) || 0);
+        // Use soloGames target for solo group, contracted frequency for dons
         const std = stdMap.get(p.id) ?? 0;
-        const expectedStd = freq * Math.min(currentMaxWeek, 36);
+        let expectedStd: number;
+        if (group === "solo") {
+          // Expected games proportional to progress through season
+          const soloTarget = p.soloGames ?? 0;
+          expectedStd = (soloTarget / SOLO_TOTAL_WEEKS) * Math.min(currentMaxWeek, SOLO_TOTAL_WEEKS);
+        } else {
+          const freq = parseInt(p.contractedFrequency) || 0;
+          expectedStd = freq * Math.min(currentMaxWeek, 36);
+        }
         const deficit = expectedStd - std;
         const ballsBrought = ballMap.get(p.id) ?? 0;
         const weeksPlayed = Object.keys(weeklyMap.get(p.id) ?? {}).length;
@@ -147,12 +176,13 @@ export async function GET(request: NextRequest) {
           firstName: p.firstName,
           frequency: p.contractedFrequency,
           skillLevel: p.skillLevel,
-          soloShareLevel: p.soloShareLevel,
+          soloGames: p.soloGames,
           std,
           expectedStd,
           deficit,
           ballsBrought,
           weeksPlayed,
+          fridayCount: fridayMap.get(p.id) ?? 0,
         };
       });
 

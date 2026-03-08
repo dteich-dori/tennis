@@ -7,7 +7,6 @@ import {
   playerBlockedDays,
   playerVacations,
   playerDoNotPair,
-  playerSoloPairs,
 } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 
@@ -16,12 +15,11 @@ interface SoloPlayerData {
   id: number;
   firstName: string;
   lastName: string;
-  soloShareLevel: string; // "full" or "half"
+  soloGames: number; // 1-36 target games per season
   noEarlyGames: boolean;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   doNotPair: number[];
-  soloPairId: number | null;
 }
 
 interface GameData {
@@ -113,12 +111,12 @@ export async function POST(request: NextRequest) {
       .from(players)
       .where(and(eq(players.seasonId, seasonId), eq(players.isActive, true)));
 
-    const soloPlayers = allPlayers.filter((p) => p.soloShareLevel);
+    const soloPlayers = allPlayers.filter((p) => p.soloGames && p.soloGames > 0);
     const playerIds = soloPlayers.map((p) => p.id);
 
     if (soloPlayers.length === 0) {
       return NextResponse.json(
-        { error: "No active players with solo share levels found." },
+        { error: "No active players with solo games found." },
         { status: 400 }
       );
     }
@@ -127,7 +125,6 @@ export async function POST(request: NextRequest) {
     let blockedDaysRows: { playerId: number; dayOfWeek: number }[] = [];
     let vacationRows: { playerId: number; startDate: string; endDate: string }[] = [];
     let dnpRows: { playerId: number; pairedPlayerId: number }[] = [];
-    let soloPairRows: { playerId: number; pairedPlayerId: number }[] = [];
 
     if (playerIds.length > 0) {
       blockedDaysRows = await database
@@ -142,10 +139,6 @@ export async function POST(request: NextRequest) {
         .select()
         .from(playerDoNotPair)
         .where(inArray(playerDoNotPair.playerId, playerIds));
-      soloPairRows = await database
-        .select()
-        .from(playerSoloPairs)
-        .where(inArray(playerSoloPairs.playerId, playerIds));
     }
 
     const blockedByPlayer = new Map<number, number[]>();
@@ -166,78 +159,97 @@ export async function POST(request: NextRequest) {
       arr.push(d.pairedPlayerId);
       dnpByPlayer.set(d.playerId, arr);
     }
-    const soloPairMap = new Map<number, number>();
-    for (const sp of soloPairRows) {
-      soloPairMap.set(sp.playerId, sp.pairedPlayerId);
-    }
 
     const soloPlayerData: SoloPlayerData[] = soloPlayers.map((p) => ({
       id: p.id,
       firstName: p.firstName,
       lastName: p.lastName,
-      soloShareLevel: p.soloShareLevel!,
+      soloGames: p.soloGames!,
       noEarlyGames: p.noEarlyGames,
       blockedDays: blockedByPlayer.get(p.id) ?? [],
       vacations: vacsByPlayer.get(p.id) ?? [],
       doNotPair: dnpByPlayer.get(p.id) ?? [],
-      soloPairId: soloPairMap.get(p.id) ?? null,
     }));
 
-    // 4. Validate half-share pairings
-    const halfSharePlayers = soloPlayerData.filter(
-      (p) => p.soloShareLevel === "half"
-    );
-    const unpairedHalf = halfSharePlayers.filter((p) => !p.soloPairId);
-    for (const p of unpairedHalf) {
+    const totalTargetGames = soloPlayerData.reduce((s, p) => s + p.soloGames, 0);
+    log.push({
+      type: "info",
+      message: `Solo players: ${soloPlayerData.length} players, total target games: ${totalTargetGames} (${(totalTargetGames / 36).toFixed(1)} shares).`,
+    });
+    for (const p of soloPlayerData) {
       log.push({
-        type: "warning",
-        message: `${p.firstName} ${p.lastName} is half-share but has no pair partner — skipped.`,
+        type: "info",
+        message: `  ${p.firstName} ${p.lastName}: ${p.soloGames} games`,
       });
     }
 
-    const fullSharePlayers = soloPlayerData.filter(
-      (p) => p.soloShareLevel === "full"
-    );
-    const pairedHalfPlayers = halfSharePlayers.filter((p) => p.soloPairId);
-
-    // Build unique half-share pairs (avoid processing both A->B and B->A)
-    const halfPairs: { playerA: SoloPlayerData; playerB: SoloPlayerData }[] = [];
-    const processedPairIds = new Set<string>();
-    for (const p of pairedHalfPlayers) {
-      const pairKey = [Math.min(p.id, p.soloPairId!), Math.max(p.id, p.soloPairId!)].join("-");
-      if (processedPairIds.has(pairKey)) continue;
-      processedPairIds.add(pairKey);
-      const partner = soloPlayerData.find((sp) => sp.id === p.soloPairId);
-      if (!partner) continue;
-      // Lower ID = Player A (odd weeks), Higher ID = Player B (even weeks)
-      const [playerA, playerB] =
-        p.id < partner.id ? [p, partner] : [partner, p];
-      halfPairs.push({ playerA, playerB });
-    }
-
-    log.push({
-      type: "info",
-      message: `Solo players: ${fullSharePlayers.length} full-share, ${halfPairs.length} half-share pairs, ${unpairedHalf.length} unpaired half-share.`,
-    });
-
-    // 5. Group games by week
+    // 4. Group games by week
     const gamesByWeek = new Map<number, GameData[]>();
     for (const g of allSoloGames) {
       const arr = gamesByWeek.get(g.weekNumber) ?? [];
       arr.push(g);
       gamesByWeek.set(g.weekNumber, arr);
     }
+    const maxWeek = allSoloGames.reduce((m, g) => Math.max(m, g.weekNumber), 0);
 
-    // Track running assignment counts per player (for deficit calculation)
-    const assignmentCounts = new Map<number, number>();
-    // Track which players are assigned on which dates (for one-game-per-day)
-    const playerDatesAssigned = new Map<number, Set<string>>();
+    // 5. Compute per-player day targets for Tue/Fri split
+    // Determine which days have solo games and whether all games on a day are early
+    const dayGameCounts = new Map<number, number>(); // dayOfWeek -> total normal games
+    const dayHasLateGame = new Map<number, boolean>(); // dayOfWeek -> has game >= 10:00
+    for (const g of allSoloGames) {
+      if (g.status !== "normal") continue;
+      dayGameCounts.set(g.dayOfWeek, (dayGameCounts.get(g.dayOfWeek) ?? 0) + 1);
+      if (g.startTime >= "10:00") dayHasLateGame.set(g.dayOfWeek, true);
+    }
+    const soloDays = [...dayGameCounts.keys()].sort(); // e.g. [2, 5] for Tue, Fri
+
+    // Per-player per-day targets
+    const playerDayTargets = new Map<number, Map<number, number>>();
+    for (const p of soloPlayerData) {
+      const playableDays: number[] = [];
+      for (const day of soloDays) {
+        // Can this player play on this day?
+        if (p.blockedDays.includes(day)) continue;
+        // If noEarlyGames and ALL games on this day are before 10am, skip
+        if (p.noEarlyGames && !dayHasLateGame.get(day)) continue;
+        playableDays.push(day);
+      }
+
+      const targets = new Map<number, number>();
+      if (playableDays.length === 0) {
+        // Player can't play any day — they'll get 0 assignments
+        log.push({
+          type: "warning",
+          message: `${p.firstName} ${p.lastName} is blocked on all solo days — will not be assigned.`,
+        });
+      } else if (playableDays.length === 1) {
+        // All games go to the single playable day
+        targets.set(playableDays[0], p.soloGames);
+        log.push({
+          type: "info",
+          message: `${p.firstName} ${p.lastName}: all ${p.soloGames} games on ${DAYS[playableDays[0]]} (only playable day).`,
+        });
+      } else {
+        // Split evenly across playable days
+        const perDay = Math.floor(p.soloGames / playableDays.length);
+        let remainder = p.soloGames - perDay * playableDays.length;
+        for (const day of playableDays) {
+          targets.set(day, perDay + (remainder > 0 ? 1 : 0));
+          if (remainder > 0) remainder--;
+        }
+      }
+      playerDayTargets.set(p.id, targets);
+    }
+
+    // Track running assignment counts
+    const assignmentCounts = new Map<number, number>(); // total per player
+    const dayAssignmentCounts = new Map<number, Map<number, number>>(); // player -> day -> count
+    const playerDatesAssigned = new Map<number, Set<string>>(); // one-game-per-date
 
     let totalAssigned = 0;
     let totalSlots = 0;
 
     // Seeded random for reproducible but varied assignments
-    // Use seasonId as seed so re-running gives the same result
     let rngState = seasonId * 2654435761;
     function nextRandom(): number {
       rngState = (rngState ^ (rngState << 13)) & 0xffffffff;
@@ -246,7 +258,6 @@ export async function POST(request: NextRequest) {
       return (rngState >>> 0) / 4294967296;
     }
 
-    // Shuffle array in-place using Fisher-Yates
     function shuffle<T>(arr: T[]): T[] {
       for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(nextRandom() * (i + 1));
@@ -255,8 +266,7 @@ export async function POST(request: NextRequest) {
       return arr;
     }
 
-    // 6. Process all weeks (derive max from actual games)
-    const maxWeek = allSoloGames.reduce((m, g) => Math.max(m, g.weekNumber), 0);
+    // 6. Process all weeks
     for (let week = 1; week <= maxWeek; week++) {
       const weekGames = (gamesByWeek.get(week) ?? [])
         .filter((g) => g.status === "normal")
@@ -271,67 +281,10 @@ export async function POST(request: NextRequest) {
 
       totalSlots += weekGames.length * 4;
 
-      // Build eligible pool for this week
-      const eligibleThisWeek: SoloPlayerData[] = [];
+      // All solo players are eligible (no pair alternation)
+      const eligibleThisWeek = soloPlayerData;
 
-      // Full-share: always eligible
-      for (const p of fullSharePlayers) {
-        eligibleThisWeek.push(p);
-      }
-
-      // Half-share pairs: determine who is designated this week
-      const isOddWeek = week % 2 === 1;
-      for (const { playerA, playerB } of halfPairs) {
-        const designated = isOddWeek ? playerA : playerB;
-        const fallback = isOddWeek ? playerB : playerA;
-
-        // Check if designated can play ANY game this week
-        const designatedCanPlayAny = weekGames.some((g) => {
-          if (designated.blockedDays.includes(g.dayOfWeek)) return false;
-          if (designated.noEarlyGames && g.startTime < "10:00") return false;
-          if (
-            designated.vacations.some(
-              (v) => g.date >= v.startDate && g.date <= v.endDate
-            )
-          )
-            return false;
-          return true;
-        });
-
-        if (designatedCanPlayAny) {
-          eligibleThisWeek.push(designated);
-        } else {
-          // Fallback to partner
-          const fallbackCanPlayAny = weekGames.some((g) => {
-            if (fallback.blockedDays.includes(g.dayOfWeek)) return false;
-            if (fallback.noEarlyGames && g.startTime < "10:00") return false;
-            if (
-              fallback.vacations.some(
-                (v) => g.date >= v.startDate && g.date <= v.endDate
-              )
-            )
-              return false;
-            return true;
-          });
-
-          if (fallbackCanPlayAny) {
-            eligibleThisWeek.push(fallback);
-            log.push({
-              type: "info",
-              week,
-              message: `${designated.lastName} unavailable week ${week} — ${fallback.lastName} plays instead.`,
-            });
-          } else {
-            log.push({
-              type: "warning",
-              week,
-              message: `Both ${playerA.lastName} and ${playerB.lastName} are blocked/on vacation in week ${week} — pair skipped.`,
-            });
-          }
-        }
-      }
-
-      // Track assignments for this game (for do-not-pair checks within a game)
+      // Track assignments within each game (for do-not-pair)
       const gameAssignmentState = new Map<number, number[]>();
       for (const g of weekGames) {
         gameAssignmentState.set(g.id, []);
@@ -344,58 +297,56 @@ export async function POST(request: NextRequest) {
 
           // Filter candidates
           const candidates = eligibleThisWeek.filter((p) => {
-            // Already in this game
             if (currentAssigned.includes(p.id)) return false;
-
-            // Already assigned to another game on this date
             const dates = playerDatesAssigned.get(p.id);
             if (dates?.has(game.date)) return false;
-
-            // Blocked day
             if (p.blockedDays.includes(game.dayOfWeek)) return false;
-
-            // No early games
             if (p.noEarlyGames && game.startTime < "10:00") return false;
+            if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
 
-            // On vacation
-            if (
-              p.vacations.some(
-                (v) => game.date >= v.startDate && game.date <= v.endDate
-              )
-            )
-              return false;
+            // Check day target: don't exceed this player's target for this day
+            const dayTarget = playerDayTargets.get(p.id)?.get(game.dayOfWeek) ?? 0;
+            const dayActual = dayAssignmentCounts.get(p.id)?.get(game.dayOfWeek) ?? 0;
+            if (dayActual >= dayTarget) return false;
 
-            // Do-not-pair with anyone already in this game (bidirectional)
+            // Also don't exceed total target
+            const totalActual = assignmentCounts.get(p.id) ?? 0;
+            if (totalActual >= p.soloGames) return false;
+
+            // Do-not-pair with anyone already in this game
             for (const assignedId of currentAssigned) {
               if (p.doNotPair.includes(assignedId)) return false;
-              const assignedPlayer = soloPlayerData.find(
-                (sp) => sp.id === assignedId
-              );
+              const assignedPlayer = soloPlayerData.find((sp) => sp.id === assignedId);
               if (assignedPlayer?.doNotPair.includes(p.id)) return false;
             }
-
             return true;
           });
 
-          // Shuffle first, then stable-sort by normalized deficit so
-          // half-share and full-share players compete on equal footing.
-          // Without normalization, full-share players always have larger
-          // absolute deficits and win tiebreakers, starving half-share players.
+          // Sort by normalized deficit (higher deficit = more behind = higher priority)
+          // Then by day-specific deficit as tiebreaker
           const shuffled = shuffle([...candidates]);
           const sorted = shuffled.sort((a, b) => {
-            const aFreq = a.soloShareLevel === "full" ? 1.0 : 0.5;
-            const bFreq = b.soloShareLevel === "full" ? 1.0 : 0.5;
-            const aExpected = aFreq * week;
-            const bExpected = bFreq * week;
+            const aExpected = (a.soloGames / maxWeek) * week;
+            const bExpected = (b.soloGames / maxWeek) * week;
             const aActual = assignmentCounts.get(a.id) ?? 0;
             const bActual = assignmentCounts.get(b.id) ?? 0;
             const aDeficit = aExpected - aActual;
             const bDeficit = bExpected - bActual;
-            // Normalize by frequency: missing 1 of 18 (half) is proportionally
-            // worse than missing 1 of 36 (full), so half-share gets priority
-            const aNormalized = aDeficit / aFreq;
-            const bNormalized = bDeficit / bFreq;
-            return bNormalized - aNormalized;
+            // Normalize so players with different targets compete fairly
+            const aNormalized = (aDeficit * 36) / a.soloGames;
+            const bNormalized = (bDeficit * 36) / b.soloGames;
+            if (Math.abs(bNormalized - aNormalized) > 0.01) {
+              return bNormalized - aNormalized;
+            }
+
+            // Tiebreaker: prefer the player most behind on THIS day
+            const aDayTarget = playerDayTargets.get(a.id)?.get(game.dayOfWeek) ?? 0;
+            const bDayTarget = playerDayTargets.get(b.id)?.get(game.dayOfWeek) ?? 0;
+            const aDayActual = dayAssignmentCounts.get(a.id)?.get(game.dayOfWeek) ?? 0;
+            const bDayActual = dayAssignmentCounts.get(b.id)?.get(game.dayOfWeek) ?? 0;
+            const aDayRatio = aDayTarget > 0 ? aDayActual / aDayTarget : 1;
+            const bDayRatio = bDayTarget > 0 ? bDayActual / bDayTarget : 1;
+            return aDayRatio - bDayRatio; // lower ratio = more behind = higher priority
           });
 
           if (sorted.length > 0) {
@@ -411,10 +362,10 @@ export async function POST(request: NextRequest) {
             // Update tracking
             currentAssigned.push(chosen.id);
             gameAssignmentState.set(game.id, currentAssigned);
-            assignmentCounts.set(
-              chosen.id,
-              (assignmentCounts.get(chosen.id) ?? 0) + 1
-            );
+            assignmentCounts.set(chosen.id, (assignmentCounts.get(chosen.id) ?? 0) + 1);
+            const dayMap = dayAssignmentCounts.get(chosen.id) ?? new Map<number, number>();
+            dayMap.set(game.dayOfWeek, (dayMap.get(game.dayOfWeek) ?? 0) + 1);
+            dayAssignmentCounts.set(chosen.id, dayMap);
             const dates = playerDatesAssigned.get(chosen.id) ?? new Set();
             dates.add(game.date);
             playerDatesAssigned.set(chosen.id, dates);
@@ -430,7 +381,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Summary
+    // 7. Summary with per-player breakdown
     const unfilled = totalSlots - totalAssigned;
     if (unfilled > 0) {
       log.push({
@@ -441,6 +392,20 @@ export async function POST(request: NextRequest) {
       log.push({
         type: "info",
         message: `All ${totalSlots} solo slots filled successfully.`,
+      });
+    }
+
+    // Per-player assignment summary
+    for (const p of soloPlayerData) {
+      const total = assignmentCounts.get(p.id) ?? 0;
+      const dayMap = dayAssignmentCounts.get(p.id) ?? new Map<number, number>();
+      const dayBreakdown = soloDays
+        .map((d) => `${DAYS[d].slice(0, 3)}=${dayMap.get(d) ?? 0}`)
+        .join(", ");
+      const status = total === p.soloGames ? "✓" : total < p.soloGames ? "⚠ under" : "⚠ over";
+      log.push({
+        type: total === p.soloGames ? "info" : "warning",
+        message: `${p.lastName}: ${total}/${p.soloGames} assigned (${dayBreakdown}) ${status}`,
       });
     }
 
