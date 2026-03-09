@@ -138,19 +138,20 @@ export default function CourtsPage() {
     );
     const csv = [header, ...rows].join("\n");
 
-    // Download as a file in the browser
+    // Save to Backup/ directory on server
     setExportMessage("");
     try {
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "court-schedule.csv";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setExportMessage("Court schedule CSV downloaded.");
+      const res = await fetch("/api/export-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "court-schedule.csv", content: csv }),
+      });
+      const data = (await res.json()) as { success?: boolean; filename?: string; error?: string };
+      if (res.ok && data.success) {
+        setExportMessage(`Court schedule CSV saved to Backup/${data.filename}`);
+      } else {
+        setExportMessage(`Export failed: ${data.error ?? "Unknown error"}`);
+      }
     } catch (err) {
       setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
@@ -158,6 +159,38 @@ export default function CourtsPage() {
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
+  };
+
+  // Parse court CSV text (shared by file import and backup import)
+  const parseCourtCsv = (text: string): { dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[] | string => {
+    const lines = text.trim().split("\n").filter((l) => l.trim());
+    const startIdx = lines[0]?.toLowerCase().includes("day") ? 1 : 0;
+    const parsed: { dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[] = [];
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols = lines[i].split(",").map((c) => c.trim());
+      if (cols.length < 4) continue;
+
+      const dayName = cols[0];
+      const dayIdx = DAYS.findIndex(
+        (d) => d.toLowerCase() === dayName.toLowerCase()
+      );
+      if (dayIdx < 0) return `Row ${i + 1}: Unknown day "${dayName}"`;
+
+      const court = parseInt(cols[1]);
+      if (isNaN(court) || court < 1 || court > 6) return `Row ${i + 1}: Invalid court number "${cols[1]}"`;
+
+      const time = cols[2];
+      if (!/^\d{1,2}:\d{2}$/.test(time)) return `Row ${i + 1}: Invalid time format "${cols[2]}"`;
+
+      const groupText = cols[3].toLowerCase();
+      const solo = groupText === "solo";
+
+      parsed.push({ dayOfWeek: dayIdx, courtNumber: court, startTime: time, isSolo: solo });
+    }
+
+    if (parsed.length === 0) return "No valid rows found in CSV file.";
+    return parsed;
   };
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,60 +202,43 @@ export default function CourtsPage() {
     reader.onload = (ev) => {
       try {
         const text = ev.target?.result as string;
-        const lines = text.trim().split("\n").filter((l) => l.trim());
-        // Skip header if first line contains "Day"
-        const startIdx = lines[0]?.toLowerCase().includes("day") ? 1 : 0;
-        const parsed: { dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[] = [];
-
-        for (let i = startIdx; i < lines.length; i++) {
-          const cols = lines[i].split(",").map((c) => c.trim());
-          if (cols.length < 4) continue;
-
-          const dayName = cols[0];
-          const dayIdx = DAYS.findIndex(
-            (d) => d.toLowerCase() === dayName.toLowerCase()
-          );
-          if (dayIdx < 0) {
-            setImportError(`Row ${i + 1}: Unknown day "${dayName}"`);
-            setImportPreview(null);
-            return;
-          }
-
-          const court = parseInt(cols[1]);
-          if (isNaN(court) || court < 1 || court > 6) {
-            setImportError(`Row ${i + 1}: Invalid court number "${cols[1]}"`);
-            setImportPreview(null);
-            return;
-          }
-
-          const time = cols[2];
-          if (!/^\d{1,2}:\d{2}$/.test(time)) {
-            setImportError(`Row ${i + 1}: Invalid time format "${cols[2]}"`);
-            setImportPreview(null);
-            return;
-          }
-
-          const groupText = cols[3].toLowerCase();
-          const solo = groupText === "solo";
-
-          parsed.push({ dayOfWeek: dayIdx, courtNumber: court, startTime: time, isSolo: solo });
-        }
-
-        if (parsed.length === 0) {
-          setImportError("No valid rows found in CSV file.");
+        const result = parseCourtCsv(text);
+        if (typeof result === "string") {
+          setImportError(result);
           setImportPreview(null);
-          return;
+        } else {
+          setImportPreview(result);
         }
-
-        setImportPreview(parsed);
       } catch {
         setImportError("Failed to parse CSV file.");
         setImportPreview(null);
       }
     };
     reader.readAsText(file);
-    // Reset so same file can be re-selected
     e.target.value = "";
+  };
+
+  const handleImportFromBackup = async () => {
+    setImportError("");
+
+    try {
+      const res = await fetch("/api/backup/read?file=court-schedule.csv");
+      const data = (await res.json()) as { content?: string; error?: string };
+      if (!res.ok || !data.content) {
+        setImportError(data.error ?? "No court-schedule.csv found in Backup folder.");
+        return;
+      }
+
+      const result = parseCourtCsv(data.content);
+      if (typeof result === "string") {
+        setImportError(result);
+        setImportPreview(null);
+      } else {
+        setImportPreview(result);
+      }
+    } catch {
+      setImportError("Failed to read from Backup folder.");
+    }
   };
 
   const handleImportConfirm = async () => {
@@ -389,6 +405,12 @@ export default function CourtsPage() {
           className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
         >
           Import CSV
+        </button>
+        <button
+          onClick={handleImportFromBackup}
+          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+        >
+          Import from Backup
         </button>
         {sortedCourts.length > 0 && (
           <button

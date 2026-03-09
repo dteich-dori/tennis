@@ -173,9 +173,17 @@ export default function CommunicationsPage() {
       const data = (await res.json()) as { success?: boolean; recipientCount?: number; error?: string; warnings?: string[] };
 
       if (data.success) {
-        setSendMessage(`Email sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? "s" : ""}.`);
         if (data.warnings && data.warnings.length > 0) {
-          setSendMessage((prev) => prev + ` Warnings: ${data.warnings!.join("; ")}`);
+          if (data.recipientCount === 0) {
+            // All failed — show as error
+            setSendError(`All emails failed to send.\n${data.warnings.join("\n")}`);
+          } else {
+            // Partial success
+            setSendMessage(`Email sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? "s" : ""}.`);
+            setSendError(`Some emails failed:\n${data.warnings.join("\n")}`);
+          }
+        } else {
+          setSendMessage(`Email sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? "s" : ""}.`);
         }
         // Refresh history
         loadHistory(season.id);
@@ -497,7 +505,7 @@ export default function CommunicationsPage() {
             </p>
           )}
           {sendError && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 whitespace-pre-line">
               {sendError}
             </p>
           )}

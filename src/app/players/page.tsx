@@ -257,17 +257,11 @@ export default function PlayersPage() {
     );
   }
 
-  const handleCsvFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !season) return;
-    setImportMessage("");
-
-    const text = await file.text();
+  // Parse CSV text into player rows (shared by file import and backup import)
+  const parsePlayerCsv = (text: string): { parsed: typeof importPreview; isFullBackup: boolean } | null => {
     // Remove BOM if present
     const clean = text.replace(/^\uFEFF/, "");
     const lines = clean.split(/\r?\n/);
-
-    // Skip header row
     const dataLines = lines.slice(1);
 
     interface ParsedPlayer {
@@ -289,15 +283,12 @@ export default function PlayersPage() {
     }
 
     const parsed: ParsedPlayer[] = [];
-
-    // Detect if this is a full backup CSV (has our header) or a simple 5-column CSV
     const headerLine = lines[0]?.toLowerCase() ?? "";
     const isFullBackup = headerLine.includes("skill") && headerLine.includes("frequency");
 
     for (const line of dataLines) {
       if (!line.trim()) continue;
 
-      // Simple CSV parse that handles quoted fields
       const fields: string[] = [];
       let current = "";
       let inQuotes = false;
@@ -321,14 +312,12 @@ export default function PlayersPage() {
 
       const [lastName, firstName, cell, home, email] = fields;
 
-      // Skip non-player rows (HOLIDAY, GAME, placeholder, empty names)
       if (!lastName || !firstName) continue;
       const upperLast = lastName.replace(/[^A-Za-z]/g, "").toUpperCase();
       if (upperLast === "HOLIDAY" || upperLast === "GAME" || upperLast === "TBD") continue;
       if (firstName.toUpperCase() === "TBD" || firstName.toUpperCase() === "OPEN") continue;
       if (/^<+\d+>+$/.test(lastName.trim())) continue;
 
-      // Clean special chars (■, `) from names
       const cleanLast = lastName.replace(/[■`]/g, "").trim();
       const cleanFirst = firstName.replace(/[■`]/g, "").trim();
       if (!cleanLast || !cleanFirst) continue;
@@ -352,9 +341,6 @@ export default function PlayersPage() {
       };
 
       if (isFullBackup) {
-        // columns: 0=Last, 1=First, 2=Cell, 3=Home, 4=Email, 5=Skill, 6=Freq,
-        //          7=Solo Share, 8=Solo Pair, 9=Active, 10=Derated, 11=No Consec,
-        //          12=No Early Games, 13=Blocked, 14=Vacations, 15=DoNotPair
         const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
         const skill = fields[5] ?? "";
@@ -368,8 +354,6 @@ export default function PlayersPage() {
         if (soloRaw === "full") player.soloGames = 36;
         else if (soloRaw === "half") player.soloGames = 18;
         else { const n = parseInt(soloRaw); if (!isNaN(n) && n >= 1 && n <= 36) player.soloGames = n; }
-
-        // fields[8] was Solo Pair — skip (pairs removed)
 
         const active = (fields[9] ?? "").toLowerCase();
         if (active === "yes") player.isActive = true;
@@ -411,17 +395,53 @@ export default function PlayersPage() {
       parsed.push(player);
     }
 
-    if (parsed.length === 0) {
+    if (parsed.length === 0) return null;
+    return { parsed, isFullBackup };
+  };
+
+  const handleCsvFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !season) return;
+    setImportMessage("");
+
+    const text = await file.text();
+    const result = parsePlayerCsv(text);
+    if (!result) {
       setImportMessage("No valid player rows found in the CSV file.");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    // Show preview modal instead of window.confirm
-    setImportPreview(parsed);
-    setImportIsFullBackup(isFullBackup);
+    setImportPreview(result.parsed);
+    setImportIsFullBackup(result.isFullBackup);
     setImportFileName(file.name);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleImportFromBackup = async () => {
+    if (!season) return;
+    setImportMessage("");
+
+    try {
+      const res = await fetch("/api/backup/read?file=players.csv");
+      const data = (await res.json()) as { content?: string; filename?: string; error?: string };
+      if (!res.ok || !data.content) {
+        setImportMessage(data.error ?? "No players.csv found in Backup folder.");
+        return;
+      }
+
+      const result = parsePlayerCsv(data.content);
+      if (!result) {
+        setImportMessage("No valid player rows found in Backup/players.csv.");
+        return;
+      }
+
+      setImportPreview(result.parsed);
+      setImportIsFullBackup(result.isFullBackup);
+      setImportFileName("Backup/players.csv");
+    } catch {
+      setImportMessage("Failed to read from Backup folder.");
+    }
   };
 
   const handleImportConfirm = async () => {
@@ -509,19 +529,20 @@ export default function PlayersPage() {
 
     const csv = [header, ...rows].join("\n");
 
-    // Download as a file in the browser
+    // Save to Backup/ directory on server
     setExportMessage("");
     try {
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "players.csv";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setExportMessage("Players CSV downloaded.");
+      const res = await fetch("/api/export-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "players.csv", content: csv }),
+      });
+      const data = (await res.json()) as { success?: boolean; filename?: string; error?: string };
+      if (res.ok && data.success) {
+        setExportMessage(`Players CSV saved to Backup/${data.filename}`);
+      } else {
+        setExportMessage(`Export failed: ${data.error ?? "Unknown error"}`);
+      }
     } catch (err) {
       setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
@@ -567,6 +588,12 @@ export default function PlayersPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
           >
             Import CSV
+          </button>
+          <button
+            onClick={handleImportFromBackup}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+          >
+            Import from Backup
           </button>
           {players.length > 0 && (
             <button

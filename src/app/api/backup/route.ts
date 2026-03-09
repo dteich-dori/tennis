@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import * as schema from "@/db/schema";
+import { getBackupDir } from "@/lib/getBackupDir";
+import path from "path";
+import fs from "fs";
 
 // Convert an array of objects to CSV string
 function toCsv(rows: Record<string, unknown>[]): string {
@@ -42,6 +45,7 @@ export async function POST() {
       emailTemplatesData,
       emailLogData,
       emailSettingsData,
+      appSettingsData,
     ] = await Promise.all([
       d.select().from(schema.seasons),
       d.select().from(schema.players),
@@ -57,6 +61,7 @@ export async function POST() {
       d.select().from(schema.emailTemplates),
       d.select().from(schema.emailLog),
       d.select().from(schema.emailSettings),
+      d.select().from(schema.appSettings),
     ]);
 
     // Build CSV data for each table
@@ -75,11 +80,28 @@ export async function POST() {
       "email-templates": toCsv(emailTemplatesData),
       "email-log": toCsv(emailLogData),
       "email-settings": toCsv(emailSettingsData),
+      "app-settings": toCsv(appSettingsData),
     };
+
+    // Save CSVs to timestamped subdirectory in Backup/
+    const now = new Date();
+    const datePart = now.toISOString().split("T")[0];
+    const timePart = now.toTimeString().split(" ")[0].replace(/:/g, "_");
+    const folderName = `${datePart}_${timePart}`;
+    const baseDir = await getBackupDir();
+    const backupDir = path.join(baseDir, folderName);
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    for (const [name, csv] of Object.entries(tables)) {
+      if (csv) {
+        fs.writeFileSync(path.join(backupDir, `${name}.csv`), csv, "utf-8");
+      }
+    }
 
     return NextResponse.json({
       success: true,
       tables,
+      backupFolder: folderName,
       counts: {
         players: playersData.length,
         courtSchedules: courtSchedulesData.length,

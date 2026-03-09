@@ -353,6 +353,202 @@ export function generateGamesByDatePdf(
 }
 
 
+// --- Solo-only report: flat condensed table, no week/date headers ---
+
+export function generateSoloGamesByDatePdf(
+  games: Game[],
+  players: Player[],
+  season: Season
+): void {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "pt",
+    format: "letter",
+  });
+
+  const startYear = season.startDate.substring(0, 4);
+  const endYear = season.endDate.substring(0, 4);
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginLeft = 30;
+  const marginRight = 30;
+  const tableWidth = pageWidth - marginLeft - marginRight;
+
+  const title = `Games By Date \u2014 Brooklake Solo Group ${startYear} - ${endYear}`;
+
+  function drawPageHeader() {
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text(title, pageWidth / 2, 28, { align: "center" });
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 38, { align: "center" });
+    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 46, { align: "center" });
+  }
+
+  // Columns: Date | Game# | Time | Ct | Player 1-4
+  const colWidths = [
+    tableWidth * 0.13,  // Date
+    tableWidth * 0.06,  // Game#
+    tableWidth * 0.07,  // Time
+    tableWidth * 0.04,  // Ct
+    tableWidth * 0.175, // Player 1 (*)
+    tableWidth * 0.175, // Player 2
+    tableWidth * 0.175, // Player 3
+    tableWidth * 0.175, // Player 4
+  ];
+  const colHeaders = ["Date", "Game", "Time", "Ct", "Player 1 (*)", "Player 2", "Player 3", "Player 4"];
+
+  const rowHeight = 14;
+  const tableHeaderHeight = 15;
+
+  // Filter to solo normal games, sorted by date → time → court
+  const soloGames = games
+    .filter((g) => g.group === "solo" && g.status === "normal")
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
+      return a.courtNumber - b.courtNumber;
+    });
+
+  let currentY = 0;
+  let isFirstPage = true;
+  let prevDate = "";
+  let rowCounter = 0;
+
+  function startNewPage() {
+    if (!isFirstPage) {
+      doc.addPage();
+    }
+    isFirstPage = false;
+    drawPageHeader();
+    currentY = 50;
+    drawTableHeaderRow();
+  }
+
+  function drawTableHeaderRow() {
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setFillColor(240, 240, 240);
+    doc.rect(marginLeft, currentY, tableWidth, tableHeaderHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.rect(marginLeft, currentY, tableWidth, tableHeaderHeight, "S");
+
+    let x = marginLeft;
+    for (let i = 0; i < colHeaders.length; i++) {
+      doc.text(colHeaders[i], x + 2, currentY + 11);
+      x += colWidths[i];
+    }
+    currentY += tableHeaderHeight;
+  }
+
+  startNewPage();
+
+  for (const game of soloGames) {
+    // Page break check
+    if (currentY + rowHeight > pageHeight - 30) {
+      prevDate = "";
+      rowCounter = 0;
+      startNewPage();
+    }
+
+    const isEarlyGame = game.startTime < "10:00";
+    const showDate = game.date !== prevDate;
+    prevDate = game.date;
+
+    // Alternating row background (reset counter on new date for visual grouping)
+    if (showDate) rowCounter = 0;
+
+    if (isEarlyGame) {
+      doc.setFillColor(255, 255, 200);
+      doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
+    } else if (rowCounter % 2 === 1) {
+      doc.setFillColor(248, 248, 248);
+      doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
+    }
+
+    // Row border
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.3);
+    doc.rect(marginLeft, currentY, tableWidth, rowHeight, "S");
+
+    if (isEarlyGame) {
+      doc.setTextColor(80, 80, 0);
+    } else {
+      doc.setTextColor(0, 0, 0);
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+
+    let x = marginLeft;
+    const textY = currentY + 10;
+
+    // Date — only show on first row of each date
+    if (showDate) {
+      const dow = DAYS[game.dayOfWeek].substring(0, 3);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${dow} ${formatDisplayDate(game.date)}`, x + 2, textY);
+      doc.setFont("helvetica", "normal");
+    }
+    x += colWidths[0];
+
+    // Game # (from the general report numbering)
+    doc.text(String(game.gameNumber), x + 2, textY);
+    x += colWidths[1];
+
+    // Time
+    doc.text(game.startTime, x + 2, textY);
+    x += colWidths[2];
+
+    // Court
+    doc.text(String(game.courtNumber), x + 2, textY);
+    x += colWidths[3];
+
+    // Player slots 1-4
+    for (let slot = 1; slot <= 4; slot++) {
+      const assignment = game.assignments.find((a) => a.slotPosition === slot);
+      const name = assignment ? getPlayerName(assignment.playerId, players) : "\u2014";
+      doc.text(name, x + 2, textY);
+      x += colWidths[3 + slot];
+    }
+
+    doc.setTextColor(0, 0, 0);
+    currentY += rowHeight;
+    rowCounter++;
+  }
+
+  // --- Footer on every page ---
+  const totalPages = doc.getNumberOfPages();
+  const now = new Date();
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const dayName = dayNames[now.getDay()];
+  const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")}/${now.getFullYear()}`;
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const preparedText = `Prepared: ${dayName}, ${dateStr} ${timeStr}`;
+  const footerY = pageHeight - 20;
+
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(130, 130, 130);
+    doc.text(preparedText, marginLeft, footerY);
+    doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const pdfBlob = doc.output("blob");
+  const url = URL.createObjectURL(pdfBlob);
+  window.open(url, "_blank");
+}
+
+
 // --- Worksheet report: 1 week per page with write-in space ---
 
 export function generateGamesByDateWorksheetPdf(

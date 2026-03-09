@@ -98,41 +98,40 @@ export async function POST(request: NextRequest) {
     const resend = new Resend(apiKey);
     const fromAddress = `${fromName} <onboarding@resend.dev>`;
 
-    // Build email list for batch sending
-    const emails = recipients
-      .filter((r) => r.email)
-      .map((r) => ({
-        from: fromAddress,
-        to: r.email!,
-        reply_to: replyTo || undefined,
-        subject,
-        text: messageBody,
-      }));
+    // Validate and clean email addresses
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const validRecipients: typeof recipients = [];
+    const skipped: string[] = [];
 
-    // Resend batch supports up to 100 emails per call
-    const batchSize = 100;
-    let totalSent = 0;
-    const errors: string[] = [];
-
-    for (let i = 0; i < emails.length; i += batchSize) {
-      const batch = emails.slice(i, i + batchSize);
-
-      if (batch.length === 1) {
-        // Single email - use emails.send
-        const result = await resend.emails.send(batch[0]);
-        if (result.error) {
-          errors.push(`Failed to send to ${batch[0].to}: ${result.error.message}`);
-        } else {
-          totalSent += 1;
-        }
+    for (const r of recipients) {
+      if (!r.email) continue;
+      const cleaned = r.email.replace(/\s/g, ""); // remove spaces
+      if (emailRegex.test(cleaned)) {
+        validRecipients.push({ ...r, email: cleaned });
       } else {
-        // Batch send
-        const result = await resend.batch.send(batch);
-        if (result.error) {
-          errors.push(`Batch error: ${result.error.message}`);
-        } else {
-          totalSent += batch.length;
-        }
+        skipped.push(`${r.firstName} ${r.lastName} (${r.email}): invalid email format`);
+      }
+    }
+
+    // Build email list
+    const emails = validRecipients.map((r) => ({
+      from: fromAddress,
+      to: r.email!,
+      reply_to: replyTo || undefined,
+      subject,
+      text: messageBody,
+    }));
+
+    // Send individually so one bad email doesn't fail the whole batch
+    let totalSent = 0;
+    const errors: string[] = [...skipped];
+
+    for (const email of emails) {
+      const result = await resend.emails.send(email);
+      if (result.error) {
+        errors.push(`${email.to}: ${result.error.message}`);
+      } else {
+        totalSent += 1;
       }
     }
 

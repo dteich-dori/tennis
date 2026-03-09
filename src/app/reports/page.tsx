@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { generatePlayersListPdf } from "@/lib/reports/playersListPdf";
 import { generatePlayerStatsPdf } from "@/lib/reports/playerStatsPdf";
-import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf } from "@/lib/reports/gamesByDatePdf";
+import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf, generateSoloGamesByDatePdf } from "@/lib/reports/gamesByDatePdf";
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
@@ -192,6 +192,41 @@ export default function ReportsPage() {
       setError(`Games renumbered successfully (${data.totalGames} games).`);
     } catch {
       setError("Failed to renumber games.");
+    }
+
+    setGenerating(null);
+  };
+
+  const handleSoloGamesByDateReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("soloByDate");
+
+    try {
+      const [gamesRes, playersRes] = await Promise.all([
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/players?seasonId=${season.id}`),
+      ]);
+
+      if (!gamesRes.ok || !playersRes.ok) {
+        setError("Failed to load data for Solo Games By Date report.");
+        setGenerating(null);
+        return;
+      }
+
+      const allGames = (await gamesRes.json()) as Game[];
+      const allPlayers = (await playersRes.json()) as Player[];
+
+      const soloGames = allGames.filter((g) => g.group === "solo");
+      if (soloGames.length === 0) {
+        setError("No solo games found.");
+        setGenerating(null);
+        return;
+      }
+
+      generateSoloGamesByDatePdf(allGames, allPlayers, season);
+    } catch {
+      setError("Failed to generate Solo Games By Date report.");
     }
 
     setGenerating(null);
@@ -441,8 +476,16 @@ export default function ReportsPage() {
               onClick={handleRenumberGames}
               disabled={generating === "renumber"}
               className="border border-border text-sm px-4 py-2 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+              title="Reassign game numbers sequentially by date and time, filling any gaps from deleted games"
             >
               {generating === "renumber" ? "Renumbering..." : "Renumber"}
+            </button>
+            <button
+              onClick={handleSoloGamesByDateReport}
+              disabled={generating === "soloByDate"}
+              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+            >
+              {generating === "soloByDate" ? "Generating..." : "Solo Only"}
             </button>
           </div>
         </div>

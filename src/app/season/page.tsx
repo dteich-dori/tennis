@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import JSZip from "jszip";
+
 
 interface Season {
   id: number;
@@ -84,6 +84,11 @@ export default function SeasonPage() {
   const [clearingAll, setClearingAll] = useState(false);
   const [clearAllMessage, setClearAllMessage] = useState("");
 
+  // Backup directory settings state
+  const [backupDir, setBackupDir] = useState("Backup");
+  const [backupDirSaving, setBackupDirSaving] = useState(false);
+  const [backupDirMessage, setBackupDirMessage] = useState("");
+
   const loadSeasons = useCallback(async () => {
     const res = await fetch("/api/seasons");
     const data = (await res.json()) as Season[];
@@ -112,9 +117,20 @@ export default function SeasonPage() {
     }
   }, []);
 
+  const loadAppSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/app-settings");
+      const data = (await res.json()) as { backupDir?: string };
+      if (data.backupDir) setBackupDir(data.backupDir);
+    } catch (err) {
+      console.error("Failed to load app settings:", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadSeasons();
-  }, [loadSeasons]);
+    loadAppSettings();
+  }, [loadSeasons, loadAppSettings]);
 
   useEffect(() => {
     if (activeSeason) {
@@ -255,13 +271,14 @@ export default function SeasonPage() {
     }
   };
 
-  // Download a ZIP backup of all database tables
-  const downloadBackup = async (): Promise<boolean> => {
+  // Save a backup of all database tables to Backup/ directory
+  const downloadBackup = async (): Promise<string | false> => {
     try {
       const res = await fetch("/api/backup", { method: "POST" });
       const data = (await res.json()) as {
         success?: boolean;
         tables?: Record<string, string>;
+        backupFolder?: string;
         counts?: { players: number; courtSchedules: number; games: number; assignments: number };
         error?: string;
       };
@@ -269,29 +286,7 @@ export default function SeasonPage() {
         return false;
       }
 
-      const zip = new JSZip();
-      for (const [name, csv] of Object.entries(data.tables)) {
-        if (csv) {
-          zip.file(`${name}.csv`, csv);
-        }
-      }
-
-      const blob = await zip.generateAsync({ type: "blob" });
-      const now = new Date();
-      const datePart = now.toISOString().split("T")[0];
-      const timePart = now.toTimeString().split(" ")[0].replace(/:/g, "");
-      const filename = `tennis-backup-${datePart}_${timePart}.zip`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      return true;
+      return data.backupFolder ?? "Backup";
     } catch {
       return false;
     }
@@ -300,12 +295,36 @@ export default function SeasonPage() {
   const handleDownloadBackup = async () => {
     setBackupDownloading(true);
     setBackupDownloadMessage("");
-    const ok = await downloadBackup();
-    setBackupDownloadMessage(ok ? "Backup downloaded." : "Backup failed.");
+    const result = await downloadBackup();
+    setBackupDownloadMessage(
+      result ? `Backup saved to ${backupDir}/${result}/` : "Backup failed."
+    );
     setBackupDownloading(false);
-    if (ok) {
+    if (result) {
       setTimeout(() => setBackupDownloadMessage(""), 5000);
     }
+  };
+
+  const handleSaveBackupDir = async () => {
+    setBackupDirSaving(true);
+    setBackupDirMessage("");
+    try {
+      const res = await fetch("/api/app-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backupDir }),
+      });
+      const data = (await res.json()) as { backupDir?: string; error?: string };
+      if (!res.ok) {
+        setBackupDirMessage(`Error: ${data.error}`);
+      } else {
+        setBackupDirMessage("Backup directory saved.");
+        setTimeout(() => setBackupDirMessage(""), 3000);
+      }
+    } catch {
+      setBackupDirMessage("Failed to save backup directory.");
+    }
+    setBackupDirSaving(false);
   };
 
   const handleResetSeason = async () => {
@@ -314,13 +333,13 @@ export default function SeasonPage() {
     // Step 1: Download backup
     setResetStatus("backing-up");
     setBackupResult("");
-    const ok = await downloadBackup();
-    if (!ok) {
+    const backupResult = await downloadBackup();
+    if (!backupResult) {
       setResetStatus("error");
-      setBackupResult("Backup download failed. Reset cancelled.");
+      setBackupResult("Backup failed. Reset cancelled.");
       return;
     }
-    setBackupResult("Backup ZIP downloaded.");
+    setBackupResult(`Backup saved to ${backupDir}/${backupResult}/`);
 
     // Step 2: Perform the reset
     setResetStatus("resetting");
@@ -950,6 +969,46 @@ export default function SeasonPage() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Backup Settings */}
+      <div className="border border-border rounded-lg p-6 mb-6">
+        <h2 className="font-semibold mb-4">Backup Settings</h2>
+        <div className="flex gap-4 items-end mb-4">
+          <div className="flex-1">
+            <label className="block text-sm text-muted mb-1">
+              Backup Directory
+            </label>
+            <input
+              type="text"
+              value={backupDir}
+              onChange={(e) => setBackupDir(e.target.value)}
+              placeholder="Backup"
+              className="border border-border rounded px-3 py-2 text-sm w-full"
+            />
+            <p className="text-xs text-muted mt-1">
+              Relative to the project root, or an absolute path (e.g. /Volumes/ExternalDrive/Backups).
+            </p>
+          </div>
+          <button
+            onClick={handleSaveBackupDir}
+            disabled={backupDirSaving}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {backupDirSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+        {backupDirMessage && (
+          <div
+            className={`border rounded px-4 py-2 text-sm ${
+              backupDirMessage.startsWith("Error") || backupDirMessage.startsWith("Failed")
+                ? "bg-red-50 border-red-200 text-red-800"
+                : "bg-green-50 border-green-200 text-green-800"
+            }`}
+          >
+            {backupDirMessage}
           </div>
         )}
       </div>

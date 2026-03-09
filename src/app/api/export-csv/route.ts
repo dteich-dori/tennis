@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBackupDir } from "@/lib/getBackupDir";
 import path from "path";
 import fs from "fs";
 
@@ -17,8 +18,8 @@ export async function POST(request: NextRequest) {
     // Sanitize filename to prevent directory traversal
     const safeName = path.basename(filename);
 
-    // Save to TennisScheduler/Backup directory
-    const backupDir = path.join(process.cwd(), "Backup");
+    // Save to configured backup directory
+    const backupDir = await getBackupDir();
     fs.mkdirSync(backupDir, { recursive: true });
 
     const filePath = path.join(backupDir, safeName);
