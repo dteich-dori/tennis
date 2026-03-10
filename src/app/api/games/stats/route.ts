@@ -113,27 +113,27 @@ export async function GET(request: NextRequest) {
     // Total weeks in solo season (for frequency calculation)
     const SOLO_TOTAL_WEEKS = 36;
 
-    // Friday game count per player (solo group only — for Tue/Fri split tracking)
-    const fridayMap = new Map<number, number>();
+    // Wednesday game count per player (solo group only — for Tue/Wed split tracking)
+    const wednesdayMap = new Map<number, number>();
     if (group === "solo") {
-      const fridayFilter = and(
+      const wednesdayFilter = and(
         eq(games.seasonId, sid),
         eq(games.status, "normal"),
         eq(games.group, "solo"),
-        eq(games.dayOfWeek, 5) // Friday
+        eq(games.dayOfWeek, 3) // Wednesday
       );
-      const fridayRows = await database
+      const wednesdayRows = await database
         .select({
           playerId: gameAssignments.playerId,
           count: sql<number>`count(*)`.as("count"),
         })
         .from(gameAssignments)
         .innerJoin(games, eq(gameAssignments.gameId, games.id))
-        .where(fridayFilter)
+        .where(wednesdayFilter)
         .groupBy(gameAssignments.playerId);
 
-      for (const row of fridayRows) {
-        fridayMap.set(row.playerId, row.count);
+      for (const row of wednesdayRows) {
+        wednesdayMap.set(row.playerId, row.count);
       }
     }
 
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
           deficit,
           ballsBrought,
           weeksPlayed,
-          fridayCount: fridayMap.get(p.id) ?? 0,
+          wednesdayCount: wednesdayMap.get(p.id) ?? 0,
         };
       });
 

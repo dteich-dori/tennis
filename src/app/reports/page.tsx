@@ -295,7 +295,7 @@ export default function ReportsPage() {
 
       generatePotentialPlayersPdf(activePlayers, season, courtSlots);
     } catch {
-      setError("Failed to generate Potential Players report.");
+      setError("Failed to generate Player List Internal report.");
     }
 
     setGenerating(null);
@@ -574,9 +574,9 @@ export default function ReportsPage() {
           </button>
         </div>
 
-        {/* Potential Players Report Card */}
+        {/* Player List Internal Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
-          <h2 className="font-semibold mb-2">Potential Players List</h2>
+          <h2 className="font-semibold mb-2">Player List Internal Report</h2>
           <p className="text-sm text-muted mb-4">
             All players and subs with skill level, contract type, and blocked days for next season planning.
           </p>

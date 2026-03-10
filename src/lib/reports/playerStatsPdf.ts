@@ -12,7 +12,7 @@ interface PlayerStat {
   deficit: number;
   ballsBrought: number;
   weeksPlayed: number;
-  fridayCount: number;
+  wednesdayCount: number;
 }
 
 interface Season {
@@ -101,7 +101,7 @@ export function generatePlayerStatsPdf(
         { header: "Share", width: tableWidth * 0.14 },
         { header: "STD", width: tableWidth * 0.14 },
         { header: "Tue", width: tableWidth * 0.12 },
-        { header: "Fri", width: tableWidth * 0.12 },
+        { header: "Wed", width: tableWidth * 0.12 },
         { header: "Ball Count", width: tableWidth * 0.14 },
       ];
 
@@ -194,8 +194,8 @@ export function generatePlayerStatsPdf(
             stat.lastName,
             contractValue,
             String(stat.std),
-            String(stat.std - stat.fridayCount),
-            String(stat.fridayCount),
+            String(stat.std - stat.wednesdayCount),
+            String(stat.wednesdayCount),
             String(stat.ballsBrought),
           ];
 
@@ -261,13 +261,13 @@ export function generatePlayerStatsPdf(
           String(totalBalls),
         ]
       : (() => {
-          const totalFri = sectionStats.reduce((sum, s) => sum + s.fridayCount, 0);
+          const totalWed = sectionStats.reduce((sum, s) => sum + s.wednesdayCount, 0);
           return [
             "Total",
             contractTotal,
             String(totalStd),
-            String(totalStd - totalFri),
-            String(totalFri),
+            String(totalStd - totalWed),
+            String(totalWed),
             String(totalBalls),
           ];
         })();

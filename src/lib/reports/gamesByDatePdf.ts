@@ -456,17 +456,13 @@ export function generateSoloGamesByDatePdf(
       startNewPage();
     }
 
-    const isEarlyGame = game.startTime < "10:00";
     const showDate = game.date !== prevDate;
     prevDate = game.date;
 
     // Alternating row background (reset counter on new date for visual grouping)
     if (showDate) rowCounter = 0;
 
-    if (isEarlyGame) {
-      doc.setFillColor(255, 255, 200);
-      doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
-    } else if (rowCounter % 2 === 1) {
+    if (rowCounter % 2 === 1) {
       doc.setFillColor(248, 248, 248);
       doc.rect(marginLeft, currentY, tableWidth, rowHeight, "F");
     }
@@ -476,11 +472,7 @@ export function generateSoloGamesByDatePdf(
     doc.setLineWidth(0.3);
     doc.rect(marginLeft, currentY, tableWidth, rowHeight, "S");
 
-    if (isEarlyGame) {
-      doc.setTextColor(80, 80, 0);
-    } else {
-      doc.setTextColor(0, 0, 0);
-    }
+    doc.setTextColor(0, 0, 0);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);

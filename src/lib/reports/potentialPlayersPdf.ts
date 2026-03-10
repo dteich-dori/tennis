@@ -38,7 +38,7 @@ export function generatePotentialPlayersPdf(
   const marginRight = 40;
   const tableWidth = pageWidth - marginLeft - marginRight;
 
-  const title = "Potential 2026-27 Players List";
+  const title = "Player List — Internal Report";
 
   function drawPageHeader() {
     doc.setFontSize(16);
