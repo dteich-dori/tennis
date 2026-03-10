@@ -101,16 +101,12 @@ export default function SchedulePage() {
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
   const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
 
-  // Game explain floating panel state
+  // Game diagnostic floating panel state
   const [explainModal, setExplainModal] = useState<{
     loading: boolean;
     position: { top: number; left: number };
-    mode: "explain" | "incomplete";
-    data: {
-      game: { gameNumber: number; date: string; dayOfWeek: string; startTime: string; courtNumber: number; group: string; weekNumber: number };
-      composition: string;
-      notes: string[];
-    } | null;
+    mode: "incomplete";
+    data: null;
     incompleteData: {
       game: { gameNumber: number; date: string; dayOfWeek: string; startTime: string; courtNumber: number; group: string; weekNumber: number };
       filledSlots: number;
@@ -1312,44 +1308,27 @@ export default function SchedulePage() {
                           }`}
                         >
                           <td className="p-2 text-muted">
-                            {game.assignments.length > 0 || (game.group === "solo" && game.status === "normal") ? (
+                            {game.status === "normal" ? (
                               <button
                                 className={`hover:underline cursor-pointer font-medium ${
-                                  game.assignments.length < 4 && game.group === "solo"
+                                  game.assignments.length < 4
                                     ? "text-red-500 hover:text-red-700"
                                     : "hover:text-primary"
                                 }`}
-                                title={
-                                  game.assignments.length < 4 && game.group === "solo"
-                                    ? "Click to see why this game is incomplete"
-                                    : "Click to see assignment logic"
-                                }
+                                title="Click to see player eligibility diagnostic"
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   const rect = (e.target as HTMLElement).closest("tr")!.getBoundingClientRect();
                                   const top = rect.bottom + window.scrollY + 4;
                                   const left = rect.left + window.scrollX;
 
-                                  if (game.group === "solo" && game.assignments.length < 4) {
-                                    // Incomplete solo game — use diagnostic endpoint
-                                    setExplainModal({ loading: true, position: { top, left }, mode: "incomplete", data: null, incompleteData: null });
-                                    try {
-                                      const res = await fetch(`/api/games/explain-incomplete?gameId=${game.id}`);
-                                      const incompleteData = await res.json();
-                                      setExplainModal({ loading: false, position: { top, left }, mode: "incomplete", data: null, incompleteData });
-                                    } catch {
-                                      setExplainModal(null);
-                                    }
-                                  } else {
-                                    // Normal explain
-                                    setExplainModal({ loading: true, position: { top, left }, mode: "explain", data: null, incompleteData: null });
-                                    try {
-                                      const res = await fetch(`/api/games/explain?gameId=${game.id}`);
-                                      const data = await res.json();
-                                      setExplainModal({ loading: false, position: { top, left }, mode: "explain", data, incompleteData: null });
-                                    } catch {
-                                      setExplainModal(null);
-                                    }
+                                  setExplainModal({ loading: true, position: { top, left }, mode: "incomplete", data: null, incompleteData: null });
+                                  try {
+                                    const res = await fetch(`/api/games/explain-incomplete?gameId=${game.id}`);
+                                    const incompleteData = await res.json();
+                                    setExplainModal({ loading: false, position: { top, left }, mode: "incomplete", data: null, incompleteData });
+                                  } catch {
+                                    setExplainModal(null);
                                   }
                                 }}
                               >
@@ -1824,34 +1803,39 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* Game Explain Floating Panel */}
+      {/* Game Diagnostic Floating Panel */}
       {explainModal && (
         <>
           <div className="fixed inset-0 z-[99]" onClick={() => setExplainModal(null)} />
           <div
-            className={`absolute z-[100] bg-white border border-border rounded-lg shadow-xl overflow-y-auto ${
-              explainModal.mode === "incomplete" ? "w-[420px] max-h-96" : "w-80 max-h-60"
-            }`}
+            className="absolute z-[100] bg-white border border-border rounded-lg shadow-xl overflow-y-auto w-[420px] max-h-96"
             style={{ top: explainModal.position.top, left: explainModal.position.left }}
             onClick={(e) => e.stopPropagation()}
           >
             {explainModal.loading ? (
               <div className="p-4 text-center text-muted text-sm">Loading...</div>
-            ) : explainModal.mode === "incomplete" && explainModal.incompleteData ? (
+            ) : explainModal.incompleteData ? (
               <>
-                <div className="flex justify-between items-start px-3 py-2 border-b border-border bg-red-50 rounded-t-lg">
+                <div className={`flex justify-between items-start px-3 py-2 border-b border-border rounded-t-lg ${
+                  explainModal.incompleteData.emptySlots > 0 ? "bg-red-50" : "bg-gray-50"
+                }`}>
                   <div>
-                    <span className="font-bold text-sm text-red-700">
+                    <span className={`font-bold text-sm ${explainModal.incompleteData.emptySlots > 0 ? "text-red-700" : ""}`}>
                       Game #{explainModal.incompleteData.game.gameNumber}
                     </span>
-                    <span className="text-xs text-red-600 ml-2">
+                    <span className={`text-xs ml-2 ${explainModal.incompleteData.emptySlots > 0 ? "text-red-600" : "text-muted"}`}>
                       {explainModal.incompleteData.filledSlots}/4 slots filled
+                    </span>
+                    <span className="text-xs text-muted ml-2">
+                      ({explainModal.incompleteData.game.group === "solo" ? "Solo" : "Don\u2019s"})
                     </span>
                   </div>
                   <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-sm leading-none ml-2">✕</button>
                 </div>
-                <div className="px-3 py-2 border-b border-border bg-red-50/50">
-                  <div className="text-xs text-red-700 font-medium">{explainModal.incompleteData.message}</div>
+                <div className={`px-3 py-2 border-b border-border ${explainModal.incompleteData.emptySlots > 0 ? "bg-red-50/50" : "bg-gray-50/50"}`}>
+                  <div className={`text-xs font-medium ${explainModal.incompleteData.emptySlots > 0 ? "text-red-700" : "text-gray-700"}`}>
+                    {explainModal.incompleteData.message}
+                  </div>
                   <div className="text-xs text-muted mt-0.5">
                     {explainModal.incompleteData.game.dayOfWeek} {explainModal.incompleteData.game.date}, {explainModal.incompleteData.game.startTime}, Week {explainModal.incompleteData.game.weekNumber}
                   </div>
@@ -1871,21 +1855,6 @@ export default function SchedulePage() {
                         <div key={j} className="text-[11px] text-muted ml-5">{reason}</div>
                       ))}
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : explainModal.mode === "explain" && explainModal.data ? (
-              <>
-                <div className="flex justify-between items-start px-3 py-2 border-b border-border bg-gray-50 rounded-t-lg">
-                  <div>
-                    <span className="font-bold text-sm">Game #{explainModal.data.game.gameNumber}</span>
-                    <span className="text-xs text-muted ml-2">{explainModal.data.composition}</span>
-                  </div>
-                  <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-sm leading-none ml-2">✕</button>
-                </div>
-                <div className="px-3 py-2 space-y-0.5">
-                  {explainModal.data.notes.map((note, i) => (
-                    <div key={i} className={`text-xs ${note.startsWith("⚠️") ? "text-amber-700 font-medium" : "text-muted"}`}>{note}</div>
                   ))}
                 </div>
               </>

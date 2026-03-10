@@ -89,6 +89,11 @@ export default function SeasonPage() {
   const [backupDirSaving, setBackupDirSaving] = useState(false);
   const [backupDirMessage, setBackupDirMessage] = useState("");
 
+  // Weekly game summary
+  const [weeklyContractsSold, setWeeklyContractsSold] = useState<number | null>(null);
+  const [weeklyGamesNeeded, setWeeklyGamesNeeded] = useState<number | null>(null);
+  const [weeklyGamesAvailable, setWeeklyGamesAvailable] = useState<number | null>(null);
+
   const loadSeasons = useCallback(async () => {
     const res = await fetch("/api/seasons");
     const data = (await res.json()) as Season[];
@@ -117,6 +122,33 @@ export default function SeasonPage() {
     }
   }, []);
 
+  const loadWeeklyGameSummary = useCallback(async (seasonId: number) => {
+    try {
+      const [playersRes, courtsRes] = await Promise.all([
+        fetch(`/api/players?seasonId=${seasonId}`),
+        fetch(`/api/courts?seasonId=${seasonId}`),
+      ]);
+      const players = (await playersRes.json()) as { isActive: boolean; contractedFrequency: string }[];
+      const courts = (await courtsRes.json()) as { isSolo: boolean }[];
+
+      // Sum contracted frequencies for active non-sub players (2+ counts as 2)
+      const totalPlayerSlots = players
+        .filter((p) => p.isActive && p.contractedFrequency !== "0")
+        .reduce((sum, p) => {
+          const freq = p.contractedFrequency === "2+" ? 2 : parseInt(p.contractedFrequency) || 0;
+          return sum + freq;
+        }, 0);
+      setWeeklyContractsSold(totalPlayerSlots);
+      setWeeklyGamesNeeded(parseFloat((totalPlayerSlots / 4).toFixed(1)));
+
+      // Count non-solo court slots
+      const donsSlots = courts.filter((c) => !c.isSolo).length;
+      setWeeklyGamesAvailable(donsSlots);
+    } catch (err) {
+      console.error("Failed to load weekly game summary:", err);
+    }
+  }, []);
+
   const loadAppSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/app-settings");
@@ -136,8 +168,9 @@ export default function SeasonPage() {
     if (activeSeason) {
       loadHolidays(activeSeason.id);
       loadGamesCount(activeSeason.id);
+      loadWeeklyGameSummary(activeSeason.id);
     }
-  }, [activeSeason, loadHolidays, loadGamesCount]);
+  }, [activeSeason, loadHolidays, loadGamesCount, loadWeeklyGameSummary]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -781,7 +814,7 @@ export default function SeasonPage() {
 
       {/* Season Dates + Reset + Clear All */}
       <div className="border border-border rounded-lg p-6 mb-6">
-        <h2 className="font-semibold mb-4">Season</h2>
+        <h2 className="font-semibold mb-4">Season {activeSeason?.id}</h2>
         {error && (
           <div className="text-danger text-sm mb-3">{error}</div>
         )}
@@ -809,25 +842,32 @@ export default function SeasonPage() {
             />
           </div>
         </div>
-        <div className="text-sm text-muted mb-3">
+        <div className="text-sm text-muted mb-1">
           {totalWeeks}-week season{totalWeeks > 36 ? ` (${totalWeeks - 36} makeup)` : ""}
         </div>
+        {weeklyContractsSold !== null && weeklyGamesAvailable !== null && (
+          <div className="text-sm text-muted mb-3">
+            Total Don weekly contracts sold: {weeklyContractsSold} ({weeklyGamesNeeded} games) &nbsp;&nbsp; Total weekly games available (w/o Solo): {weeklyGamesAvailable}
+          </div>
+        )}
 
-        {/* Derated Player Settings - inline */}
-        <div className="flex gap-4 items-end mb-4">
-          <div>
-            <label className="block text-sm text-muted mb-1">
-              Same Derated Player Pairing Frequency
-            </label>
-            <select
-              value={maxDeratedPerWeek}
-              onChange={(e) => setMaxDeratedPerWeek(e.target.value)}
-              className="border border-border rounded px-3 py-2 text-sm"
-            >
-              <option value="none">No limit</option>
-              <option value="1">Once per week</option>
-              <option value="2">Once per two weeks</option>
-            </select>
+        {/* Derated Player Settings - highlighted box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
+          <div className="flex gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                Same Derated Player Pairing Frequency
+              </label>
+              <select
+                value={maxDeratedPerWeek}
+                onChange={(e) => setMaxDeratedPerWeek(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+              >
+                <option value="none">No limit</option>
+                <option value="1">Once per week</option>
+                <option value="2">Once per two weeks</option>
+              </select>
+            </div>
           </div>
         </div>
 

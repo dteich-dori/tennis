@@ -35,6 +35,7 @@ interface Player {
 interface Season {
   startDate: string;
   endDate: string;
+  totalWeeks: number;
 }
 
 function getPlayerName(playerId: number, players: Player[]): string {
