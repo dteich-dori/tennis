@@ -779,10 +779,21 @@ export default function SeasonPage() {
     years.add(seasonStart.getFullYear());
     years.add(seasonEnd.getFullYear());
 
+    // Jewish holidays (Hebrew calendar — dates vary yearly, lookup table required)
+    const jewishHolidayDates: Record<number, { rh1: [number, number]; rh2: [number, number]; yk: [number, number] }> = {
+      2024: { rh1: [9, 3],  rh2: [9, 4],  yk: [9, 12] },
+      2025: { rh1: [8, 23], rh2: [8, 24], yk: [9, 2] },
+      2026: { rh1: [8, 12], rh2: [8, 13], yk: [8, 21] },
+      2027: { rh1: [9, 2],  rh2: [9, 3],  yk: [9, 11] },
+      2028: { rh1: [8, 21], rh2: [8, 22], yk: [8, 30] },
+      2029: { rh1: [8, 10], rh2: [8, 11], yk: [8, 19] },
+      2030: { rh1: [8, 28], rh2: [8, 29], yk: [9, 7] },
+    };
+
     const all: { date: string; name: string }[] = [];
 
     for (const year of years) {
-      const candidates = [
+      const candidates: { date: Date; name: string }[] = [
         { date: new Date(year, 0, 1), name: "New Year's Day" },
         { date: nthWeekday(year, 0, 1, 3), name: "MLK Day" },
         { date: nthWeekday(year, 1, 1, 3), name: "Presidents' Day" },
@@ -796,6 +807,16 @@ export default function SeasonPage() {
         { date: new Date(year, 11, 25), name: "Christmas" },
       ];
 
+      // Add Jewish holidays from lookup table
+      const jh = jewishHolidayDates[year];
+      if (jh) {
+        candidates.push(
+          { date: new Date(year, jh.rh1[0], jh.rh1[1]), name: "Rosh Hashana (Day 1)" },
+          { date: new Date(year, jh.rh2[0], jh.rh2[1]), name: "Rosh Hashana (Day 2)" },
+          { date: new Date(year, jh.yk[0], jh.yk[1]), name: "Yom Kippur" },
+        );
+      }
+
       for (const c of candidates) {
         if (c.date >= seasonStart && c.date <= seasonEnd) {
           all.push({ date: fmt(c.date), name: c.name });
@@ -803,7 +824,8 @@ export default function SeasonPage() {
       }
     }
 
-    // Filter out holidays already added
+    // Sort by date and filter out holidays already added
+    all.sort((a, b) => a.date.localeCompare(b.date));
     const existingDates = new Set(holidays.map((h) => h.date));
     return all.filter((h) => !existingDates.has(h.date));
   }, [startDate, endDateDisplay, holidays]);

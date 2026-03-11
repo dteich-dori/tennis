@@ -315,6 +315,12 @@ export async function POST(request: NextRequest) {
 
         // Frequency / owed check
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
+        // Season-total cap: non-2+ players cannot exceed freq × 36 games
+        if (p.contractedFrequency !== "2+") {
+          const freq = parseInt(p.contractedFrequency) || 0;
+          const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
+          if (ytd >= freq * 36) return false;
+        }
         if (firstGameOnly) {
           // Only players who have zero Don's games this week
           if (wtd > 0) return false;

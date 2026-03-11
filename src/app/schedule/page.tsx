@@ -101,10 +101,9 @@ export default function SchedulePage() {
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
   const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
 
-  // Game diagnostic floating panel state
+  // Game diagnostic side panel state
   const [explainModal, setExplainModal] = useState<{
     loading: boolean;
-    position: { top: number; left: number };
     mode: "incomplete";
     data: null;
     incompleteData: {
@@ -720,7 +719,8 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="flex gap-4">
+      <div className="flex-1 min-w-0 max-w-5xl">
       <h1 className="text-2xl font-bold mb-6">Schedule</h1>
 
       {totalGames === 0 ? (
@@ -1318,15 +1318,11 @@ export default function SchedulePage() {
                                 title="Click to see player eligibility diagnostic"
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  const rect = (e.target as HTMLElement).closest("tr")!.getBoundingClientRect();
-                                  const top = rect.bottom + window.scrollY + 4;
-                                  const left = rect.left + window.scrollX;
-
-                                  setExplainModal({ loading: true, position: { top, left }, mode: "incomplete", data: null, incompleteData: null });
+                                  setExplainModal({ loading: true, mode: "incomplete", data: null, incompleteData: null });
                                   try {
                                     const res = await fetch(`/api/games/explain-incomplete?gameId=${game.id}`);
                                     const incompleteData = await res.json();
-                                    setExplainModal({ loading: false, position: { top, left }, mode: "incomplete", data: null, incompleteData });
+                                    setExplainModal({ loading: false, mode: "incomplete", data: null, incompleteData });
                                   } catch {
                                     setExplainModal(null);
                                   }
@@ -1803,15 +1799,12 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* Game Diagnostic Floating Panel */}
+      </div>
+
+      {/* Game Diagnostic Side Panel */}
       {explainModal && (
-        <>
-          <div className="fixed inset-0 z-[99]" onClick={() => setExplainModal(null)} />
-          <div
-            className="absolute z-[100] bg-white border border-border rounded-lg shadow-xl overflow-y-auto w-[420px] max-h-96"
-            style={{ top: explainModal.position.top, left: explainModal.position.left }}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="w-[360px] flex-shrink-0 sticky top-0 self-start max-h-screen overflow-y-auto">
+          <div className="bg-white border border-border rounded-lg shadow-lg">
             {explainModal.loading ? (
               <div className="p-4 text-center text-muted text-sm">Loading...</div>
             ) : explainModal.incompleteData ? (
@@ -1862,7 +1855,7 @@ export default function SchedulePage() {
               <div className="p-4 text-center text-danger text-sm">Failed to load</div>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

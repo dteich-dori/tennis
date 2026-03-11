@@ -183,21 +183,57 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Group games by week
+    // 4. Exclude unneeded makeup-week games
+    // Week 37 (makeup) games should only be assigned if that day actually
+    // lost a game to a holiday. If no holiday fell on a solo day, the
+    // week 37 game for that day should be skipped entirely.
+    const rawMaxWeek = allSoloGames.reduce((m, g) => Math.max(m, g.weekNumber), 0);
+
+    let assignableSoloGames = allSoloGames;
+    if (rawMaxWeek > 36) {
+      // Count holiday games per day of week (in weeks 1 through rawMaxWeek-1)
+      const holidayCountByDay = new Map<number, number>();
+      for (const g of allSoloGames) {
+        if (g.weekNumber < rawMaxWeek && g.status === "holiday") {
+          holidayCountByDay.set(g.dayOfWeek, (holidayCountByDay.get(g.dayOfWeek) ?? 0) + 1);
+        }
+      }
+
+      // Filter out makeup-week games for days that don't need makeup
+      const excludedGameIds = new Set<number>();
+      for (const g of allSoloGames) {
+        if (g.weekNumber === rawMaxWeek && g.status === "normal") {
+          const holidaysOnDay = holidayCountByDay.get(g.dayOfWeek) ?? 0;
+          if (holidaysOnDay === 0) {
+            excludedGameIds.add(g.id);
+            log.push({
+              type: "info",
+              message: `Week ${rawMaxWeek} ${DAYS[g.dayOfWeek]} Game #${g.gameNumber}: skipped (no holiday makeup needed).`,
+            });
+          }
+        }
+      }
+
+      if (excludedGameIds.size > 0) {
+        assignableSoloGames = allSoloGames.filter((g) => !excludedGameIds.has(g.id));
+      }
+    }
+
+    // Group games by week
     const gamesByWeek = new Map<number, GameData[]>();
-    for (const g of allSoloGames) {
+    for (const g of assignableSoloGames) {
       const arr = gamesByWeek.get(g.weekNumber) ?? [];
       arr.push(g);
       gamesByWeek.set(g.weekNumber, arr);
     }
-    const maxWeek = allSoloGames.reduce((m, g) => Math.max(m, g.weekNumber), 0);
+    const maxWeek = rawMaxWeek;
 
     // 5. Compute per-player day targets — proportional to remaining day capacity
     // Determine which days have solo games and whether all games on a day are early
     const dayGameCounts = new Map<number, number>(); // dayOfWeek -> total normal games
     const daySlotCapacity = new Map<number, number>(); // dayOfWeek -> total slots (games × 4)
     const dayHasLateGame = new Map<number, boolean>(); // dayOfWeek -> has game >= 10:00
-    for (const g of allSoloGames) {
+    for (const g of assignableSoloGames) {
       if (g.status !== "normal") continue;
       dayGameCounts.set(g.dayOfWeek, (dayGameCounts.get(g.dayOfWeek) ?? 0) + 1);
       daySlotCapacity.set(g.dayOfWeek, (daySlotCapacity.get(g.dayOfWeek) ?? 0) + 4);
@@ -428,7 +464,7 @@ export async function POST(request: NextRequest) {
 
     // 6. Compute remaining games per day (for capacity reservation)
     const remainingDayGames = new Map<number, number>(); // dayOfWeek -> games remaining
-    for (const g of allSoloGames) {
+    for (const g of assignableSoloGames) {
       if (g.status !== "normal") continue;
       remainingDayGames.set(g.dayOfWeek, (remainingDayGames.get(g.dayOfWeek) ?? 0) + 1);
     }
