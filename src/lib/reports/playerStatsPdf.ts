@@ -419,6 +419,142 @@ export function generatePlayerStatsPdf(
     currentY += rowHeight + 20;
   }
 
+  // --- Summary by Contract Type (Don's group only) ---
+  if (group === "dons") {
+    // Page break check
+    if (currentY + 100 > pageHeight - 40) {
+      doc.addPage();
+      drawPageHeader();
+      currentY = contentStartY;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary by Contract Type", marginLeft, currentY);
+    currentY += 8;
+
+    // Group players by contract type
+    const typeCounts: Record<string, { count: number; totalStd: number; totalExpected: number; totalExtra: number; totalBalls: number }> = {};
+    for (const s of contractPlayers) {
+      const label = s.frequency === "2+" ? "2+" : `${parseInt(s.frequency) || 0}x`;
+      if (!typeCounts[label]) typeCounts[label] = { count: 0, totalStd: 0, totalExpected: 0, totalExtra: 0, totalBalls: 0 };
+      const freq = parseInt(s.frequency) || 0;
+      const expected = freq * Math.min(currentMaxWeek, totalWeeks);
+      const extra = Math.max(0, s.std - expected);
+      typeCounts[label].count++;
+      typeCounts[label].totalStd += s.std;
+      typeCounts[label].totalExpected += expected;
+      typeCounts[label].totalExtra += extra;
+      typeCounts[label].totalBalls += s.ballsBrought;
+    }
+
+    const typeOrder = ["1x", "2x", "2+"];
+    const sortedTypes = typeOrder.filter((k) => typeCounts[k]);
+
+    // Table columns
+    const typeCols = [
+      { header: "Contract", width: tableWidth * 0.18 },
+      { header: "Players", width: tableWidth * 0.14 },
+      { header: "Expected", width: tableWidth * 0.18 },
+      { header: "STD", width: tableWidth * 0.16 },
+      { header: "Extra", width: tableWidth * 0.16 },
+      { header: "Balls", width: tableWidth * 0.18 },
+    ];
+
+    // Header
+    const typeHeaderHeight = 22;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setFillColor(240, 240, 240);
+    doc.rect(marginLeft, currentY - 2, tableWidth, typeHeaderHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.rect(marginLeft, currentY - 2, tableWidth, typeHeaderHeight, "S");
+    let tcx = marginLeft;
+    for (const col of typeCols) {
+      doc.text(col.header, tcx + 4, currentY + 12);
+      tcx += col.width;
+    }
+    currentY += typeHeaderHeight;
+
+    // Rows
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    let tGrandCount = 0;
+    let tGrandStd = 0;
+    let tGrandExpected = 0;
+    let tGrandExtra = 0;
+    let tGrandBalls = 0;
+
+    for (let ri = 0; ri < sortedTypes.length; ri++) {
+      const typeKey = sortedTypes[ri];
+      const data = typeCounts[typeKey];
+      tGrandCount += data.count;
+      tGrandStd += data.totalStd;
+      tGrandExpected += data.totalExpected;
+      tGrandExtra += data.totalExtra;
+      tGrandBalls += data.totalBalls;
+
+      if (ri % 2 === 1) {
+        doc.setFillColor(248, 248, 248);
+        doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+      }
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+      const vals = [typeKey, String(data.count), String(data.totalExpected), String(data.totalStd), data.totalExtra > 0 ? String(data.totalExtra) : "\u2014", String(data.totalBalls)];
+      let rx = marginLeft;
+      for (let ci = 0; ci < typeCols.length; ci++) {
+        doc.text(vals[ci], rx + 4, currentY + 11);
+        rx += typeCols[ci].width;
+      }
+      currentY += rowHeight;
+    }
+
+    // Subs row
+    if (substitutes.length > 0) {
+      const subStd = substitutes.reduce((sum, s) => sum + s.std, 0);
+      const subBalls = substitutes.reduce((sum, s) => sum + s.ballsBrought, 0);
+      const ri = sortedTypes.length;
+      if (ri % 2 === 1) {
+        doc.setFillColor(248, 248, 248);
+        doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+      }
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+      const vals = ["Sub", String(substitutes.length), "\u2014", String(subStd), "\u2014", String(subBalls)];
+      let rx = marginLeft;
+      for (let ci = 0; ci < typeCols.length; ci++) {
+        doc.text(vals[ci], rx + 4, currentY + 11);
+        rx += typeCols[ci].width;
+      }
+      tGrandCount += substitutes.length;
+      tGrandStd += subStd;
+      tGrandBalls += subBalls;
+      currentY += rowHeight;
+    }
+
+    // Grand total row
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(1);
+    doc.line(marginLeft, currentY - 2, marginLeft + tableWidth, currentY - 2);
+    doc.setFillColor(230, 230, 230);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+
+    doc.setFont("helvetica", "bold");
+    const tTotVals = ["Total", String(tGrandCount), String(tGrandExpected), String(tGrandStd), tGrandExtra > 0 ? String(tGrandExtra) : "\u2014", String(tGrandBalls)];
+    let ttx = marginLeft;
+    for (let ci = 0; ci < typeCols.length; ci++) {
+      doc.text(tTotVals[ci], ttx + 4, currentY + 11);
+      ttx += typeCols[ci].width;
+    }
+    currentY += rowHeight + 20;
+  }
+
   // --- Footer on every page ---
   const totalPages = doc.getNumberOfPages();
   const now = new Date();

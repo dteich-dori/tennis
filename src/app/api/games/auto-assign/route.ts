@@ -48,9 +48,11 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId, weekNumber } = (await request.json()) as {
+    const { seasonId, weekNumber, assignExtra, assignCSubs } = (await request.json()) as {
       seasonId: number;
       weekNumber: number;
+      assignExtra?: boolean;
+      assignCSubs?: boolean;
     };
 
     if (!seasonId || !weekNumber) {
@@ -158,6 +160,9 @@ export async function POST(request: NextRequest) {
 
     // Only contracted active players (not subs) for Don's auto-assign
     const contractedPlayers = playerData.filter((p) => p.contractedFrequency !== "0");
+
+    // Sub players (frequency "0") — used as fallback if assignCSubs is true
+    const subPlayers = playerData.filter((p) => p.contractedFrequency === "0");
 
     // 5. Compute WTD counts (from earlier weeks + solo assignments this week)
     // We need YTD up to this week for priority, and WTD for owed calculation
@@ -293,7 +298,14 @@ export async function POST(request: NextRequest) {
     // firstGameOnly: if true, only include players with ZERO Don's games this week
     //   (ensures every contracted player gets at least 1 game before anyone gets a 2nd).
     //   If false, include all players who still owe games or are 2+ eligible for extras.
-    function getAvailablePlayers(game: GameData, currentAssignments: number[], firstGameOnly = false): PlayerData[] {
+    // options.allowExtras: if true, 2+ players are not capped at 2 games/week (for Pass 3)
+    // options.playerPool: custom player pool to search (e.g. subPlayers for Pass 4)
+    function getAvailablePlayers(
+      game: GameData, currentAssignments: number[], firstGameOnly = false,
+      options?: { allowExtras?: boolean; playerPool?: PlayerData[] }
+    ): PlayerData[] {
+      const pool = options?.playerPool ?? contractedPlayers;
+      const isSubs = !!options?.playerPool; // using a custom pool means we're in subs mode
       const assignedInGame = new Set(currentAssignments);
       const assignedOnDate = new Set<number>();
       // Players assigned to other games on same date
@@ -307,29 +319,35 @@ export async function POST(request: NextRequest) {
       const soloOnDate = soloAssignedByDate.get(game.date) ?? new Set();
       for (const pid of soloOnDate) assignedOnDate.add(pid);
 
-      return contractedPlayers.filter((p) => {
+      return pool.filter((p) => {
         if (assignedInGame.has(p.id)) return false;
 
         // No player can play twice on the same date
         if (assignedOnDate.has(p.id)) return false;
 
         // Frequency / owed check
-        const wtd = wtdDonsCounts.get(p.id) ?? 0;
-        // Season-total cap: non-2+ players cannot exceed freq × 36 games
-        if (p.contractedFrequency !== "2+") {
-          const freq = parseInt(p.contractedFrequency) || 0;
-          const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-          if (ytd >= freq * 36) return false;
-        }
-        if (firstGameOnly) {
-          // Only players who have zero Don's games this week
-          if (wtd > 0) return false;
-        } else if (p.contractedFrequency === "2+") {
-          // 2+ players are always eligible for extras
+        if (isSubs) {
+          // Subs have no contracted frequency — skip frequency/owed checks entirely
         } else {
-          // Non-2+ players: only eligible if WTD owed > 0
-          const freq = parseInt(p.contractedFrequency) || 0;
-          if (freq - wtd <= 0) return false;
+          const wtd = wtdDonsCounts.get(p.id) ?? 0;
+          // Season-total cap: non-2+ players cannot exceed freq × 36 games
+          if (p.contractedFrequency !== "2+") {
+            const freq = parseInt(p.contractedFrequency) || 0;
+            const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
+            if (ytd >= freq * 36) return false;
+          }
+          if (firstGameOnly) {
+            // Only players who have zero Don's games this week
+            if (wtd > 0) return false;
+          } else if (p.contractedFrequency === "2+") {
+            // In normal mode (Pass 2), 2+ players are always eligible
+            // (the 2-game cap is enforced in the caller's filter, not here)
+            // In extras mode (Pass 3), allowExtras lifts that caller-side cap
+          } else {
+            // Non-2+ players: only eligible if WTD owed > 0
+            const freq = parseInt(p.contractedFrequency) || 0;
+            if (freq - wtd <= 0) return false;
+          }
         }
 
         // Blocked day
@@ -360,9 +378,9 @@ export async function POST(request: NextRequest) {
             if (p.doNotPair.includes(assignedId)) return false;
           }
         }
-        // Reverse DNP check
+        // Reverse DNP check — use playerData so we find both contracted and sub players
         for (const assignedId of assignedInGame) {
-          const assignedPlayer = contractedPlayers.find((pl) => pl.id === assignedId);
+          const assignedPlayer = playerData.find((pl) => pl.id === assignedId);
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
@@ -382,7 +400,7 @@ export async function POST(request: NextRequest) {
           }
 
           for (const assignedId of assignedInGame) {
-            const assignedPlayer = contractedPlayers.find((pl) => pl.id === assignedId);
+            const assignedPlayer = playerData.find((pl) => pl.id === assignedId);
             if (!assignedPlayer) continue;
             // One must be derated, the other not — skip if both derated or both non-derated
             const oneDerated = p.isDerated !== assignedPlayer.isDerated;
@@ -569,12 +587,16 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Unified assignment: all games treated equally, B and C in one pool ---
+      let pass3Count = 0;
+      let pass4Count = 0;
+
       for (const game of openGames) {
         for (let slot = 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
 
           // Check current game composition for A-protection rule
-          const currentPlayers = currentAssigned.map((id) => contractedPlayers.find((p) => p.id === id));
+          // Use playerData (not contractedPlayers) so we also see sub players assigned by Pass 4
+          const currentPlayers = currentAssigned.map((id) => playerData.find((p) => p.id === id));
           const hasC = currentPlayers.some((p) => p?.skillLevel === "C");
           const hasA = currentPlayers.some((p) => p?.skillLevel === "A");
           const bCount = currentPlayers.filter((p) => p?.skillLevel === "B").length;
@@ -586,6 +608,8 @@ export async function POST(request: NextRequest) {
           const cCount = currentPlayers.filter((p) => p?.skillLevel === "C").length;
           const blockC = hasA && (bCount < 2 || cCount >= 1);
 
+          let passUsed = 1;
+
           // First pass: only players with zero Don's games this week (everyone gets at least 1)
           let eligible = getAvailablePlayers(game, currentAssigned, true).filter((p) => {
             if (usedOnDay.has(p.id)) return false;
@@ -596,6 +620,7 @@ export async function POST(request: NextRequest) {
           // Second pass: players who still owe games (freq - wtd > 0), including 2+ players
           // who haven't hit their minimum of 2 yet. Does NOT include 2+ extras beyond minimum.
           if (eligible.length === 0) {
+            passUsed = 2;
             eligible = getAvailablePlayers(game, currentAssigned, false).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               if (blockA && p.skillLevel === "A") return false;
@@ -608,24 +633,61 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
-          // No bonus/extras pass — leave unfilled slots for manual assignment
+          // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2
+          if (eligible.length === 0 && assignExtra) {
+            passUsed = 3;
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              if (blockA && p.skillLevel === "A") return false;
+              if (blockC && p.skillLevel === "C") return false;
+              return true;
+            });
+          }
+          // Pass 4: subs — allow substitute players to fill remaining gaps
+          if (eligible.length === 0 && assignCSubs) {
+            passUsed = 4;
+            eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              if (blockA && p.skillLevel === "A") return false;
+              if (blockC && p.skillLevel === "C") return false;
+              return true;
+            });
+          }
 
           const prioritized = sortByPriority(eligible, game);
 
           if (prioritized.length > 0) {
             const chosen = prioritized[0];
-            if (usedOnDay.has(chosen.id)) {
+            if (passUsed === 3) {
+              pass3Count++;
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
+            } else if (passUsed === 4) {
+              pass4Count++;
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB` });
+            } else if (usedOnDay.has(chosen.id)) {
               log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
             await assignPlayer(game, chosen.id, slot);
           } else {
+            const hints: string[] = [];
+            if (!assignExtra) hints.push("extras");
+            if (!assignCSubs) hints.push("C subs");
+            const hintStr = hints.length > 0 ? ` (enable ${hints.join(" and ")} for more options)` : "";
             log.push({
               type: "warning",
               day: DAYS[dow],
-              message: `Game #${game.gameNumber} slot ${slot}: no player who still owes games is available — slot left empty for manual assignment`,
+              message: `Game #${game.gameNumber} slot ${slot}: no eligible player found${hintStr} — slot left empty`,
             });
           }
         }
+      }
+
+      // Pass summary
+      if (assignExtra) {
+        log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
+      }
+      if (assignCSubs) {
+        log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
       }
     }
 

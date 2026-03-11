@@ -46,6 +46,8 @@ export async function POST() {
       emailLogData,
       emailSettingsData,
       appSettingsData,
+      budgetParamsData,
+      budgetItemsData,
     ] = await Promise.all([
       d.select().from(schema.seasons),
       d.select().from(schema.players),
@@ -62,6 +64,8 @@ export async function POST() {
       d.select().from(schema.emailLog),
       d.select().from(schema.emailSettings),
       d.select().from(schema.appSettings),
+      d.select().from(schema.budgetParams),
+      d.select().from(schema.budgetItems),
     ]);
 
     // Build CSV data for each table
@@ -81,6 +85,8 @@ export async function POST() {
       "email-log": toCsv(emailLogData),
       "email-settings": toCsv(emailSettingsData),
       "app-settings": toCsv(appSettingsData),
+      "budget-params": toCsv(budgetParamsData),
+      "budget-items": toCsv(budgetItemsData),
     };
 
     // Save CSVs to timestamped subdirectory in Backup/

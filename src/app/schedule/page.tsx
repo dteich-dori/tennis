@@ -160,6 +160,8 @@ export default function SchedulePage() {
   const [autoAssignLog, setAutoAssignLog] = useState<{ type: string; day?: string; message: string }[]>([]);
   const [autoAssignCount, setAutoAssignCount] = useState(0);
   const [autoAssignError, setAutoAssignError] = useState("");
+  const [assignExtra, setAssignExtra] = useState(false);
+  const [assignCSubs, setAssignCSubs] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -446,7 +448,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/games/auto-assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek }),
+        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek, assignExtra, assignCSubs }),
       });
       const data = await res.json() as {
         success?: boolean;
@@ -787,14 +789,34 @@ export default function SchedulePage() {
                 {autoAssignLoading ? "Clearing..." : "Clear Don's"}
               </button>
             ) : (
-              <button
-                onClick={handleAutoAssign}
-                disabled={autoAssignLoading || games.length === 0}
-                title="Auto-assign all Don's games for this week"
-                className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
-              >
-                {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
-              </button>
+              <>
+                <button
+                  onClick={handleAutoAssign}
+                  disabled={autoAssignLoading || games.length === 0}
+                  title="Auto-assign all Don's games for this week"
+                  className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
+                >
+                  {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
+                </button>
+                <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={assignExtra}
+                    onChange={(e) => setAssignExtra(e.target.checked)}
+                    className="accent-indigo-500"
+                  />
+                  Assign extra
+                </label>
+                <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={assignCSubs}
+                    onChange={(e) => setAssignCSubs(e.target.checked)}
+                    className="accent-indigo-500"
+                  />
+                  Assign C subs
+                </label>
+              </>
             )}
             <button
               onClick={() => handleBalanceBallsPreview("dons")}
