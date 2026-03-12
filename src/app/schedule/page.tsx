@@ -964,17 +964,14 @@ export default function SchedulePage() {
 
             return (
               <div className="bg-blue-50 border border-blue-200 rounded px-4 py-3 mb-4">
-                <div className="text-xs font-semibold text-blue-800 mb-2 flex items-center justify-between">
+                <div className="text-xs font-semibold text-black mb-2 flex items-center justify-between">
                   <div className="flex items-baseline gap-3 flex-wrap">
                     <span>Don&apos;s Group — Player Status (Week {currentWeek})</span>
-                    <span className="font-normal">
-                      <span className="text-gray-500">Contract</span>
-                      <span className="text-blue-300 mx-0.5">/</span>
-                      <span className="text-green-700">Owed WTD</span>
-                      <span className="text-blue-300 mx-0.5">/</span>
-                      <span className="text-amber-600">Owed YTD</span>
-                      <span className="text-blue-300 mx-1">|</span>
-                      <span className="text-gray-500">Name</span>
+                    <span className="font-bold">
+                      Contract / Owed WTD / Owed YTD | Name
+                    </span>
+                    <span>
+                      Negative = excess games. Red = under contract
                     </span>
                   </div>
                   <button
@@ -1009,15 +1006,15 @@ export default function SchedulePage() {
                         </span>
                         <span
                           className={`font-mono w-4 text-center ${
-                            owe > 0 ? "text-green-700 font-bold" : ""
+                            owe > 0 ? "text-red-600 font-bold" : "text-gray-500"
                           }`}
-                          title={`Owe ${owe} game(s) this week`}
+                          title={`Owed ${owe} game(s) this week (${freq} contracted − ${counts.wtdDons} played)`}
                         >
                           {owe}
                         </span>
                         <span
                           className={`font-mono w-4 text-center ${
-                            ytdOwed > 0 ? "text-amber-600 font-bold" : ""
+                            ytdOwed > 0 ? "text-red-600 font-bold" : "text-gray-500"
                           }`}
                           title={`YTD Owed: ${expectedYtd} expected − ${counts.ytdDons} played = ${ytdOwed}`}
                         >

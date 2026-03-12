@@ -234,6 +234,7 @@ export async function POST(request: NextRequest) {
     // Players with upcoming vacations get a boosted weekly target (up to freq+1) so they
     // accumulate extra games in non-vacation weeks to compensate for missed weeks.
     const totalWeeks = seasonRecord?.totalWeeks ?? 36;
+    const contractWeeks = 36; // contractual obligation is always 36 weeks (makeup weeks don't count)
 
     // Load future Don's game dates (current week through end of season)
     const futureGameRows = await database
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
       if (freq === 0) continue;
 
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-      const totalTarget = freq * totalWeeks;
+      const totalTarget = freq * contractWeeks;
       const gamesNeeded = totalTarget - ytd;
 
       if (gamesNeeded <= 0) {
@@ -411,7 +412,7 @@ export async function POST(request: NextRequest) {
           if (p.contractedFrequency !== "2+") {
             const freq = parseInt(p.contractedFrequency) || 0;
             const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-            if (ytd >= freq * totalWeeks) return false;
+            if (ytd >= freq * contractWeeks) return false;
           }
           if (firstGameOnly) {
             // Only players who have zero Don's games this week
@@ -516,7 +517,7 @@ export async function POST(request: NextRequest) {
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
       const owed = effectiveFreq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-      const expectedYtd = freq * Math.min(weekNumber, totalWeeks);
+      const expectedYtd = freq * Math.min(weekNumber, contractWeeks);
       const ytdDeficit = expectedYtd - ytd;
 
       // Count remaining playable dates this week (not yet assigned on)
