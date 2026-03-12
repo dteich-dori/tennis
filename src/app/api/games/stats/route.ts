@@ -110,8 +110,8 @@ export async function GET(request: NextRequest) {
       weeklyMap.get(row.playerId)![row.weekNumber] = row.count;
     }
 
-    // Total weeks in solo season (for frequency calculation)
-    const SOLO_TOTAL_WEEKS = 36;
+    // Contractual weeks (solo and Don's share the same 36-week base)
+    const CONTRACT_WEEKS = 36;
 
     // Wednesday game count per player (solo group only — for Tue/Wed split tracking)
     const wednesdayMap = new Map<number, number>();
@@ -161,10 +161,10 @@ export async function GET(request: NextRequest) {
         if (group === "solo") {
           // Expected games proportional to progress through season
           const soloTarget = p.soloGames ?? 0;
-          expectedStd = (soloTarget / SOLO_TOTAL_WEEKS) * Math.min(currentMaxWeek, SOLO_TOTAL_WEEKS);
+          expectedStd = (soloTarget / CONTRACT_WEEKS) * Math.min(currentMaxWeek, CONTRACT_WEEKS);
         } else {
           const freq = parseInt(p.contractedFrequency) || 0;
-          expectedStd = freq * Math.min(currentMaxWeek, 36);
+          expectedStd = freq * Math.min(currentMaxWeek, CONTRACT_WEEKS);
         }
         const deficit = expectedStd - std;
         const ballsBrought = ballMap.get(p.id) ?? 0;

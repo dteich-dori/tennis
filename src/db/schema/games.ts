@@ -1,6 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { seasons } from "./seasons";
-import { players } from "./players";
 
 export const games = sqliteTable("games", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -28,16 +27,4 @@ export const gameAssignments = sqliteTable("game_assignments", {
     .references(() => players.id, { onDelete: "cascade" }),
   slotPosition: integer("slot_position").notNull(), // 1-4
   isPrefill: integer("is_prefill", { mode: "boolean" }).notNull().default(false),
-});
-
-export const ballCounts = sqliteTable("ball_counts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  playerId: integer("player_id")
-    .notNull()
-    .references(() => players.id, { onDelete: "cascade" }),
-  seasonId: integer("season_id")
-    .notNull()
-    .references(() => seasons.id, { onDelete: "cascade" }),
-  donsCount: integer("dons_count").notNull().default(0),
-  soloCount: integer("solo_count").notNull().default(0),
 });

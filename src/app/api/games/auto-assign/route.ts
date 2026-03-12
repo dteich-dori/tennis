@@ -422,10 +422,11 @@ export async function POST(request: NextRequest) {
             // (the 2-game cap is enforced in the caller's filter, not here)
             // In extras mode (Pass 3), allowExtras lifts that caller-side cap
           } else {
-            // Non-2+ players: only eligible if WTD owed > 0
-            // Use adjustedFreq for vacation-aware front-loading
-            const effectiveFreq = adjustedFreqMap.get(p.id) ?? (parseInt(p.contractedFrequency) || 0);
-            if (effectiveFreq - wtd <= 0) return false;
+            // Non-2+ players: only eligible if WTD owed > 0 at BASE frequency
+            // (front-loading extras are handled in a separate pass to avoid
+            // stealing slots from players who haven't met their base contract)
+            const freq = parseInt(p.contractedFrequency) || 0;
+            if (freq - wtd <= 0) return false;
           }
         }
 
@@ -513,9 +514,8 @@ export async function POST(request: NextRequest) {
     // Priority scoring for a player
     function getPlayerPriority(p: PlayerData, game: GameData): { mustPlay: boolean; owed: number; ytdDeficit: number; playableDaysLeft: number } {
       const freq = parseInt(p.contractedFrequency) || 0;
-      const effectiveFreq = adjustedFreqMap.get(p.id) ?? freq;
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
-      const owed = effectiveFreq - wtd;
+      const owed = freq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
       const expectedYtd = freq * Math.min(weekNumber, contractWeeks);
       const ytdDeficit = expectedYtd - ytd;
@@ -548,11 +548,11 @@ export async function POST(request: NextRequest) {
         if (soloOnDate.has(p.id)) return false;
         if (p.blockedDays.includes(dow)) return false;
         if (p.vacations.some((v) => date >= v.startDate && date <= v.endDate)) return false;
-        // Only count players who deserve games (use adjustedFreq for front-loading)
+        // Only count players who deserve games at base contracted frequency
         if (p.contractedFrequency === "2+") return true;
-        const effectiveFreq = adjustedFreqMap.get(p.id) ?? (parseInt(p.contractedFrequency) || 0);
+        const freq = parseInt(p.contractedFrequency) || 0;
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
-        if (effectiveFreq - wtd > 0) return true;
+        if (freq - wtd > 0) return true;
         return false;
       });
 
@@ -715,6 +715,26 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
+          // Pass 2.5: front-loading — players whose adjustedFreq > base freq and
+          // who've met their base contract but still owe front-loaded games.
+          // Runs AFTER base-frequency assignments so it never steals from contracted games.
+          if (eligible.length === 0) {
+            const frontLoadEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              if (p.contractedFrequency === "2+") return false; // 2+ handled separately
+              const freq = parseInt(p.contractedFrequency) || 0;
+              const effectiveFreq = adjustedFreqMap.get(p.id) ?? freq;
+              if (effectiveFreq <= freq) return false; // no front-loading needed
+              const wtd = wtdDonsCounts.get(p.id) ?? 0;
+              if (wtd < freq) return false; // hasn't met base contract yet (shouldn't happen here)
+              if (wtd >= effectiveFreq) return false; // already met front-loaded target
+              return true;
+            });
+            if (frontLoadEligible.length > 0) {
+              passUsed = 2.5;
+              eligible = frontLoadEligible;
+            }
+          }
           // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2
           if (eligible.length === 0 && assignExtra) {
             passUsed = 3;
@@ -736,7 +756,9 @@ export async function POST(request: NextRequest) {
 
           if (prioritized.length > 0) {
             const chosen = prioritized[0];
-            if (passUsed === 3) {
+            if (passUsed === 2.5) {
+              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
+            } else if (passUsed === 3) {
               pass3Count++;
               log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
             } else if (passUsed === 4) {

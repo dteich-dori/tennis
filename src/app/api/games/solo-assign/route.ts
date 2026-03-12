@@ -575,9 +575,10 @@ export async function POST(request: NextRequest) {
             const bActual = assignmentCounts.get(b.id) ?? 0;
             const aDeficit = aExpected - aActual;
             const bDeficit = bExpected - bActual;
-            // Normalize so players with different targets compete fairly
-            const aNormalized = (aDeficit * 36) / a.soloGames;
-            const bNormalized = (bDeficit * 36) / b.soloGames;
+            // Normalize so players with different targets compete fairly (36 = full solo share)
+            const SOLO_FULL_SHARE = 36;
+            const aNormalized = (aDeficit * SOLO_FULL_SHARE) / a.soloGames;
+            const bNormalized = (bDeficit * SOLO_FULL_SHARE) / b.soloGames;
             if (Math.abs(bNormalized - aNormalized) > 0.01) {
               return bNormalized - aNormalized;
             }

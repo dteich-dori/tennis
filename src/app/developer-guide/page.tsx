@@ -123,8 +123,7 @@ export default function DeveloperGuidePage() {
     │   │   ├── schema/           ← Drizzle ORM table definitions
     │   │   │   ├── players.ts    ← players, blockedDays,
     │   │   │   │                    vacations, doNotPair
-    │   │   │   ├── games.ts      ← games, gameAssignments,
-    │   │   │   │                    ballCounts
+    │   │   │   ├── games.ts      ← games, gameAssignments
     │   │   │   ├── seasons.ts    ← seasons
     │   │   │   ├── holidays.ts   ← holidays
     │   │   │   ├── courtSchedules.ts
@@ -468,11 +467,6 @@ a668e3c Add ball balancing feature
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">game_assignments</td>
                       <td className="px-3 py-2 border-b border-border font-mono text-xs">games.ts</td>
                       <td className="px-3 py-2 border-b border-border">Player-to-game slot assignments (4 slots per game)</td>
-                    </tr>
-                    <tr className="bg-gray-50/50">
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">ball_counts</td>
-                      <td className="px-3 py-2 border-b border-border font-mono text-xs">games.ts</td>
-                      <td className="px-3 py-2 border-b border-border">Ball-bringing count per player per season</td>
                     </tr>
                   </tbody>
                 </table>

@@ -357,14 +357,12 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
       }
     }
 
-    // A/C composition protection
+    // A/C composition penalty (soft — deprioritized, not blocked)
     if (blockA && p.skillLevel === "A" && !p.cGamesOk) {
-      reasons.push("A-protection: game has C player without 2B buffer");
-      eligible = false;
+      reasons.push("Composition penalty: A+C without 2B buffer (deprioritized, not blocked)");
     }
     if (blockC && p.skillLevel === "C") {
-      reasons.push("C-protection: game has A player without 2B buffer");
-      eligible = false;
+      reasons.push("Composition penalty: A+C without 2B buffer (deprioritized, not blocked)");
     }
 
     // Do-not-pair with currently assigned players

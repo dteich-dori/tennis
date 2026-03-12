@@ -18,7 +18,6 @@ export const players = sqliteTable("players", {
   isDerated: integer("is_derated", { mode: "boolean" }).notNull().default(false),
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
   cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
-  soloShareLevel: text("solo_share_level"), // legacy — "full", "half", or null
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
 });
 
@@ -49,12 +48,3 @@ export const playerDoNotPair = sqliteTable("player_do_not_pair", {
     .references(() => players.id, { onDelete: "cascade" }),
 });
 
-export const playerSoloPairs = sqliteTable("player_solo_pairs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  playerId: integer("player_id")
-    .notNull()
-    .references(() => players.id, { onDelete: "cascade" }),
-  pairedPlayerId: integer("paired_player_id")
-    .notNull()
-    .references(() => players.id, { onDelete: "cascade" }),
-});
