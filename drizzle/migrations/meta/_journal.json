@@ -36,6 +36,20 @@
       "when": 1772886246846,
       "tag": "0004_needy_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1773266548206,
+      "tag": "0005_curved_tyger_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1773321137871,
+      "tag": "0006_cynical_pixie",
+      "breakpoints": true
     }
   ]
 }

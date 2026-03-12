@@ -255,6 +255,10 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
   const assignedPlayerData = assignedPlayerIds.map((id) =>
     contractedPlayers.find((p: { id: number }) => p.id === id) ?? allPlayers.find((p: { id: number }) => p.id === id)
   );
+  const composition = assignedPlayerData
+    .map((p: { skillLevel: string } | undefined) => p?.skillLevel ?? "?")
+    .sort()
+    .join("");
   const hasA = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "A");
   const hasC = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "C");
   const bCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "B").length;
@@ -273,6 +277,7 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     noEarlyGames: boolean;
     noConsecutiveDays: boolean;
     isDerated: boolean;
+    cGamesOk: boolean;
   }
 
   const totalWeeks = season?.totalWeeks ?? 36;
@@ -353,7 +358,7 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     }
 
     // A/C composition protection
-    if (blockA && p.skillLevel === "A") {
+    if (blockA && p.skillLevel === "A" && !p.cGamesOk) {
       reasons.push("A-protection: game has C player without 2B buffer");
       eligible = false;
     }
@@ -418,6 +423,7 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     game: formatGame(game),
     filledSlots,
     emptySlots: 4 - filledSlots,
+    composition,
     eligiblePlayersRemaining: eligibleCount,
     message:
       emptySlots > 0
@@ -784,10 +790,19 @@ async function handleSoloDiagnostic(database: any, game: any, season: any, curre
     (p: { eligible: boolean; assigned: boolean }) => p.eligible && !p.assigned
   ).length;
 
+  const assignedPlayerDataSolo = assignedPlayerIds.map((id: number) =>
+    allPlayers.find((p: { id: number }) => p.id === id)
+  );
+  const composition = assignedPlayerDataSolo
+    .map((p: { skillLevel: string } | undefined) => p?.skillLevel ?? "?")
+    .sort()
+    .join("");
+
   return NextResponse.json({
     game: formatGame(game),
     filledSlots,
     emptySlots,
+    composition,
     eligiblePlayersRemaining: eligibleCount,
     message:
       emptySlots > 0

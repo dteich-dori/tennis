@@ -19,6 +19,7 @@ interface BudgetParamsData {
   priceSubs: number;
   priceSolo: number;
   priceExtraHour: number;
+  priceSoloSeason: number;
 }
 
 interface BudgetItem {
@@ -45,6 +46,7 @@ interface ComputedData {
   extraGames2plus: number;
   subsGameCount: number;
   totalSoloGamesFromDB: number;
+  soloPlayers: { name: string; soloGames: number }[];
   donsCourtsPerWeek: number;
   soloCourtsPerWeek: number;
 }
@@ -58,7 +60,8 @@ const PARAM_DEFAULTS: BudgetParamsData = {
   priceDons2plus: 0,
   priceSubs: 0,
   priceSolo: 0,
-  priceExtraHour: 23,
+  priceExtraHour: 0,
+  priceSoloSeason: 0,
 };
 
 function formatCurrency(value: number): string {
@@ -112,7 +115,8 @@ export default function BudgetPage() {
         priceDons2plus: data.priceDons2plus ?? 0,
         priceSubs: data.priceSubs ?? 0,
         priceSolo: data.priceSolo ?? 0,
-        priceExtraHour: data.priceExtraHour ?? 23,
+        priceExtraHour: data.priceExtraHour ?? 0,
+        priceSoloSeason: data.priceSoloSeason ?? 0,
       });
     }
   }, []);
@@ -170,6 +174,7 @@ export default function BudgetPage() {
             priceSubs: params.priceSubs,
             priceSolo: params.priceSolo,
             priceExtraHour: params.priceExtraHour,
+            priceSoloSeason: params.priceSoloSeason,
           }),
         });
       } catch {
@@ -267,21 +272,19 @@ export default function BudgetPage() {
   // 1x/2x/2+ rows: price is per player per season → Revenue = players × $/season
   // Extra games & Subs: price is per game → Revenue = games × $/game
   const extraGames2plus = computed?.extraGames2plus ?? 0;
-  const pricePerExtraGame = params.priceExtraHour * params.gameDurationHours;
 
   const donsIncomeRows = computed ? [
     { label: "1x/week", qty: computed.playerCounts.dons1, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
     { label: "2x/week", qty: computed.playerCounts.dons2, unit: "players", price: params.priceDons2, priceUnit: "$/player", key: "priceDons2" as const },
     { label: "2+/week", qty: computed.playerCounts.dons2plus, unit: "players", price: params.priceDons2plus, priceUnit: "$/player", key: "priceDons2plus" as const },
-    { label: "2+ Extra Games", qty: extraGames2plus, unit: "games", price: pricePerExtraGame, priceUnit: "$/game", key: "priceExtraHour" as const, computed: true },
+    { label: "2+ Extra Games", qty: extraGames2plus, unit: "games", price: params.priceExtraHour, priceUnit: "$/game", key: "priceExtraHour" as const },
     { label: "Subs", qty: computed.subsGameCount, unit: "games", price: params.priceSubs, priceUnit: "$/game", key: "priceSubs" as const },
   ] : [];
   const donsIncome = donsIncomeRows.reduce((s, r) => s + r.qty * r.price, 0);
 
-  const soloIncomeRows = computed ? [
-    { label: `Solo (${computed.playerCounts.solo} players)`, count: computed.totalSoloGamesFromDB, price: params.priceSolo, key: "priceSolo" as const },
-  ] : [];
-  const soloIncome = soloIncomeRows.reduce((s, r) => s + r.count * r.price, 0);
+  // Solo income: per-game revenue
+  const soloPlayerList = computed?.soloPlayers ?? [];
+  const soloIncome = soloPlayerList.reduce((s, p) => s + p.soloGames * params.priceSolo, 0);
 
   const computedIncome = donsIncome + soloIncome;
 
@@ -387,16 +390,13 @@ export default function BudgetPage() {
                       {row.qty} <span className="text-xs">{row.unit}</span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {"computed" in row && row.computed ? (
-                        <span className="text-muted text-xs">{formatCurrency(row.price)}<br/>{row.priceUnit}</span>
-                      ) : (
-                        <div>
-                          <input type="number" min="0" step="1" value={row.price || ""} placeholder="0"
-                            onChange={(e) => setParams({ ...params, [row.key]: parseFloat(e.target.value) || 0 })}
-                            className="border border-border rounded px-2 py-1 text-sm w-24 text-right" />
-                          <div className="text-xs text-muted mt-0.5">{row.priceUnit}</div>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-sm text-muted">$</span>
+                        <input type="number" min="0" step="1" value={row.price || ""} placeholder="0"
+                          onChange={(e) => setParams({ ...params, [row.key]: parseFloat(e.target.value) || 0 })}
+                          className="border border-border rounded px-2 py-1 text-sm w-24 text-right" />
+                      </div>
+                      <div className="text-xs text-muted mt-0.5">{row.priceUnit}</div>
                     </td>
                     <td className="px-3 py-2 text-right font-medium">
                       {row.price > 0 ? formatCurrency(row.qty * row.price) : "\u2014"}
@@ -573,30 +573,47 @@ export default function BudgetPage() {
           {/* Solo Income */}
           <div className="border border-border rounded-lg p-6 mb-6">
             <h2 className="font-semibold mb-4">Income</h2>
+            {/* Price inputs */}
+            <div className="mb-4">
+              <div>
+                <label className="block text-sm text-muted mb-1">Per Game</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-muted">$</span>
+                  <input type="number" min="0" step="1" value={params.priceSolo || ""} placeholder="0"
+                    onChange={(e) => setParams({ ...params, priceSolo: parseFloat(e.target.value) || 0 })}
+                    className="border border-border rounded px-2 py-1 text-sm w-24 text-right" />
+                </div>
+              </div>
+            </div>
             <table className="w-full text-sm border border-border mb-3">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="text-left px-3 py-2 font-medium">Item</th>
+                  <th className="text-left px-3 py-2 font-medium">Player</th>
                   <th className="text-right px-3 py-2 font-medium w-20">Games</th>
-                  <th className="text-right px-3 py-2 font-medium w-28">$/game</th>
                   <th className="text-right px-3 py-2 font-medium w-28">Revenue</th>
                 </tr>
               </thead>
               <tbody>
-                {soloIncomeRows.map((row) => (
-                  <tr key={row.key} className="bg-gray-50 border-t border-border">
-                    <td className="px-3 py-2 text-muted">{row.label}</td>
-                    <td className="px-3 py-2 text-right text-muted">{row.count}</td>
-                    <td className="px-3 py-2 text-right">
-                      <input type="number" min="0" step="1" value={row.price || ""} placeholder="0"
-                        onChange={(e) => setParams({ ...params, [row.key]: parseFloat(e.target.value) || 0 })}
-                        className="border border-border rounded px-2 py-1 text-sm w-24 text-right" />
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium">
-                      {row.price > 0 ? formatCurrency(row.count * row.price) : "\u2014"}
-                    </td>
+                {soloPlayerList.map((player) => {
+                  const gameRev = player.soloGames * params.priceSolo;
+                  return (
+                    <tr key={player.name} className="bg-gray-50 border-t border-border">
+                      <td className="px-3 py-2 text-muted">{player.name}</td>
+                      <td className="px-3 py-2 text-right text-muted">{player.soloGames}</td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        {gameRev > 0 ? formatCurrency(gameRev) : "\u2014"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Summary row */}
+                {soloPlayerList.length > 0 && (
+                  <tr className="border-t-2 border-border font-bold">
+                    <td className="px-3 py-2">Total ({soloPlayerList.length} players)</td>
+                    <td className="px-3 py-2 text-right">{soloPlayerList.reduce((s, p) => s + p.soloGames, 0)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(soloIncome)}</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
             <div className="border-t border-border mt-3 pt-3 flex justify-between font-medium text-sm">

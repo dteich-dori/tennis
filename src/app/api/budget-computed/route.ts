@@ -63,6 +63,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Get individual solo player details for budget display
+    const soloPlayerRows = await database
+      .select({
+        firstName: players.firstName,
+        lastName: players.lastName,
+        soloGames: players.soloGames,
+      })
+      .from(players)
+      .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
+    const soloPlayers = soloPlayerRows
+      .filter((p) => p.soloGames != null && p.soloGames > 0)
+      .map((p) => ({ name: `${p.firstName} ${p.lastName}`, soloGames: p.soloGames! }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     // Calculate extra games for 2+ players
     // Base contract = 2 games/week. Extra = total assignments - (2 × weeksPerSeason) per player.
     let extraGames2plus = 0;
@@ -160,6 +174,7 @@ export async function GET(request: NextRequest) {
       extraGames2plus,
       subsGameCount,
       totalSoloGamesFromDB,
+      soloPlayers,
       donsCourtsPerWeek,
       soloCourtsPerWeek,
     });

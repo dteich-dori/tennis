@@ -16,6 +16,7 @@ export const budgetParams = sqliteTable("budget_params", {
   priceSubs: real("price_subs").notNull().default(0),
   priceSolo: real("price_solo").notNull().default(0),
   priceExtraHour: real("price_extra_hour").notNull().default(23),
+  priceSoloSeason: real("price_solo_season").notNull().default(0),
 });
 
 // Manual income/expense line items

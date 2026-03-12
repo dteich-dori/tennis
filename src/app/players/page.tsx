@@ -19,6 +19,7 @@ interface Player {
   noConsecutiveDays: boolean;
   isDerated: boolean;
   noEarlyGames: boolean;
+  cGamesOk: boolean;
   soloGames: number | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
@@ -48,6 +49,7 @@ const emptyPlayer = {
   noConsecutiveDays: false,
   isDerated: false,
   noEarlyGames: false,
+  cGamesOk: false,
   soloGames: null as number | null,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
@@ -134,6 +136,7 @@ export default function PlayersPage() {
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
+      cGamesOk: player.cGamesOk,
       soloGames: player.soloGames ?? null,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
@@ -779,6 +782,14 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, noEarlyGames: e.target.checked })}
                 />
                 No early games
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.cGamesOk}
+                  onChange={(e) => setForm({ ...form, cGamesOk: e.target.checked })}
+                />
+                C games OK
               </label>
             </div>
           </div>

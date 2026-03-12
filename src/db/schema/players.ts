@@ -17,6 +17,7 @@ export const players = sqliteTable("players", {
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   isDerated: integer("is_derated", { mode: "boolean" }).notNull().default(false),
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
+  cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
   soloShareLevel: text("solo_share_level"), // legacy — "full", "half", or null
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
 });

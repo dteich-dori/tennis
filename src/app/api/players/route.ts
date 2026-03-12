@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
       noConsecutiveDays,
       isDerated,
       noEarlyGames,
+      cGamesOk,
       soloGames,
       blockedDays,
       vacations,
@@ -188,6 +189,7 @@ export async function POST(request: NextRequest) {
         noConsecutiveDays: noConsecutiveDays ?? false,
         isDerated: isDerated ?? false,
         noEarlyGames: noEarlyGames ?? false,
+        cGamesOk: cGamesOk ?? false,
         soloGames: soloGames || null,
       })
       .returning();
@@ -251,6 +253,7 @@ export async function PUT(request: NextRequest) {
       noConsecutiveDays,
       isDerated,
       noEarlyGames,
+      cGamesOk,
       soloGames,
       blockedDays,
       vacations,
@@ -286,6 +289,7 @@ export async function PUT(request: NextRequest) {
       noConsecutiveDays: noConsecutiveDays !== undefined ? noConsecutiveDays : currentPlayer.noConsecutiveDays,
       isDerated: isDerated !== undefined ? isDerated : currentPlayer.isDerated,
       noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
+      cGamesOk: cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
     };
 

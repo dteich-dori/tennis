@@ -155,6 +155,11 @@ export default function SchedulePage() {
   } | null>(null);
   const [extraGamesLoading, setExtraGamesLoading] = useState(false);
 
+  // Find Problem state
+  const [findingProblem, setFindingProblem] = useState(false);
+  const [lastProblemGameId, setLastProblemGameId] = useState<number | null>(null);
+  const [pendingProblemGame, setPendingProblemGame] = useState<number | null>(null);
+
   // Auto-assign state
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
   const [autoAssignLog, setAutoAssignLog] = useState<{ type: string; day?: string; message: string }[]>([]);
@@ -341,8 +346,59 @@ export default function SchedulePage() {
     setAutoAssignLog([]);
     setAutoAssignCount(0);
     setAutoAssignError("");
+    setLastProblemGameId(null);
     setCurrentWeek(week);
   };
+
+  // Find next problem game (incomplete or composition violation)
+  const handleFindProblem = async () => {
+    if (!season) return;
+    setFindingProblem(true);
+    try {
+      const skipParam = lastProblemGameId ? `&afterGameId=${lastProblemGameId}` : "";
+      const res = await fetch(
+        `/api/games/find-problem?seasonId=${season.id}&startWeek=${currentWeek}&totalWeeks=${season.totalWeeks}${skipParam}`
+      );
+      const data = await res.json();
+      if (data.found) {
+        setLastProblemGameId(data.gameId);
+        if (data.weekNumber !== currentWeek) {
+          setCurrentWeek(data.weekNumber);
+        }
+        setPendingProblemGame(data.gameId);
+      } else {
+        setLastProblemGameId(null);
+        alert("No problem games found.");
+      }
+    } catch (err) {
+      console.error("Find problem failed:", err);
+    }
+    setFindingProblem(false);
+  };
+
+  // Scroll to and open diagnostic for a pending problem game after data loads
+  useEffect(() => {
+    if (pendingProblemGame && games.length > 0) {
+      const game = games.find((g) => g.id === pendingProblemGame);
+      if (game) {
+        setPendingProblemGame(null);
+        setTimeout(() => {
+          const el = document.getElementById(`game-${pendingProblemGame}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("bg-yellow-100");
+            setTimeout(() => el.classList.remove("bg-yellow-100"), 2000);
+          }
+        }, 150);
+        // Open diagnostic panel
+        setExplainModal({ loading: true, mode: "incomplete", data: null, incompleteData: null });
+        fetch(`/api/games/explain-incomplete?gameId=${pendingProblemGame}`)
+          .then((res) => res.json())
+          .then((incompleteData) => setExplainModal({ loading: false, mode: "incomplete", data: null, incompleteData }))
+          .catch(() => setExplainModal(null));
+      }
+    }
+  }, [pendingProblemGame, games]);
 
   const handleCheckCompliance = async (group: "dons" | "solo") => {
     if (!season) return;
@@ -879,6 +935,14 @@ export default function SchedulePage() {
               title="Show extra games assigned beyond contracted frequency (Don's group)"
             >
               Display Extra
+            </button>
+            <button
+              onClick={handleFindProblem}
+              disabled={findingProblem || totalGames === 0}
+              className="px-4 py-2 bg-rose-500 text-white font-semibold rounded-lg shadow-sm hover:bg-rose-600 active:bg-rose-700 disabled:opacity-40 transition-colors text-sm"
+              title="Find next game with a problem (incomplete or A+C composition violation)"
+            >
+              {findingProblem ? "Searching..." : "Find Problem"}
             </button>
           </div>
 
@@ -1825,52 +1889,64 @@ export default function SchedulePage() {
 
       {/* Game Diagnostic Side Panel */}
       {explainModal && (
-        <div className="w-[360px] flex-shrink-0 sticky top-0 self-start max-h-screen overflow-y-auto">
+        <div className="w-[360px] flex-shrink-0 sticky top-[50vh] -translate-y-1/2 self-start max-h-[80vh] overflow-y-auto">
           <div className="bg-white border border-border rounded-lg shadow-lg">
             {explainModal.loading ? (
               <div className="p-4 text-center text-muted text-sm">Loading...</div>
             ) : explainModal.incompleteData ? (
               <>
-                <div className={`flex justify-between items-start px-3 py-2 border-b border-border rounded-t-lg ${
-                  explainModal.incompleteData.emptySlots > 0 ? "bg-red-50" : "bg-gray-50"
-                }`}>
-                  <div>
-                    <span className={`font-bold text-sm ${explainModal.incompleteData.emptySlots > 0 ? "text-red-700" : ""}`}>
+                <div className="flex justify-between items-center px-3 py-2 border-b border-border rounded-t-lg bg-gray-50">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm">
                       Game #{explainModal.incompleteData.game.gameNumber}
                     </span>
-                    <span className={`text-xs ml-2 ${explainModal.incompleteData.emptySlots > 0 ? "text-red-600" : "text-muted"}`}>
-                      {explainModal.incompleteData.filledSlots}/4 slots filled
+                    {explainModal.incompleteData.composition && (
+                      <span className="text-xs font-mono font-medium text-blue-600">
+                        {explainModal.incompleteData.composition}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted">
+                      {explainModal.incompleteData.game.group === "solo" ? "Solo" : "Don\u2019s"}
                     </span>
-                    <span className="text-xs text-muted ml-2">
-                      ({explainModal.incompleteData.game.group === "solo" ? "Solo" : "Don\u2019s"})
-                    </span>
+                    {explainModal.incompleteData.emptySlots > 0 ? (
+                      <span className="text-[10px] font-semibold bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                        {explainModal.incompleteData.emptySlots} EMPTY SLOT{explainModal.incompleteData.emptySlots > 1 ? "S" : ""}
+                      </span>
+                    ) : (() => {
+                      const comp = explainModal.incompleteData.composition ?? "";
+                      const compHasA = comp.includes("A");
+                      const compHasC = comp.includes("C");
+                      const compBCount = (comp.match(/B/g) ?? []).length;
+                      return compHasA && compHasC && compBCount < 2 ? (
+                        <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">
+                          A+C VIOLATION
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-sm leading-none ml-2">✕</button>
                 </div>
-                <div className={`px-3 py-2 border-b border-border ${explainModal.incompleteData.emptySlots > 0 ? "bg-red-50/50" : "bg-gray-50/50"}`}>
-                  <div className={`text-xs font-medium ${explainModal.incompleteData.emptySlots > 0 ? "text-red-700" : "text-gray-700"}`}>
-                    {explainModal.incompleteData.message}
-                  </div>
-                  <div className="text-xs text-muted mt-0.5">
-                    {explainModal.incompleteData.game.dayOfWeek} {explainModal.incompleteData.game.date}, {explainModal.incompleteData.game.startTime}, Week {explainModal.incompleteData.game.weekNumber}
-                  </div>
-                </div>
                 <div className="divide-y divide-border">
-                  {explainModal.incompleteData.playerAnalysis.map((p, i) => (
-                    <div key={i} className={`px-3 py-1.5 ${p.assigned ? "bg-green-50" : p.eligible ? "bg-blue-50" : ""}`}>
+                  {explainModal.incompleteData.playerAnalysis
+                    .filter((p) => p.eligible && !p.assigned)
+                    .map((p, i) => (
+                    <div key={i} className="px-3 py-1.5">
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-xs font-medium ${p.assigned ? "text-green-700" : p.eligible ? "text-blue-700" : "text-gray-600"}`}>
-                          {p.assigned ? "✅" : p.eligible ? "🟢" : "🔴"} {p.name}
+                        <span className="text-xs font-medium">
+                          {p.name}
                         </span>
                         <span className="text-[10px] text-muted ml-auto">
                           {p.totalAssigned}/{p.target} total, {p.dayActual}/{p.dayTarget} day
                         </span>
                       </div>
                       {p.reasons.map((reason, j) => (
-                        <div key={j} className="text-[11px] text-muted ml-5">{reason}</div>
+                        <div key={j} className="text-[11px] text-muted ml-3">{reason}</div>
                       ))}
                     </div>
                   ))}
+                  {explainModal.incompleteData.playerAnalysis.filter((p) => p.eligible && !p.assigned).length === 0 && (
+                    <div className="px-3 py-3 text-xs text-muted text-center">No eligible players available</div>
+                  )}
                 </div>
               </>
             ) : (

@@ -13,6 +13,7 @@ interface PlayerData {
   isDerated: boolean;
   noConsecutiveDays: boolean;
   noEarlyGames: boolean;
+  cGamesOk: boolean;
   soloGames: number | null;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
@@ -109,12 +110,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // 3. Validate: all Solo games must be fully assigned
-    const unfilledSolo = soloGames.filter((g) => g.assignments.length < 4);
-    if (unfilledSolo.length > 0) {
+    // 3. Validate: partially-assigned Solo games must be completed first
+    // Solo games with 0 assignments are OK (Solo doesn't need this week) — only block
+    // if some slots are filled but not all 4 (partially assigned).
+    const partialSolo = soloGames.filter((g) => g.assignments.length > 0 && g.assignments.length < 4);
+    if (partialSolo.length > 0) {
       return NextResponse.json({
-        error: `All Solo games must be fully assigned first. ${unfilledSolo.length} Solo game(s) still have open slots.`,
-        log: [{ type: "error", message: `${unfilledSolo.length} Solo game(s) not fully assigned: games #${unfilledSolo.map((g) => g.gameNumber).join(", #")}` }],
+        error: `Some Solo games are partially assigned. Complete them first. ${partialSolo.length} Solo game(s) still have open slots.`,
+        log: [{ type: "error", message: `${partialSolo.length} Solo game(s) partially assigned: games #${partialSolo.map((g) => g.gameNumber).join(", #")}` }],
       }, { status: 400 });
     }
 
@@ -227,6 +230,80 @@ export async function POST(request: NextRequest) {
       }));
     }
 
+    // 6a. Vacation-aware front-loading: compute adjusted weekly frequency per player
+    // Players with upcoming vacations get a boosted weekly target (up to freq+1) so they
+    // accumulate extra games in non-vacation weeks to compensate for missed weeks.
+    const totalWeeks = seasonRecord?.totalWeeks ?? 36;
+
+    // Load future Don's game dates (current week through end of season)
+    const futureGameRows = await database
+      .select({ weekNumber: games.weekNumber, date: games.date, dayOfWeek: games.dayOfWeek })
+      .from(games)
+      .where(
+        and(
+          eq(games.seasonId, seasonId),
+          eq(games.group, "dons"),
+          eq(games.status, "normal"),
+          sql`${games.weekNumber} >= ${weekNumber}`
+        )
+      );
+
+    // Group by week: Map<weekNumber, {date, dayOfWeek}[]> (deduplicated dates)
+    const datesByWeek = new Map<number, { date: string; dayOfWeek: number }[]>();
+    for (const row of futureGameRows) {
+      const arr = datesByWeek.get(row.weekNumber) ?? [];
+      if (!arr.some((d) => d.date === row.date)) {
+        arr.push({ date: row.date, dayOfWeek: row.dayOfWeek });
+      }
+      datesByWeek.set(row.weekNumber, arr);
+    }
+
+    // Compute adjustedFreq per player
+    const adjustedFreqMap = new Map<number, number>();
+    for (const p of contractedPlayers) {
+      if (p.contractedFrequency === "2+") continue; // 2+ already uncapped per-week
+      const freq = parseInt(p.contractedFrequency) || 0;
+      if (freq === 0) continue;
+
+      const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
+      const totalTarget = freq * totalWeeks;
+      const gamesNeeded = totalTarget - ytd;
+
+      if (gamesNeeded <= 0) {
+        adjustedFreqMap.set(p.id, freq);
+        continue;
+      }
+
+      // Count playable weeks: weeks where at least one game date is not vacation/blocked
+      let playableWeeksRemaining = 0;
+      for (const [, dates] of datesByWeek) {
+        const hasPlayableDate = dates.some((d) => {
+          if (p.vacations.some((v) => d.date >= v.startDate && d.date <= v.endDate)) return false;
+          if (p.blockedDays.includes(d.dayOfWeek)) return false;
+          return true;
+        });
+        if (hasPlayableDate) playableWeeksRemaining++;
+      }
+
+      if (playableWeeksRemaining === 0) {
+        adjustedFreqMap.set(p.id, freq);
+        continue;
+      }
+
+      let adjustedFreq = Math.ceil(gamesNeeded / playableWeeksRemaining);
+      adjustedFreq = Math.min(adjustedFreq, freq + 1); // cap: at most +1 extra per week
+      adjustedFreq = Math.max(adjustedFreq, freq);      // floor: never reduce below normal
+
+      adjustedFreqMap.set(p.id, adjustedFreq);
+
+      if (adjustedFreq > freq) {
+        log.push({
+          type: "info",
+          message: `Front-loading: ${p.lastName} adjusted from ${freq}→${adjustedFreq} games/week (${playableWeeksRemaining} playable of ${datesByWeek.size} remaining weeks, needs ${gamesNeeded} more games)`,
+        });
+      }
+    }
+
     // 6b. Load historical pairing counts (all prior weeks) for pairing diversity
     // pairingCounts[pairKey(a,b)] = number of times players a & b shared a game
     const pairingCounts = new Map<string, number>();
@@ -334,7 +411,7 @@ export async function POST(request: NextRequest) {
           if (p.contractedFrequency !== "2+") {
             const freq = parseInt(p.contractedFrequency) || 0;
             const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-            if (ytd >= freq * 36) return false;
+            if (ytd >= freq * totalWeeks) return false;
           }
           if (firstGameOnly) {
             // Only players who have zero Don's games this week
@@ -345,8 +422,9 @@ export async function POST(request: NextRequest) {
             // In extras mode (Pass 3), allowExtras lifts that caller-side cap
           } else {
             // Non-2+ players: only eligible if WTD owed > 0
-            const freq = parseInt(p.contractedFrequency) || 0;
-            if (freq - wtd <= 0) return false;
+            // Use adjustedFreq for vacation-aware front-loading
+            const effectiveFreq = adjustedFreqMap.get(p.id) ?? (parseInt(p.contractedFrequency) || 0);
+            if (effectiveFreq - wtd <= 0) return false;
           }
         }
 
@@ -434,10 +512,11 @@ export async function POST(request: NextRequest) {
     // Priority scoring for a player
     function getPlayerPriority(p: PlayerData, game: GameData): { mustPlay: boolean; owed: number; ytdDeficit: number; playableDaysLeft: number } {
       const freq = parseInt(p.contractedFrequency) || 0;
+      const effectiveFreq = adjustedFreqMap.get(p.id) ?? freq;
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
-      const owed = freq - wtd;
+      const owed = effectiveFreq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
-      const expectedYtd = freq * Math.min(weekNumber, 36);
+      const expectedYtd = freq * Math.min(weekNumber, totalWeeks);
       const ytdDeficit = expectedYtd - ytd;
 
       // Count remaining playable dates this week (not yet assigned on)
@@ -468,11 +547,11 @@ export async function POST(request: NextRequest) {
         if (soloOnDate.has(p.id)) return false;
         if (p.blockedDays.includes(dow)) return false;
         if (p.vacations.some((v) => date >= v.startDate && date <= v.endDate)) return false;
-        // Only count players who deserve games
+        // Only count players who deserve games (use adjustedFreq for front-loading)
         if (p.contractedFrequency === "2+") return true;
-        const freq = parseInt(p.contractedFrequency) || 0;
+        const effectiveFreq = adjustedFreqMap.get(p.id) ?? (parseInt(p.contractedFrequency) || 0);
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
-        if (freq - wtd > 0) return true;
+        if (effectiveFreq - wtd > 0) return true;
         return false;
       });
 
@@ -525,10 +604,30 @@ export async function POST(request: NextRequest) {
       //   6. random tiebreaker
       const sortByPriority = (players: PlayerData[], game: GameData) => {
         const currentAssignedIds = gameAssignmentState.get(game.id) ?? [];
+
+        // Pre-compute game composition for A/C mixing penalty
+        const gamePlayers = currentAssignedIds.map((id) => playerData.find((p) => p.id === id));
+        const hasC = gamePlayers.some((p) => p?.skillLevel === "C");
+        const hasA = gamePlayers.some((p) => p?.skillLevel === "A");
+        const bCount = gamePlayers.filter((p) => p?.skillLevel === "B").length;
+        const aCount = gamePlayers.filter((p) => p?.skillLevel === "A").length;
+        const cCount = gamePlayers.filter((p) => p?.skillLevel === "C").length;
+
+        // Soft penalty for A+C combos without sufficient B bridges (was a hard block)
+        function compositionPenalty(p: PlayerData): number {
+          if (p.skillLevel === "A" && !p.cGamesOk && hasC && (bCount < 2 || aCount >= 1)) return 1;
+          if (p.skillLevel === "C" && hasA && (bCount < 2 || cCount >= 1)) return 1;
+          return 0;
+        }
+
         return [...players].sort((a, b) => {
           const pa = getPlayerPriority(a, game);
           const pb = getPlayerPriority(b, game);
           if (pa.mustPlay !== pb.mustPlay) return pa.mustPlay ? -1 : 1;
+          // Composition: prefer players that don't create A+C violations
+          const compA = compositionPenalty(a);
+          const compB = compositionPenalty(b);
+          if (compA !== compB) return compA - compB;
           if (pb.owed !== pa.owed) return pb.owed - pa.owed;
           // Pairing diversity: prefer candidates who've been paired LESS with current game members
           if (currentAssignedIds.length > 0) {
@@ -594,27 +693,11 @@ export async function POST(request: NextRequest) {
         for (let slot = 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
 
-          // Check current game composition for A-protection rule
-          // Use playerData (not contractedPlayers) so we also see sub players assigned by Pass 4
-          const currentPlayers = currentAssigned.map((id) => playerData.find((p) => p.id === id));
-          const hasC = currentPlayers.some((p) => p?.skillLevel === "C");
-          const hasA = currentPlayers.some((p) => p?.skillLevel === "A");
-          const bCount = currentPlayers.filter((p) => p?.skillLevel === "B").length;
-          const aCount = currentPlayers.filter((p) => p?.skillLevel === "A").length;
-
-          // A-protection: if game has C player, block A unless 2B present and 0 A already
-          const blockA = hasC && (bCount < 2 || aCount >= 1);
-          // C-protection: if game has A player, block C unless 2B present and 0 C already
-          const cCount = currentPlayers.filter((p) => p?.skillLevel === "C").length;
-          const blockC = hasA && (bCount < 2 || cCount >= 1);
-
           let passUsed = 1;
 
           // First pass: only players with zero Don's games this week (everyone gets at least 1)
           let eligible = getAvailablePlayers(game, currentAssigned, true).filter((p) => {
             if (usedOnDay.has(p.id)) return false;
-            if (blockA && p.skillLevel === "A") return false;
-            if (blockC && p.skillLevel === "C") return false;
             return true;
           });
           // Second pass: players who still owe games (freq - wtd > 0), including 2+ players
@@ -623,8 +706,6 @@ export async function POST(request: NextRequest) {
             passUsed = 2;
             eligible = getAvailablePlayers(game, currentAssigned, false).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
-              if (blockA && p.skillLevel === "A") return false;
-              if (blockC && p.skillLevel === "C") return false;
               // Block 2+ players who've already met their minimum — no over-assignment
               if (p.contractedFrequency === "2+") {
                 const wtd = wtdDonsCounts.get(p.id) ?? 0;
@@ -638,8 +719,6 @@ export async function POST(request: NextRequest) {
             passUsed = 3;
             eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
-              if (blockA && p.skillLevel === "A") return false;
-              if (blockC && p.skillLevel === "C") return false;
               return true;
             });
           }
@@ -648,8 +727,6 @@ export async function POST(request: NextRequest) {
             passUsed = 4;
             eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
-              if (blockA && p.skillLevel === "A") return false;
-              if (blockC && p.skillLevel === "C") return false;
               return true;
             });
           }
@@ -688,6 +765,101 @@ export async function POST(request: NextRequest) {
       }
       if (assignCSubs) {
         log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
+      }
+
+      // --- Day-level composition optimization ---
+      // After filling all games on this day, try swapping players between games
+      // to reduce A+C composition violations (e.g., group C players together).
+      const filledDayGames = openGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length === 4);
+
+      function hasCompositionViolation(pids: number[]): boolean {
+        const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "?");
+        const hA = levels.includes("A");
+        const hC = levels.includes("C");
+        const bCnt = levels.filter((l) => l === "B").length;
+        return hA && hC && bCnt < 2;
+      }
+
+      const dayStates = filledDayGames.map((g) => ({
+        game: g,
+        players: [...(gameAssignmentState.get(g.id) ?? [])],
+      }));
+
+      let totalViolations = dayStates.filter((gs) => hasCompositionViolation(gs.players)).length;
+
+      if (totalViolations > 0) {
+        let swapMade = true;
+        while (swapMade) {
+          swapMade = false;
+          for (let i = 0; i < dayStates.length && !swapMade; i++) {
+            for (let j = i + 1; j < dayStates.length && !swapMade; j++) {
+              for (let pi = 0; pi < 4 && !swapMade; pi++) {
+                for (let pj = 0; pj < 4 && !swapMade; pj++) {
+                  const pidI = dayStates[i].players[pi];
+                  const pidJ = dayStates[j].players[pj];
+                  if (pidI === pidJ) continue;
+
+                  // Build swapped rosters
+                  const newI = [...dayStates[i].players]; newI[pi] = pidJ;
+                  const newJ = [...dayStates[j].players]; newJ[pj] = pidI;
+
+                  const oldViols = (hasCompositionViolation(dayStates[i].players) ? 1 : 0)
+                                 + (hasCompositionViolation(dayStates[j].players) ? 1 : 0);
+                  const newViols = (hasCompositionViolation(newI) ? 1 : 0)
+                                 + (hasCompositionViolation(newJ) ? 1 : 0);
+
+                  if (newViols >= oldViols) continue;
+
+                  // Verify DNP constraints in new rosters
+                  let dnpOk = true;
+                  const pI = playerData.find((p) => p.id === pidI);
+                  const pJ = playerData.find((p) => p.id === pidJ);
+                  for (const otherId of newI) {
+                    if (otherId === pidJ) continue;
+                    if (pJ?.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                    const other = playerData.find((p) => p.id === otherId);
+                    if (other?.doNotPair.includes(pidJ)) { dnpOk = false; break; }
+                  }
+                  if (dnpOk) {
+                    for (const otherId of newJ) {
+                      if (otherId === pidI) continue;
+                      if (pI?.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                      const other = playerData.find((p) => p.id === otherId);
+                      if (other?.doNotPair.includes(pidI)) { dnpOk = false; break; }
+                    }
+                  }
+                  if (!dnpOk) continue;
+
+                  // Apply swap in DB
+                  const [rowI] = await database.select().from(gameAssignments)
+                    .where(and(eq(gameAssignments.gameId, dayStates[i].game.id), eq(gameAssignments.playerId, pidI)));
+                  const [rowJ] = await database.select().from(gameAssignments)
+                    .where(and(eq(gameAssignments.gameId, dayStates[j].game.id), eq(gameAssignments.playerId, pidJ)));
+                  if (rowI && rowJ) {
+                    await database.update(gameAssignments).set({ playerId: pidJ }).where(eq(gameAssignments.id, rowI.id));
+                    await database.update(gameAssignments).set({ playerId: pidI }).where(eq(gameAssignments.id, rowJ.id));
+                  }
+
+                  // Update state
+                  dayStates[i].players = newI;
+                  dayStates[j].players = newJ;
+                  gameAssignmentState.set(dayStates[i].game.id, newI);
+                  gameAssignmentState.set(dayStates[j].game.id, newJ);
+                  totalViolations = dayStates.filter((gs) => hasCompositionViolation(gs.players)).length;
+
+                  const nameI = pI ? `${pI.lastName}` : `#${pidI}`;
+                  const nameJ = pJ ? `${pJ.lastName}` : `#${pidJ}`;
+                  log.push({
+                    type: "info",
+                    day: DAYS[dow],
+                    message: `Composition swap: ${nameI} (game #${dayStates[j].game.gameNumber}) ↔ ${nameJ} (game #${dayStates[i].game.gameNumber}) — reduced A+C violations`,
+                  });
+                  swapMade = true;
+                }
+              }
+            }
+          }
+        }
       }
     }
 

@@ -12,7 +12,8 @@ const DEFAULTS = {
   priceDons2plus: 0,
   priceSubs: 0,
   priceSolo: 0,
-  priceExtraHour: 23,
+  priceExtraHour: 0,
+  priceSoloSeason: 0,
 };
 
 export async function GET(request: NextRequest) {
@@ -51,10 +52,11 @@ export async function PUT(request: NextRequest) {
       priceSubs: number;
       priceSolo: number;
       priceExtraHour: number;
+      priceSoloSeason: number;
     };
     const {
       seasonId, weeksPerSeason, gameDurationHours, costPerCourtPerHour,
-      priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour,
+      priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour, priceSoloSeason,
     } = body;
 
     if (!seasonId) {
@@ -79,14 +81,14 @@ export async function PUT(request: NextRequest) {
     if (existing.length > 0) {
       const result = await database
         .update(budgetParams)
-        .set({ weeksPerSeason, gameDurationHours, costPerCourtPerHour, priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour })
+        .set({ weeksPerSeason, gameDurationHours, costPerCourtPerHour, priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour, priceSoloSeason })
         .where(eq(budgetParams.seasonId, seasonId))
         .returning();
       return NextResponse.json(result[0]);
     } else {
       const result = await database
         .insert(budgetParams)
-        .values({ seasonId, weeksPerSeason, gameDurationHours, costPerCourtPerHour, priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour })
+        .values({ seasonId, weeksPerSeason, gameDurationHours, costPerCourtPerHour, priceDons1, priceDons2, priceDons2plus, priceSubs, priceSolo, priceExtraHour, priceSoloSeason })
         .returning();
       return NextResponse.json(result[0], { status: 201 });
     }

@@ -1,0 +1,1 @@
+ALTER TABLE `budget_params` ADD `price_solo_season` real DEFAULT 0 NOT NULL;

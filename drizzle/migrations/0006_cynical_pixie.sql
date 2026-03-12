@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `c_games_ok` integer DEFAULT false NOT NULL;
