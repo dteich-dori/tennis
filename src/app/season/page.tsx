@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 
 interface Season {
@@ -18,7 +18,19 @@ interface Holiday {
   name: string;
 }
 
+interface CourtSlot {
+  id: number;
+  seasonId: number;
+  dayOfWeek: number;
+  courtNumber: number;
+  startTime: string;
+  isSolo: boolean;
+}
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 export default function SeasonPage() {
+  const [activeTab, setActiveTab] = useState<"current" | "new">("current");
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [activeSeason, setActiveSeason] = useState<Season | null>(null);
   const [startDate, setStartDate] = useState("");
@@ -26,10 +38,14 @@ export default function SeasonPage() {
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayName, setHolidayName] = useState("");
   const [error, setError] = useState("");
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [resetConfirmText, setResetConfirmText] = useState("");
-  const [resetStatus, setResetStatus] = useState<"" | "backing-up" | "resetting" | "done" | "error">("");
+  const [showCourtWizard, setShowCourtWizard] = useState(false);
+  const [courtWizardStep, setCourtWizardStep] = useState<1 | 2>(1);
+  const [rebuildConfirmText, setRebuildConfirmText] = useState("");
+  const [rebuildStatus, setRebuildStatus] = useState<"" | "backing-up" | "rebuilding" | "done" | "error">("");
   const [backupResult, setBackupResult] = useState("");
+  const [courtSlots, setCourtSlots] = useState<CourtSlot[]>([]);
+  const [editingSlot, setEditingSlot] = useState<CourtSlot | null>(null);
+  const [courtForm, setCourtForm] = useState({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
   const [maxDeratedPerWeek, setMaxDeratedPerWeek] = useState<string>("none");
 
   // Regenerate games state
@@ -49,6 +65,8 @@ export default function SeasonPage() {
   const [donsAssignLog, setDonsAssignLog] = useState<
     { type: string; week?: number; message: string }[]
   >([]);
+  const [donsAssignExtra, setDonsAssignExtra] = useState(false);
+  const [donsAssignCSubs, setDonsAssignCSubs] = useState(false);
 
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
@@ -79,10 +97,6 @@ export default function SeasonPage() {
   // Download backup state
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupDownloadMessage, setBackupDownloadMessage] = useState("");
-
-  // Clear all assignments state
-  const [clearingAll, setClearingAll] = useState(false);
-  const [clearAllMessage, setClearAllMessage] = useState("");
 
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
@@ -171,6 +185,22 @@ export default function SeasonPage() {
       loadWeeklyGameSummary(activeSeason.id);
     }
   }, [activeSeason, loadHolidays, loadGamesCount, loadWeeklyGameSummary]);
+
+  // Auto-save derated pairing frequency when changed
+  const deratedInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!deratedInitialized.current) {
+      deratedInitialized.current = true;
+      return;
+    }
+    const deratedValue = maxDeratedPerWeek === "none" ? null : parseInt(maxDeratedPerWeek);
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxDeratedPerWeek: deratedValue }),
+    });
+  }, [maxDeratedPerWeek, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -360,36 +390,103 @@ export default function SeasonPage() {
     setBackupDirSaving(false);
   };
 
-  const handleResetSeason = async () => {
-    if (!activeSeason || resetConfirmText !== "DELETE") return;
+  const loadCourtSlots = async () => {
+    if (!activeSeason) return;
+    const res = await fetch(`/api/courts?seasonId=${activeSeason.id}`);
+    const data = await res.json();
+    setCourtSlots(data);
+  };
 
-    // Step 1: Download backup
-    setResetStatus("backing-up");
+  const handleAddCourtSlot = async () => {
+    if (!activeSeason) return;
+    await fetch("/api/courts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seasonId: activeSeason.id,
+        dayOfWeek: parseInt(courtForm.dayOfWeek),
+        courtNumber: parseInt(courtForm.courtNumber),
+        startTime: courtForm.startTime,
+        isSolo: courtForm.isSolo,
+      }),
+    });
+    await loadCourtSlots();
+    setCourtForm({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
+  };
+
+  const handleUpdateCourtSlot = async () => {
+    if (!activeSeason || !editingSlot) return;
+    await fetch("/api/courts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingSlot.id,
+        seasonId: activeSeason.id,
+        dayOfWeek: parseInt(courtForm.dayOfWeek),
+        courtNumber: parseInt(courtForm.courtNumber),
+        startTime: courtForm.startTime,
+        isSolo: courtForm.isSolo,
+      }),
+    });
+    setEditingSlot(null);
+    await loadCourtSlots();
+    setCourtForm({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
+  };
+
+  const handleDeleteCourtSlot = async (id: number) => {
+    await fetch(`/api/courts?id=${id}`, { method: "DELETE" });
+    await loadCourtSlots();
+  };
+
+  const handleRebuildGames = async () => {
+    if (!activeSeason || rebuildConfirmText !== "REBUILD") return;
+
+    // Step 1: Backup
+    setRebuildStatus("backing-up");
     setBackupResult("");
-    const backupResult = await downloadBackup();
-    if (!backupResult) {
-      setResetStatus("error");
-      setBackupResult("Backup failed. Reset cancelled.");
+    const result = await downloadBackup();
+    if (!result) {
+      setRebuildStatus("error");
+      setBackupResult("Backup failed. Rebuild cancelled.");
       return;
     }
-    setBackupResult(`Backup saved to ${backupDir}/${backupResult}/`);
+    setBackupResult(`Backup saved to ${backupDir}/${result}/`);
 
-    // Step 2: Perform the reset
-    setResetStatus("resetting");
-    await fetch("/api/seasons?all=true", { method: "DELETE" });
-    setActiveSeason(null);
-    setStartDate("");
-    setHolidays([]);
-    setSeasons([]);
-    setResetStatus("done");
+    // Step 2: Regenerate games
+    setRebuildStatus("rebuilding");
+    let failed = false;
+    try {
+      const res = await fetch("/api/games/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id }),
+      });
+      const data = (await res.json()) as { success?: boolean; gamesGenerated?: number; error?: string };
+      if (data.success) {
+        await loadGamesCount(activeSeason.id);
+        setRebuildStatus("done");
+        setBackupResult((prev) => `${prev} Regenerated ${data.gamesGenerated} games.`);
+      } else {
+        failed = true;
+        setRebuildStatus("error");
+        setBackupResult(`Rebuild failed: ${data.error}`);
+      }
+    } catch {
+      failed = true;
+      setRebuildStatus("error");
+      setBackupResult("Failed to regenerate games.");
+    }
 
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-      setShowResetConfirm(false);
-      setResetConfirmText("");
-      setResetStatus("");
-      setBackupResult("");
-    }, 5000);
+    // Auto-close after 3 seconds on success
+    if (!failed) {
+      setTimeout(() => {
+        setShowCourtWizard(false);
+        setCourtWizardStep(1);
+        setRebuildConfirmText("");
+        setRebuildStatus("");
+        setBackupResult("");
+      }, 3000);
+    }
   };
 
   const handleDonsAssignAll = async () => {
@@ -451,7 +548,7 @@ export default function SeasonPage() {
           const res = await fetch("/api/games/auto-assign", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week }),
+            body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignCSubs: donsAssignCSubs }),
           });
           const data = await res.json();
 
@@ -563,32 +660,6 @@ export default function SeasonPage() {
     setSoloAssigning(false);
   };
 
-  const handleClearAllAssignments = async () => {
-    if (!activeSeason) return;
-    if (!confirm("Clear ALL player assignments (Don's and Solo) for the entire season? Games and players will be preserved.")) return;
-    setClearingAll(true);
-    setClearAllMessage("");
-    try {
-      const res = await fetch("/api/games/clear-assignments", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: activeSeason.id }),
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        deletedCount?: number;
-        error?: string;
-      };
-      if (res.ok) {
-        setClearAllMessage(`Cleared ${data.deletedCount} assignments (Don's + Solo).`);
-      } else {
-        setClearAllMessage(`Error: ${data.error}`);
-      }
-    } catch {
-      setClearAllMessage("Failed to clear assignments.");
-    }
-    setClearingAll(false);
-  };
 
   const handleClearSoloAssign = async () => {
     if (!activeSeason) return;
@@ -834,6 +905,26 @@ export default function SeasonPage() {
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">Season Setup</h1>
 
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab("current")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "current" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Current Season
+        </button>
+        <button
+          onClick={() => setActiveTab("new")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "new" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          New Season
+        </button>
+      </div>
+
+      {activeTab === "current" && (<>
       {/* Season Dates + Reset + Clear All */}
       <div className="border border-border rounded-lg p-6 mb-6">
         <h2 className="font-semibold mb-4">Season {activeSeason?.id}</h2>
@@ -894,13 +985,15 @@ export default function SeasonPage() {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <button
-            onClick={handleSaveSeason}
-            title="Saves the start date and derated pairing frequency settings for this season"
-            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
-          >
-            {activeSeason ? "Update Season" : "Create Season"}
-          </button>
+          {!activeSeason && (
+            <button
+              onClick={handleSaveSeason}
+              title="Creates a new season with the specified start date and settings"
+              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+            >
+              Create Season
+            </button>
+          )}
           {activeSeason && (
             <button
               onClick={handleDownloadBackup}
@@ -911,23 +1004,20 @@ export default function SeasonPage() {
               {backupDownloading ? "Downloading..." : "Download Backup"}
             </button>
           )}
-          {activeSeason && !showResetConfirm && (
+          {activeSeason && (
             <button
-              onClick={() => setShowResetConfirm(true)}
-              title="Permanently deletes the season, all holidays, games, and assignments. A backup is downloaded automatically before reset."
-              className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors"
+              onClick={() => {
+                setShowCourtWizard(true);
+                setCourtWizardStep(1);
+                setRebuildConfirmText("");
+                setRebuildStatus("");
+                setBackupResult("");
+                loadCourtSlots();
+              }}
+              title="Edit the court schedule and regenerate games. A backup is created automatically before rebuilding."
+              className="border border-indigo-500 text-indigo-600 px-4 py-2 rounded text-sm hover:bg-indigo-50 transition-colors"
             >
-              Reset Season
-            </button>
-          )}
-          {activeSeason && totalGames > 0 && (
-            <button
-              onClick={handleClearAllAssignments}
-              disabled={clearingAll}
-              title="Removes all player assignments (Don's and Solo) for every week. Games, players, and holidays are preserved."
-              className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
-            >
-              {clearingAll ? "Clearing..." : "Clear All Assignments"}
+              Change Court Schedule
             </button>
           )}
         </div>
@@ -944,93 +1034,249 @@ export default function SeasonPage() {
           </div>
         )}
 
-        {clearAllMessage && (
-          <div
-            className={`border rounded px-4 py-2 mt-3 text-sm ${
-              clearAllMessage.startsWith("Error") ||
-              clearAllMessage.startsWith("Failed")
-                ? "bg-red-50 border-red-200 text-red-800"
-                : "bg-green-50 border-green-200 text-green-800"
-            }`}
-          >
-            {clearAllMessage}
-          </div>
-        )}
+        {/* Court Schedule Wizard Modal */}
+        {showCourtWizard && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              {/* Step 1: Court Schedule Editor */}
+              {courtWizardStep === 1 && (
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold mb-4">Court Schedule</h2>
 
-        {showResetConfirm && (
-          <div className="mt-4 border border-danger rounded-lg p-4 bg-red-50">
-            <p className="text-sm font-semibold text-danger mb-2">
-              This will permanently delete the season, all holidays, and any generated games. Players and court schedules will be preserved.
-            </p>
-            <p className="text-sm text-muted mb-2">
-              A backup ZIP will be downloaded automatically before the reset.
-            </p>
-            {resetStatus === "" && (
-              <>
-                <p className="text-sm text-muted mb-3">
-                  Type <strong>DELETE</strong> to confirm:
-                </p>
-                <div className="flex gap-3 items-center">
-                  <input
-                    type="text"
-                    value={resetConfirmText}
-                    onChange={(e) => setResetConfirmText(e.target.value)}
-                    placeholder="Type DELETE"
-                    className="border border-border rounded px-3 py-2 text-sm w-40"
-                  />
-                  <button
-                    onClick={handleResetSeason}
-                    disabled={resetConfirmText !== "DELETE"}
-                    className="bg-danger text-white px-4 py-2 rounded text-sm disabled:opacity-40 transition-colors"
-                  >
-                    Confirm Reset
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowResetConfirm(false);
-                      setResetConfirmText("");
-                    }}
-                    className="text-sm text-muted hover:underline"
-                  >
-                    Cancel
-                  </button>
+                  {/* Add/Edit Form */}
+                  <div className="bg-gray-50 border border-border rounded-lg p-4 mb-4">
+                    <div className="flex flex-wrap gap-3 items-end">
+                      <div>
+                        <label className="block text-xs text-muted mb-1">Day</label>
+                        <select
+                          value={courtForm.dayOfWeek}
+                          onChange={(e) => setCourtForm({ ...courtForm, dayOfWeek: e.target.value })}
+                          className="border border-border rounded px-3 py-2 text-sm"
+                        >
+                          <option value="1">Mon</option>
+                          <option value="2">Tue</option>
+                          <option value="3">Wed</option>
+                          <option value="4">Thu</option>
+                          <option value="5">Fri</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-muted mb-1">Court #</label>
+                        <select
+                          value={courtForm.courtNumber}
+                          onChange={(e) => setCourtForm({ ...courtForm, courtNumber: e.target.value })}
+                          className="border border-border rounded px-3 py-2 text-sm"
+                        >
+                          {[1, 2, 3, 4, 5, 6].map((n) => (
+                            <option key={n} value={String(n)}>{n}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-muted mb-1">Start Time</label>
+                        <input
+                          type="time"
+                          value={courtForm.startTime}
+                          onChange={(e) => setCourtForm({ ...courtForm, startTime: e.target.value })}
+                          className="border border-border rounded px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <label className="flex items-center gap-1 text-sm cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={courtForm.isSolo}
+                          onChange={(e) => setCourtForm({ ...courtForm, isSolo: e.target.checked })}
+                          className="accent-indigo-500"
+                        />
+                        Solo
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (editingSlot) {
+                            handleUpdateCourtSlot();
+                          } else {
+                            handleAddCourtSlot();
+                          }
+                        }}
+                        className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+                      >
+                        {editingSlot ? "Save" : "Add"}
+                      </button>
+                      {editingSlot && (
+                        <button
+                          onClick={() => {
+                            setEditingSlot(null);
+                            setCourtForm({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
+                          }}
+                          className="text-sm text-muted hover:underline"
+                        >
+                          Cancel Edit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Court Slots Table */}
+                  {courtSlots.length === 0 ? (
+                    <p className="text-sm text-muted mb-4">No court slots configured.</p>
+                  ) : (
+                    <div className="border border-border rounded overflow-hidden mb-4">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="text-left px-3 py-2 border-b border-border">Day</th>
+                            <th className="text-left px-3 py-2 border-b border-border">Court #</th>
+                            <th className="text-left px-3 py-2 border-b border-border">Time</th>
+                            <th className="text-left px-3 py-2 border-b border-border">Group</th>
+                            <th className="text-right px-3 py-2 border-b border-border"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...courtSlots]
+                            .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime) || a.courtNumber - b.courtNumber)
+                            .map((slot) => (
+                              <tr key={slot.id} className="border-b border-border hover:bg-gray-50">
+                                <td className="px-3 py-1.5">{DAY_NAMES[slot.dayOfWeek]}</td>
+                                <td className="px-3 py-1.5">{slot.courtNumber}</td>
+                                <td className="px-3 py-1.5">{slot.startTime}</td>
+                                <td className="px-3 py-1.5">{slot.isSolo ? "Solo" : "Don\u2019s"}</td>
+                                <td className="px-3 py-1.5 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setEditingSlot(slot);
+                                      setCourtForm({
+                                        dayOfWeek: String(slot.dayOfWeek),
+                                        courtNumber: String(slot.courtNumber),
+                                        startTime: slot.startTime,
+                                        isSolo: slot.isSolo,
+                                      });
+                                    }}
+                                    className="text-indigo-600 text-xs hover:underline mr-3"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteCourtSlot(slot.id)}
+                                    className="text-danger text-xs hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Step 1 Buttons */}
+                  <div className="flex justify-between">
+                    <button
+                      onClick={() => {
+                        setShowCourtWizard(false);
+                        setEditingSlot(null);
+                        setCourtForm({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
+                      }}
+                      className="text-sm text-muted hover:underline"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => setCourtWizardStep(2)}
+                      className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors"
+                    >
+                      Next: Rebuild Games &rarr;
+                    </button>
+                  </div>
                 </div>
-              </>
-            )}
-            {resetStatus === "backing-up" && (
-              <p className="text-sm font-medium text-blue-600 mt-2">
-                Downloading backup...
-              </p>
-            )}
-            {resetStatus === "resetting" && (
-              <p className="text-sm font-medium text-blue-600 mt-2">
-                Backup downloaded. Resetting season...
-              </p>
-            )}
-            {resetStatus === "done" && (
-              <div className="mt-2">
-                <p className="text-sm font-medium text-green-700">
-                  Season reset complete.
-                </p>
-                {backupResult && (
-                  <p className="text-sm text-green-600 mt-1">{backupResult}</p>
-                )}
-              </div>
-            )}
-            {resetStatus === "error" && (
-              <div className="mt-2">
-                <p className="text-sm font-medium text-danger">{backupResult}</p>
-                <button
-                  onClick={() => {
-                    setResetStatus("");
-                    setBackupResult("");
-                  }}
-                  className="text-sm text-muted hover:underline mt-2"
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
+              )}
+
+              {/* Step 2: Rebuild Confirmation */}
+              {courtWizardStep === 2 && (
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold mb-4">Rebuild Games</h2>
+                  <p className="text-sm text-muted mb-4">
+                    This will back up your data, then regenerate all games from the updated court schedule. Holidays, players, and player constraints are preserved. All existing game assignments will be cleared.
+                  </p>
+
+                  {rebuildStatus === "" && (
+                    <>
+                      <p className="text-sm text-muted mb-3">
+                        Type <strong>REBUILD</strong> to confirm:
+                      </p>
+                      <div className="flex gap-3 items-center mb-4">
+                        <input
+                          type="text"
+                          value={rebuildConfirmText}
+                          onChange={(e) => setRebuildConfirmText(e.target.value)}
+                          placeholder="Type REBUILD"
+                          className="border border-border rounded px-3 py-2 text-sm w-44"
+                        />
+                        <button
+                          onClick={handleRebuildGames}
+                          disabled={rebuildConfirmText !== "REBUILD"}
+                          className="bg-danger text-white px-4 py-2 rounded text-sm disabled:opacity-40 transition-colors"
+                        >
+                          Rebuild Games
+                        </button>
+                      </div>
+                      <div className="flex justify-between">
+                        <button
+                          onClick={() => setCourtWizardStep(1)}
+                          className="text-sm text-muted hover:underline"
+                        >
+                          &larr; Back
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowCourtWizard(false);
+                            setCourtWizardStep(1);
+                            setRebuildConfirmText("");
+                          }}
+                          className="text-sm text-muted hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {rebuildStatus === "backing-up" && (
+                    <p className="text-sm font-medium text-blue-600 mt-2">
+                      Creating backup...
+                    </p>
+                  )}
+                  {rebuildStatus === "rebuilding" && (
+                    <p className="text-sm font-medium text-blue-600 mt-2">
+                      Backup complete. Regenerating games...
+                    </p>
+                  )}
+                  {rebuildStatus === "done" && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium text-green-700">
+                        Games rebuilt successfully.
+                      </p>
+                      {backupResult && (
+                        <p className="text-sm text-green-600 mt-1">{backupResult}</p>
+                      )}
+                    </div>
+                  )}
+                  {rebuildStatus === "error" && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium text-danger">{backupResult}</p>
+                      <button
+                        onClick={() => {
+                          setRebuildStatus("");
+                          setBackupResult("");
+                        }}
+                        className="text-sm text-muted hover:underline mt-2"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1174,63 +1420,41 @@ export default function SeasonPage() {
             )}
           </div>
 
-          {/* Generate Games */}
-          <div className="border-t border-border pt-4">
-            <p className="text-sm text-muted mb-3">
-              {totalGames > 0
-                ? `${totalGames} games currently exist. Regenerating will delete all existing games and player assignments.`
-                : `Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`
-              }
-            </p>
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              title={
-                totalGames > 0
-                  ? "Deletes all existing games and recreates them from the current court schedule and season dates. Player assignments will be lost."
-                  : `Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`
-              }
-              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-            >
-              {generating
-                ? "Generating..."
-                : totalGames > 0
-                  ? "Regenerate Games"
-                  : "Generate Games"}
-            </button>
+          {/* Generate Games - only for first-time setup */}
+          {totalGames === 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-muted mb-3">
+                Creates a game slot for every court schedule entry for each of the {totalWeeks} weeks. Holiday dates are automatically marked.
+              </p>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                title={`Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`}
+                className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+              >
+                {generating ? "Generating..." : "Generate Games"}
+              </button>
 
-            {confirmGenerate && (
-              <div className="bg-amber-50 border border-amber-300 rounded px-4 py-3 mt-3 text-sm flex items-center justify-between">
-                <span className="text-amber-800">
-                  This will delete all {totalGames} existing games and any player assignments. Are you sure?
-                </span>
-                <div className="flex gap-2 ml-4">
-                  <button
-                    onClick={handleGenerate}
-                    className="bg-danger text-white px-3 py-1 rounded text-sm hover:opacity-90"
-                  >
-                    Yes, regenerate
-                  </button>
-                  <button
-                    onClick={() => setConfirmGenerate(false)}
-                    className="border border-border px-3 py-1 rounded text-sm hover:bg-gray-100"
-                  >
-                    Cancel
-                  </button>
+              {generateMessage && (
+                <div className={`border rounded px-4 py-2 mt-3 text-sm ${
+                  generateMessage.startsWith("Error") || generateMessage.startsWith("Failed")
+                    ? "bg-red-50 border-red-200 text-red-800"
+                    : "bg-green-50 border-green-200 text-green-800"
+                }`}>
+                  {generateMessage}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          )}
 
-            {generateMessage && (
-              <div className={`border rounded px-4 py-2 mt-3 text-sm ${
-                generateMessage.startsWith("Error") || generateMessage.startsWith("Failed")
-                  ? "bg-red-50 border-red-200 text-red-800"
-                  : "bg-green-50 border-green-200 text-green-800"
-              }`}>
-                {generateMessage}
-              </div>
-            )}
-          </div>
+          {/* Games count display when games exist */}
+          {totalGames > 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-muted">
+                {totalGames} games currently exist. Use <strong>Change Court Schedule</strong> above to modify courts and rebuild games.
+              </p>
+            </div>
+          )}
 
           {/* Add Makeup Week */}
           {totalGames > 0 && (
@@ -1277,6 +1501,24 @@ export default function SeasonPage() {
             >
               {donsAssigning ? (donsAssigningWeek ? `Assigning Wk ${donsAssigningWeek}...` : "Preparing...") : "Auto-Assign Don's"}
             </button>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={donsAssignExtra}
+                onChange={(e) => setDonsAssignExtra(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Assign extra
+            </label>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={donsAssignCSubs}
+                onChange={(e) => setDonsAssignCSubs(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Assign C subs
+            </label>
             <button
               onClick={handleBalanceDonsBalls}
               disabled={donsBallsBalancing || donsAssigning}
@@ -1512,6 +1754,17 @@ export default function SeasonPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      </>)}
+
+      {activeTab === "new" && (
+        <div className="border border-border rounded-lg p-6">
+          <h2 className="font-semibold mb-4">Start a New Season</h2>
+          <p className="text-sm text-muted">
+            New Season wizard coming soon. This will allow you to create a new season with options to copy players, constraints, and court schedules from the current season.
+          </p>
         </div>
       )}
 

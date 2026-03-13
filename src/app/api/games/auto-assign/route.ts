@@ -102,15 +102,7 @@ export async function POST(request: NextRequest) {
     const donsGames = gamesWithAssignments.filter((g) => g.group === "dons" && g.status === "normal");
     const soloGames = gamesWithAssignments.filter((g) => g.group === "solo" && g.status === "normal");
 
-    // 2. Validate: all Don's slots must be empty
-    const donsAssigned = donsGames.some((g) => g.assignments.length > 0);
-    if (donsAssigned) {
-      return NextResponse.json({
-        error: "Some Don's games already have assignments. Clear them first to use Auto-Assign.",
-      }, { status: 400 });
-    }
-
-    // 3. Validate: partially-assigned Solo games must be completed first
+    // 2. Validate: partially-assigned Solo games must be completed first
     // Solo games with 0 assignments are OK (Solo doesn't need this week) — only block
     // if some slots are filled but not all 4 (partially assigned).
     const partialSolo = soloGames.filter((g) => g.assignments.length > 0 && g.assignments.length < 4);
@@ -340,6 +332,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Also count existing pairings in current week's partial games
+    for (const g of donsGames) {
+      if (g.assignments.length >= 2) {
+        const pids = g.assignments.map((a) => a.playerId);
+        for (let i = 0; i < pids.length; i++) {
+          for (let j = i + 1; j < pids.length; j++) {
+            const key = pairKey(pids[i], pids[j]);
+            pairingCounts.set(key, (pairingCounts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+    }
+
     // Helper: get total pairing count between a candidate and players already in a game
     function getPairingPenalty(candidateId: number, assignedIds: number[]): number {
       let total = 0;
@@ -362,6 +367,16 @@ export async function POST(request: NextRequest) {
     const wtdDonsCounts = new Map<number, number>(); // running WTD for dons
     const assignedDates = new Map<number, Set<string>>(); // player → dates assigned
     const createdAssignmentIds: number[] = [];
+
+    // Initialize from existing Don's assignments (for partial game fill)
+    for (const g of donsGames) {
+      for (const a of g.assignments) {
+        wtdDonsCounts.set(a.playerId, (wtdDonsCounts.get(a.playerId) ?? 0) + 1);
+        const dates = assignedDates.get(a.playerId) ?? new Set();
+        dates.add(g.date);
+        assignedDates.set(a.playerId, dates);
+      }
+    }
 
     // Initialize from solo assignments (players already playing on certain dates)
     for (const [date, pids] of soloAssignedByDate) {
@@ -506,9 +521,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Track assignment state per game (player IDs assigned)
+    // Initialize from existing assignments so partial games are handled correctly
     const gameAssignmentState = new Map<number, number[]>();
     for (const g of donsGames) {
-      gameAssignmentState.set(g.id, []);
+      gameAssignmentState.set(g.id, g.assignments.map((a) => a.playerId));
     }
 
     // Priority scoring for a player
@@ -691,7 +707,8 @@ export async function POST(request: NextRequest) {
       let pass4Count = 0;
 
       for (const game of openGames) {
-        for (let slot = 1; slot <= 4; slot++) {
+        const existingCount = (gameAssignmentState.get(game.id) ?? []).length;
+        for (let slot = existingCount + 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
 
           let passUsed = 1;

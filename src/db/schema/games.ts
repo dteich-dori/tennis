@@ -1,5 +1,6 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { seasons } from "./seasons";
+import { players } from "./players";
 
 export const games = sqliteTable("games", {
   id: integer("id").primaryKey({ autoIncrement: true }),

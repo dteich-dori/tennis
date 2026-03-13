@@ -17,7 +17,12 @@ interface LogEntry {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId, infoOnly } = (await request.json()) as { seasonId: number; infoOnly?: boolean };
+    const { seasonId, infoOnly, assignExtra, assignCSubs } = (await request.json()) as {
+      seasonId: number;
+      infoOnly?: boolean;
+      assignExtra?: boolean;
+      assignCSubs?: boolean;
+    };
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
@@ -52,31 +57,32 @@ export async function POST(request: NextRequest) {
       gameIdsByWeek.set(g.weekNumber, arr);
     }
 
-    // Check which weeks already have Don's assignments
-    const weeksWithAssignments = new Set<number>();
+    // Check which weeks are fully assigned (all games have 4 players)
+    const fullyAssignedWeeks = new Set<number>();
     const BATCH = 50;
     for (const [week, gIds] of gameIdsByWeek) {
-      let count = 0;
+      let totalAssignments = 0;
       for (let i = 0; i < gIds.length; i += BATCH) {
         const batch = gIds.slice(i, i + BATCH);
         const rows = await database
           .select({ id: gameAssignments.id })
           .from(gameAssignments)
           .where(inArray(gameAssignments.gameId, batch));
-        count += rows.length;
+        totalAssignments += rows.length;
       }
-      if (count > 0) {
-        weeksWithAssignments.add(week);
+      // Fully assigned = every game has exactly 4 players
+      if (totalAssignments >= gIds.length * 4) {
+        fullyAssignedWeeks.add(week);
       }
     }
 
-    // Determine which weeks to assign
+    // Determine which weeks to assign (skip only fully-assigned weeks)
     const weeksToAssign: number[] = [];
     const weeksSkipped: number[] = [];
 
     for (let w = 1; w <= totalWeeks; w++) {
       if (!gameIdsByWeek.has(w)) continue; // no games this week
-      if (weeksWithAssignments.has(w)) {
+      if (fullyAssignedWeeks.has(w)) {
         weeksSkipped.push(w);
       } else {
         weeksToAssign.push(w);
@@ -134,7 +140,7 @@ export async function POST(request: NextRequest) {
             "Content-Type": "application/json",
             Cookie: cookieHeader,
           },
-          body: JSON.stringify({ seasonId, weekNumber: week }),
+          body: JSON.stringify({ seasonId, weekNumber: week, assignExtra, assignCSubs }),
         });
 
         const data = await res.json();

@@ -112,6 +112,7 @@ export default function SchedulePage() {
       emptySlots: number;
       eligiblePlayersRemaining: number;
       message: string;
+      composition?: string;
       playerAnalysis: {
         name: string;
         eligible: boolean;
@@ -167,6 +168,11 @@ export default function SchedulePage() {
   const [autoAssignError, setAutoAssignError] = useState("");
   const [assignExtra, setAssignExtra] = useState(false);
   const [assignCSubs, setAssignCSubs] = useState(false);
+
+  // Run All Weeks state
+  const [runAllLoading, setRunAllLoading] = useState(false);
+  const [runAllWeek, setRunAllWeek] = useState<number | null>(null);
+  const [runAllMessage, setRunAllMessage] = useState("");
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -558,6 +564,115 @@ export default function SchedulePage() {
     setAutoAssignLoading(false);
   };
 
+  const handleRunAllWeeks = async () => {
+    if (!season) return;
+    setRunAllLoading(true);
+    setRunAllWeek(null);
+    setRunAllMessage("");
+    setAutoAssignLog([]);
+    setAutoAssignError("");
+
+    try {
+      // Get which weeks need assignment
+      const infoRes = await fetch("/api/games/auto-assign-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: season.id, infoOnly: true }),
+      });
+      const infoData = await infoRes.json() as {
+        weeksToAssign?: number[];
+        weeksSkipped?: number[];
+        error?: string;
+      };
+
+      if (!infoRes.ok || !infoData.weeksToAssign) {
+        setAutoAssignError(infoData.error ?? "Failed to get week info");
+        setRunAllLoading(false);
+        return;
+      }
+
+      const weeksToAssign = infoData.weeksToAssign;
+      const weeksSkipped = infoData.weeksSkipped ?? [];
+      const log: { type: string; day?: string; message: string }[] = [];
+
+      if (weeksSkipped.length > 0) {
+        log.push({ type: "info", message: `Skipping ${weeksSkipped.length} week(s) with existing assignments: ${weeksSkipped.join(", ")}` });
+      }
+
+      if (weeksToAssign.length === 0) {
+        setRunAllMessage("All weeks already have Don's assignments. Nothing to do.");
+        setAutoAssignLog(log);
+        setRunAllLoading(false);
+        return;
+      }
+
+      let totalAssigned = 0;
+      let totalSlots = 0;
+      let totalUnfilled = 0;
+      let weeksAssignedCount = 0;
+      let stopped = false;
+
+      for (const week of weeksToAssign) {
+        if (stopped) break;
+        setRunAllWeek(week);
+
+        try {
+          const res = await fetch("/api/games/auto-assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seasonId: season.id, weekNumber: week, assignExtra, assignCSubs }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            log.push({ type: "error", message: `Week ${week}: ${data.error || "Failed"}` });
+            if (data.error?.includes("Solo games must be fully assigned")) {
+              log.push({ type: "error", message: "Stopping: Solo games must be fully assigned before Don's auto-assign." });
+              stopped = true;
+            }
+          } else {
+            const filled = data.assignedCount ?? 0;
+            const slots = data.totalSlots ?? 0;
+            const unfilled = data.unfilled ?? 0;
+            totalAssigned += filled;
+            totalSlots += slots;
+            totalUnfilled += unfilled;
+            weeksAssignedCount++;
+            log.push({ type: unfilled > 0 ? "warning" : "info", message: `Week ${week}: ${filled}/${slots} slots filled${unfilled > 0 ? ` (${unfilled} unfilled)` : ""}` });
+            if (data.log) {
+              for (const entry of data.log) {
+                if (entry.type === "warning" || entry.type === "error") {
+                  log.push({ type: entry.type, message: `  ${entry.message}` });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          log.push({ type: "error", message: `Week ${week}: ${String(err)}` });
+        }
+
+        setAutoAssignLog([...log]);
+        setRunAllMessage(`Assigned ${weeksAssignedCount} of ${weeksToAssign.length} week(s)...`);
+      }
+
+      setRunAllWeek(null);
+      setRunAllMessage(
+        `Done: ${weeksAssignedCount} week(s) assigned, ${totalAssigned}/${totalSlots} slots filled.${
+          weeksSkipped.length ? ` ${weeksSkipped.length} week(s) skipped.` : ""
+        }${totalUnfilled ? ` ${totalUnfilled} unfilled.` : ""}`
+      );
+      setAutoAssignLog(log);
+
+      // Reload current week's games
+      await loadGames(season.id, currentWeek);
+      await loadPlayerCounts(season.id, currentWeek);
+    } catch (err) {
+      console.error("Run all weeks failed:", err);
+      setAutoAssignError("Run all weeks failed unexpectedly");
+    }
+    setRunAllLoading(false);
+  };
+
   // Check if player has a YTD deficit (behind schedule due to vacation/illness)
   // Uses group-specific YTD and frequency when group is provided
   const hasYtdDeficit = (player: Player, group?: string): boolean => {
@@ -836,44 +951,49 @@ export default function SchedulePage() {
             <span className="text-xs text-muted ml-auto mr-3">
               {games.length} games this week &middot; {totalGames} total
             </span>
-            {games.filter((g) => g.group === "dons" && g.status === "normal").some((g) => g.assignments.length > 0) ? (
+            {games.filter((g) => g.group === "dons" && g.status === "normal").some((g) => g.assignments.length > 0) && (
               <button
                 onClick={handleClearDonsAssignments}
-                disabled={autoAssignLoading}
+                disabled={autoAssignLoading || runAllLoading}
                 className="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-sm hover:bg-red-600 active:bg-red-700 disabled:opacity-40 transition-colors text-sm"
               >
                 {autoAssignLoading ? "Clearing..." : "Clear Don's"}
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={handleAutoAssign}
-                  disabled={autoAssignLoading || games.length === 0}
-                  title="Auto-assign all Don's games for this week"
-                  className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
-                >
-                  {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
-                </button>
-                <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={assignExtra}
-                    onChange={(e) => setAssignExtra(e.target.checked)}
-                    className="accent-indigo-500"
-                  />
-                  Assign extra
-                </label>
-                <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={assignCSubs}
-                    onChange={(e) => setAssignCSubs(e.target.checked)}
-                    className="accent-indigo-500"
-                  />
-                  Assign C subs
-                </label>
-              </>
             )}
+            <button
+              onClick={handleAutoAssign}
+              disabled={autoAssignLoading || runAllLoading || games.length === 0}
+              title="Auto-assign open Don's game slots for this week"
+              className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
+            >
+              {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
+            </button>
+            <button
+              onClick={handleRunAllWeeks}
+              disabled={autoAssignLoading || runAllLoading || games.length === 0}
+              title="Auto-assign Don's games for all unassigned weeks. Uses the Extra and C Subs options."
+              className="px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg shadow-sm hover:bg-teal-600 active:bg-teal-700 disabled:opacity-40 transition-colors text-sm"
+            >
+              {runAllLoading ? (runAllWeek ? `Running Wk ${runAllWeek}...` : "Preparing...") : "Run All Weeks"}
+            </button>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={assignExtra}
+                onChange={(e) => setAssignExtra(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Assign extra
+            </label>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={assignCSubs}
+                onChange={(e) => setAssignCSubs(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Assign C subs
+            </label>
             <button
               onClick={() => handleBalanceBallsPreview("dons")}
               disabled={balanceBallsLoading || games.length === 0}
@@ -1158,6 +1278,19 @@ export default function SchedulePage() {
             </div>
           )}
 
+          {/* Run All Weeks summary */}
+          {runAllMessage && (
+            <div className="border border-teal-200 bg-teal-50 rounded px-4 py-3 mb-4 text-sm flex items-center justify-between">
+              <span className="text-teal-800 font-medium">{runAllMessage}</span>
+              <button
+                onClick={() => setRunAllMessage("")}
+                className="text-xs text-muted hover:underline ml-4"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Auto-assign error */}
           {autoAssignError && (
             <div className="border border-red-200 bg-red-50 rounded px-4 py-3 mb-4 text-sm flex items-center justify-between">
@@ -1186,7 +1319,7 @@ export default function SchedulePage() {
                 </button>
               </div>
               <div className="space-y-0.5 max-h-64 overflow-y-auto">
-                {autoAssignLog.filter((e) => e.type === "warning" || e.type === "error").map((entry, idx) => (
+                {autoAssignLog.filter((e) => runAllMessage ? true : (e.type === "warning" || e.type === "error")).map((entry, idx) => (
                   <div
                     key={idx}
                     className={`text-xs flex items-start gap-2 ${
