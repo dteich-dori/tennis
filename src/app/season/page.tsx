@@ -955,9 +955,30 @@ export default function SeasonPage() {
             />
           </div>
         </div>
-        <div className="text-sm text-muted mb-1">
-          {totalWeeks}-week season{totalWeeks > 36 ? ` (${totalWeeks - 36} makeup)` : ""}
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-sm text-muted">
+            {totalWeeks}-week season{totalWeeks > 36 ? ` (${totalWeeks - 36} makeup)` : ""}
+          </span>
+          {totalGames > 0 && (
+            <button
+              onClick={handleAddWeek}
+              disabled={addingWeek}
+              title={`Adds week ${totalWeeks + 1} with empty game slots based on the court schedule. Use for makeups (holidays, weather closures).`}
+              className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {addingWeek ? "Adding..." : `+ Add Makeup Week`}
+            </button>
+          )}
         </div>
+        {addWeekMessage && (
+          <div className={`border rounded px-4 py-2 mb-2 text-sm ${
+            addWeekMessage.startsWith("Error") || addWeekMessage.startsWith("Failed")
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-green-50 border-green-200 text-green-800"
+          }`}>
+            {addWeekMessage}
+          </div>
+        )}
         {weeklyContractsSold !== null && weeklyGamesAvailable !== null && (
           <div className="text-sm text-muted mb-3">
             Total Don weekly contracts sold: {weeklyContractsSold} ({weeklyGamesNeeded} games) &nbsp;&nbsp; Total weekly games available (w/o Solo): {weeklyGamesAvailable}
@@ -1007,6 +1028,7 @@ export default function SeasonPage() {
           {activeSeason && (
             <button
               onClick={() => {
+                if (!confirm("This will open the court schedule editor. If you rebuild games, all existing assignments will be cleared.\n\nProceed?")) return;
                 setShowCourtWizard(true);
                 setCourtWizardStep(1);
                 setRebuildConfirmText("");
@@ -1014,10 +1036,10 @@ export default function SeasonPage() {
                 setBackupResult("");
                 loadCourtSlots();
               }}
-              title="Edit the court schedule and regenerate games. A backup is created automatically before rebuilding."
-              className="border border-indigo-500 text-indigo-600 px-4 py-2 rounded text-sm hover:bg-indigo-50 transition-colors"
+              title="Edit the court schedule and regenerate games. WARNING: Rebuilding clears all assignments. A backup is created automatically."
+              className="border border-amber-500 text-amber-700 px-4 py-2 rounded text-sm hover:bg-amber-50 transition-colors"
             >
-              Change Court Schedule
+              ⚠ Change Court Schedule
             </button>
           )}
         </div>
@@ -1456,32 +1478,6 @@ export default function SeasonPage() {
             </div>
           )}
 
-          {/* Add Makeup Week */}
-          {totalGames > 0 && (
-            <div className="border-t border-border pt-4">
-              <p className="text-sm text-muted mb-3">
-                Add an extra week to the season for makeups (holidays, weather closures). Games are created but not assigned.
-              </p>
-              <button
-                onClick={handleAddWeek}
-                disabled={addingWeek}
-                title={`Adds week ${totalWeeks + 1} with empty game slots based on the court schedule.`}
-                className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
-              >
-                {addingWeek ? "Adding..." : `Add Makeup Week (Week ${totalWeeks + 1})`}
-              </button>
-
-              {addWeekMessage && (
-                <div className={`border rounded px-4 py-2 mt-3 text-sm ${
-                  addWeekMessage.startsWith("Error") || addWeekMessage.startsWith("Failed")
-                    ? "bg-red-50 border-red-200 text-red-800"
-                    : "bg-green-50 border-green-200 text-green-800"
-                }`}>
-                  {addWeekMessage}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

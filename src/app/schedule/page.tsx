@@ -115,10 +115,12 @@ export default function SchedulePage() {
       composition?: string;
       playerAnalysis: {
         name: string;
+        skillLevel?: string;
         eligible: boolean;
         assigned: boolean;
         totalAssigned: number;
         target: number;
+        owed?: number;
         dayTarget: number;
         dayActual: number;
         reasons: string[];
@@ -160,6 +162,9 @@ export default function SchedulePage() {
   const [findingProblem, setFindingProblem] = useState(false);
   const [lastProblemGameId, setLastProblemGameId] = useState<number | null>(null);
   const [pendingProblemGame, setPendingProblemGame] = useState<number | null>(null);
+  // Find Incomplete state (incomplete only, no composition)
+  const [findingIncomplete, setFindingIncomplete] = useState(false);
+  const [lastIncompleteGameId, setLastIncompleteGameId] = useState<number | null>(null);
 
   // Auto-assign state
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
@@ -353,6 +358,7 @@ export default function SchedulePage() {
     setAutoAssignCount(0);
     setAutoAssignError("");
     setLastProblemGameId(null);
+    setLastIncompleteGameId(null);
     setCurrentWeek(week);
   };
 
@@ -380,6 +386,32 @@ export default function SchedulePage() {
       console.error("Find problem failed:", err);
     }
     setFindingProblem(false);
+  };
+
+  // Find next incomplete game only (no composition violations)
+  const handleFindIncomplete = async () => {
+    if (!season) return;
+    setFindingIncomplete(true);
+    try {
+      const skipParam = lastIncompleteGameId ? `&afterGameId=${lastIncompleteGameId}` : "";
+      const res = await fetch(
+        `/api/games/find-problem?seasonId=${season.id}&startWeek=${currentWeek}&totalWeeks=${season.totalWeeks}&type=incomplete${skipParam}`
+      );
+      const data = await res.json();
+      if (data.found) {
+        setLastIncompleteGameId(data.gameId);
+        if (data.weekNumber !== currentWeek) {
+          setCurrentWeek(data.weekNumber);
+        }
+        setPendingProblemGame(data.gameId);
+      } else {
+        setLastIncompleteGameId(null);
+        alert("No incomplete games found.");
+      }
+    } catch (err) {
+      console.error("Find incomplete failed:", err);
+    }
+    setFindingIncomplete(false);
   };
 
   // Scroll to and open diagnostic for a pending problem game after data loads
@@ -1057,6 +1089,14 @@ export default function SchedulePage() {
               Display Extra
             </button>
             <button
+              onClick={handleFindIncomplete}
+              disabled={findingIncomplete || totalGames === 0}
+              className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg shadow-sm hover:bg-orange-600 active:bg-orange-700 disabled:opacity-40 transition-colors text-sm"
+              title="Find next game with fewer than 4 players assigned"
+            >
+              {findingIncomplete ? "Searching..." : "Find Incomplete"}
+            </button>
+            <button
               onClick={handleFindProblem}
               disabled={findingProblem || totalGames === 0}
               className="px-4 py-2 bg-rose-500 text-white font-semibold rounded-lg shadow-sm hover:bg-rose-600 active:bg-rose-700 disabled:opacity-40 transition-colors text-sm"
@@ -1434,41 +1474,10 @@ export default function SchedulePage() {
                       {DAYS[dateGames[0].dayOfWeek]} &mdash;{" "}
                       {formatDisplayDate(date)}
                     </span>
-                    {dateGames[0].status === "holiday" ? (
-                      <button
-                        onClick={async () => {
-                          if (!season) return;
-                          if (!confirm(`Remove holiday for ${formatDisplayDate(date)}? Games will return to normal status.`)) return;
-                          await fetch("/api/games/toggle-holiday", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ seasonId: season.id, date }),
-                          });
-                          await loadGames(season.id, currentWeek);
-                        }}
-                        className="text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded transition-colors"
-                        title="Remove holiday — restore games to normal"
-                      >
-                        {dateGames[0].holidayName || "Holiday"} &times;
-                      </button>
-                    ) : (
-                      <button
-                        onClick={async () => {
-                          if (!season) return;
-                          const name = window.prompt(`Mark ${formatDisplayDate(date)} as a holiday.\nAll assignments for this date will be cleared.\n\nHoliday name (optional):`);
-                          if (name === null) return; // cancelled
-                          await fetch("/api/games/toggle-holiday", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ seasonId: season.id, date, name }),
-                          });
-                          await loadGames(season.id, currentWeek);
-                        }}
-                        className="text-xs text-muted hover:text-amber-700 hover:bg-amber-50 px-2 py-0.5 rounded transition-colors"
-                        title="Mark this date as a holiday"
-                      >
-                        + Holiday
-                      </button>
+                    {dateGames[0].status === "holiday" && (
+                      <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                        {dateGames[0].holidayName || "Holiday"}
+                      </span>
                     )}
                   </div>
                   <table className="w-full text-sm border border-border mb-4">
@@ -2056,28 +2065,97 @@ export default function SchedulePage() {
                   </div>
                   <button onClick={() => setExplainModal(null)} className="text-muted hover:text-foreground text-sm leading-none ml-2">✕</button>
                 </div>
-                <div className="divide-y divide-border">
-                  {explainModal.incompleteData.playerAnalysis
-                    .filter((p) => p.eligible && !p.assigned)
-                    .map((p, i) => (
-                    <div key={i} className="px-3 py-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium">
-                          {p.name}
-                        </span>
-                        <span className="text-[10px] text-muted ml-auto">
-                          {p.totalAssigned}/{p.target} total, {p.dayActual}/{p.dayTarget} day
-                        </span>
+                {(() => {
+                  const data = explainModal.incompleteData!;
+                  const assigned = data.playerAnalysis.filter((p) => p.assigned);
+                  const comp = data.composition ?? "";
+                  const compHasA = comp.includes("A");
+                  const compHasC = comp.includes("C");
+                  const compBCount = (comp.match(/B/g) ?? []).length;
+                  const isCompositionViolation = data.emptySlots === 0 && compHasA && compHasC && compBCount < 2;
+                  const isIncomplete = data.emptySlots > 0;
+
+                  // For composition violations: show B players who owe games as potential swaps
+                  // For incomplete: show all players who owe games
+                  const candidates = data.playerAnalysis.filter((p) => {
+                    if (p.assigned) return false;
+                    if ((p.owed ?? 0) <= 0) return false;
+                    if (isCompositionViolation) return p.skillLevel === "B";
+                    return true;
+                  });
+
+                  return (
+                    <>
+                      {/* Compact assigned lineup */}
+                      <div className="px-3 py-2 border-b border-border">
+                        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Lineup</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {assigned.map((p, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
+                              <span className={`font-mono font-bold text-[10px] ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
+                                {p.skillLevel ?? "?"}
+                              </span>
+                              <span className="font-medium">{p.name.split(",")[0]}</span>
+                              <span className="text-[10px] text-muted">{p.totalAssigned}/{p.target}</span>
+                            </span>
+                          ))}
+                          {data.emptySlots > 0 && Array.from({ length: data.emptySlots }).map((_, i) => (
+                            <span key={`empty-${i}`} className="inline-flex items-center text-xs bg-red-50 text-red-400 rounded px-1.5 py-0.5 border border-dashed border-red-200">
+                              empty
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      {p.reasons.map((reason, j) => (
-                        <div key={j} className="text-[11px] text-muted ml-3">{reason}</div>
-                      ))}
-                    </div>
-                  ))}
-                  {explainModal.incompleteData.playerAnalysis.filter((p) => p.eligible && !p.assigned).length === 0 && (
-                    <div className="px-3 py-3 text-xs text-muted text-center">No eligible players available</div>
-                  )}
-                </div>
+
+                      {/* Explanation */}
+                      <div className="px-3 py-2 border-b border-border bg-amber-50/50">
+                        <div className="text-xs text-gray-700">
+                          {isCompositionViolation ? (
+                            <>A+C without 2 B-level bridges — need to swap an <span className="font-semibold">{comp.includes("A") && (comp.match(/A/g) ?? []).length > 1 ? "A" : comp.includes("C") && (comp.match(/C/g) ?? []).length > 1 ? "C" : "A or C"}</span> player for a <span className="font-semibold">B</span> player.</>
+                          ) : (
+                            <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} who owe{data.emptySlots === 1 ? "s" : ""} games this week.</>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Candidates: B players who owe (for composition) or all who owe (for incomplete) */}
+                      {candidates.length > 0 ? (
+                        <div>
+                          <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                            {isCompositionViolation ? "B Players Who Owe Games" : "Players Who Owe Games"} ({candidates.length})
+                          </div>
+                          <div className="divide-y divide-border max-h-56 overflow-y-auto">
+                            {candidates.map((p, i) => (
+                              <div key={i} className="px-3 py-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-mono font-bold text-[10px] ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
+                                    {p.skillLevel ?? "?"}
+                                  </span>
+                                  <span className="text-xs font-medium">{p.name}</span>
+                                  <span className="text-[10px] text-muted ml-auto">is owed {p.owed}</span>
+                                </div>
+                                {p.reasons.filter((r) => !r.startsWith("Eligible")).map((reason, j) => (
+                                  <div key={j} className={`text-[11px] ml-4 ${p.eligible ? "text-green-600" : "text-red-500"}`}>
+                                    {p.eligible ? "✓ Eligible" : reason}
+                                  </div>
+                                ))}
+                                {p.eligible && (
+                                  <div className="text-[11px] ml-4 text-green-600">✓ Eligible — no blocking constraint</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="px-3 py-3 text-xs text-muted text-center">
+                          {isCompositionViolation
+                            ? "No B players owe games this week — no swap available."
+                            : "No players owe games this week."}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <div className="p-4 text-center text-danger text-sm">Failed to load</div>

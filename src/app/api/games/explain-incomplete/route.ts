@@ -251,6 +251,72 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     playersOnAdjacentDates.set(a.playerId, arr);
   }
 
+  // Derated pairing: load games for the lookback window
+  const maxDeratedPerWeek = season?.maxDeratedPerWeek ?? null;
+  let deratedLookbackGames: { id: number; assignments: { playerId: number }[] }[] = [];
+  if (maxDeratedPerWeek != null) {
+    // Current week games + assignments (already loaded)
+    const weekGameIds = allDonsGamesThisWeek.map((g: { id: number }) => g.id);
+    let weekAssignRows: { gameId: number; playerId: number }[] = [];
+    for (let i = 0; i < weekGameIds.length; i += BATCH) {
+      const batch = weekGameIds.slice(i, i + BATCH);
+      const rows = await database
+        .select({ gameId: gameAssignments.gameId, playerId: gameAssignments.playerId })
+        .from(gameAssignments)
+        .where(inArray(gameAssignments.gameId, batch));
+      weekAssignRows.push(...rows);
+    }
+    const weekAssignByGame = new Map<number, number[]>();
+    for (const a of weekAssignRows) {
+      const arr = weekAssignByGame.get(a.gameId) ?? [];
+      arr.push(a.playerId);
+      weekAssignByGame.set(a.gameId, arr);
+    }
+    deratedLookbackGames = allDonsGamesThisWeek
+      .filter((g: { id: number }) => g.id !== game.id)
+      .map((g: { id: number }) => ({
+        id: g.id,
+        assignments: (weekAssignByGame.get(g.id) ?? []).map((pid) => ({ playerId: pid })),
+      }));
+
+    // If "once per 2 weeks", also load previous week
+    if (maxDeratedPerWeek === 2 && game.weekNumber > 1) {
+      const prevWeekGames = await database
+        .select()
+        .from(games)
+        .where(
+          and(
+            eq(games.seasonId, game.seasonId),
+            eq(games.group, "dons"),
+            eq(games.weekNumber, game.weekNumber - 1),
+            eq(games.status, "normal")
+          )
+        );
+      const prevIds = prevWeekGames.map((g: { id: number }) => g.id);
+      let prevAssignRows: { gameId: number; playerId: number }[] = [];
+      for (let i = 0; i < prevIds.length; i += BATCH) {
+        const batch = prevIds.slice(i, i + BATCH);
+        const rows = await database
+          .select({ gameId: gameAssignments.gameId, playerId: gameAssignments.playerId })
+          .from(gameAssignments)
+          .where(inArray(gameAssignments.gameId, batch));
+        prevAssignRows.push(...rows);
+      }
+      const prevAssignByGame = new Map<number, number[]>();
+      for (const a of prevAssignRows) {
+        const arr = prevAssignByGame.get(a.gameId) ?? [];
+        arr.push(a.playerId);
+        prevAssignByGame.set(a.gameId, arr);
+      }
+      deratedLookbackGames.push(
+        ...prevWeekGames.map((g: { id: number }) => ({
+          id: g.id,
+          assignments: (prevAssignByGame.get(g.id) ?? []).map((pid: number) => ({ playerId: pid })),
+        }))
+      );
+    }
+  }
+
   // A/C composition of currently assigned players
   const assignedPlayerData = assignedPlayerIds.map((id) =>
     contractedPlayers.find((p: { id: number }) => p.id === id) ?? allPlayers.find((p: { id: number }) => p.id === id)
@@ -295,13 +361,15 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     if (assignedPlayerIds.includes(p.id)) {
       return {
         name: `${p.lastName}, ${p.firstName}`,
+        skillLevel: p.skillLevel,
         eligible: true,
         assigned: true,
         totalAssigned: wtd,
         target: freq,
+        owed: Math.max(0, freq - wtd),
         dayTarget: 1,
         dayActual: playersOnThisDate.has(p.id) ? 1 : 0,
-        reasons: [`Assigned to this game | WTD: ${wtd}/${freq} | STD: ${std} (expected ${expectedStd}, ${stdDeficit > 0 ? "behind " + stdDeficit : stdDeficit < 0 ? "ahead " + (-stdDeficit) : "on track"})`],
+        reasons: [`WTD: ${wtd}/${freq} | STD: ${std} (expected ${expectedStd}, ${stdDeficit > 0 ? "behind " + stdDeficit : stdDeficit < 0 ? "ahead " + (-stdDeficit) : "on track"})`],
       };
     }
 
@@ -388,16 +456,44 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
       }
     }
 
+    // Derated pairing limit
+    if (maxDeratedPerWeek != null) {
+      for (const assignedId of assignedPlayerIds) {
+        const assignedPlayer = contractedPlayers.find((sp: PlayerType) => sp.id === assignedId) ??
+                               allPlayers.find((sp: { id: number; isDerated: boolean }) => sp.id === assignedId);
+        if (!assignedPlayer) continue;
+        const oneDerated = p.isDerated !== assignedPlayer.isDerated;
+        if (!oneDerated) continue;
+
+        let alreadyPairedInGame: number | null = null;
+        for (const g of deratedLookbackGames) {
+          const inGame = g.assignments.some((a) => a.playerId === assignedId);
+          if (!inGame) continue;
+          if (g.assignments.some((a) => a.playerId === p.id)) {
+            alreadyPairedInGame = g.id;
+            break;
+          }
+        }
+        if (alreadyPairedInGame != null) {
+          const window = maxDeratedPerWeek === 2 ? "2-week" : "weekly";
+          reasons.push(`Derated pairing limit: already paired with ${assignedPlayer.lastName} in ${window} window (${p.isDerated ? "derated" : "non-derated"} + ${assignedPlayer.isDerated ? "derated" : "non-derated"})`);
+          eligible = false;
+        }
+      }
+    }
+
     if (eligible && reasons.length === 0) {
       reasons.push(`Eligible | WTD: ${wtd}/${freq} | STD: ${std} (expected ${expectedStd}, ${stdDeficit > 0 ? "behind " + stdDeficit : stdDeficit < 0 ? "ahead " + (-stdDeficit) : "on track"})`);
     }
 
     return {
       name: `${p.lastName}, ${p.firstName}`,
+      skillLevel: p.skillLevel,
       eligible,
       assigned: false,
       totalAssigned: wtd,
       target: freq,
+      owed: Math.max(0, freq - wtd),
       dayTarget: 1,
       dayActual: playersOnThisDate.has(p.id) ? 1 : 0,
       reasons,

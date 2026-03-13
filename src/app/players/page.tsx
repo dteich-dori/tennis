@@ -165,6 +165,22 @@ export default function PlayersPage() {
       return;
     }
 
+    const outOfSeasonVacation = form.vacations.find(
+      (v) =>
+        v.startDate &&
+        v.endDate &&
+        (v.startDate < season.startDate ||
+          v.endDate > season.endDate ||
+          v.startDate > season.endDate ||
+          v.endDate < season.startDate)
+    );
+    if (outOfSeasonVacation) {
+      setFormError(
+        `Vacation dates must fall within the season (${season.startDate} to ${season.endDate}).`
+      );
+      return;
+    }
+
     const payload = {
       ...form,
       seasonId: season.id,
@@ -821,6 +837,8 @@ export default function PlayersPage() {
                   <input
                     type="date"
                     value={v.startDate}
+                    min={season?.startDate || undefined}
+                    max={v.endDate || season?.endDate || undefined}
                     onChange={(e) => {
                       const updated = [...form.vacations];
                       updated[idx] = { ...updated[idx], startDate: e.target.value };
@@ -834,7 +852,8 @@ export default function PlayersPage() {
                   <input
                     type="date"
                     value={v.endDate}
-                    min={v.startDate || undefined}
+                    min={v.startDate || season?.startDate || undefined}
+                    max={season?.endDate || undefined}
                     onChange={(e) => {
                       const updated = [...form.vacations];
                       updated[idx] = { ...updated[idx], endDate: e.target.value };

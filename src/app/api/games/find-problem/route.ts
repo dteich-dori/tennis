@@ -4,10 +4,11 @@ import { games, gameAssignments, players } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
 /**
- * GET /api/games/find-problem?seasonId=1&startWeek=1&totalWeeks=36&afterGameId=123
+ * GET /api/games/find-problem?seasonId=1&startWeek=1&totalWeeks=36&afterGameId=123&type=all
  * Scans games starting from startWeek (wrapping around) to find the next problem:
  *   - Incomplete: normal game with < 4 players assigned
  *   - Composition: A+C mix without 2 B bridges
+ * type: "all" (default) checks both, "incomplete" checks only incomplete games
  * afterGameId (optional): skip games up to and including this game in startWeek
  */
 export async function GET(request: NextRequest) {
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     const totalWeeks = Number(request.nextUrl.searchParams.get("totalWeeks"));
     const afterGameId = request.nextUrl.searchParams.get("afterGameId");
     const skipId = afterGameId ? Number(afterGameId) : null;
+    const type = request.nextUrl.searchParams.get("type") ?? "all";
 
     if (!seasonId || !startWeek || !totalWeeks) {
       return NextResponse.json({ error: "seasonId, startWeek, totalWeeks required" }, { status: 400 });
@@ -99,7 +101,8 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        // Check 2: A+C composition violation
+        // Check 2: A+C composition violation (skip if type=incomplete)
+        if (type !== "incomplete") {
         const levels = pids.map((id) => playerMap.get(id) ?? "?");
         const hasA = levels.includes("A");
         const hasC = levels.includes("C");
@@ -113,6 +116,7 @@ export async function GET(request: NextRequest) {
             problemType: "composition",
             problemDescription: `A+C without 2B bridges (${levels.sort().join("")})`,
           });
+        }
         }
       }
     }
