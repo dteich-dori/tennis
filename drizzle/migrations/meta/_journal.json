@@ -50,6 +50,13 @@
       "when": 1773321137871,
       "tag": "0006_cynical_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1773700000000,
+      "tag": "0007_add_player_groups",
+      "breakpoints": true
     }
   ]
 }

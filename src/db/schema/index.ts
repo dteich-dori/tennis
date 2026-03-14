@@ -1,7 +1,7 @@
 export { seasons } from "./seasons";
 export { holidays } from "./holidays";
 export { courtSchedules } from "./courtSchedules";
-export { players, playerBlockedDays, playerVacations, playerDoNotPair } from "./players";
+export { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "./players";
 export { games, gameAssignments } from "./games";
 export { emailTemplates } from "./emailTemplates";
 export { emailLog } from "./emailLog";

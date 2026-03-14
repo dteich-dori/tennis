@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, playerBlockedDays, playerVacations, playerDoNotPair, gameAssignments } from "@/db/schema";
+import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
 
@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     let allBlockedDays: { id: number; playerId: number; dayOfWeek: number }[] = [];
     let allVacations: { id: number; playerId: number; startDate: string; endDate: string }[] = [];
     let allDoNotPair: { id: number; playerId: number; pairedPlayerId: number }[] = [];
+    let allGroupMembers: { id: number; playerId: number; memberId: number }[] = [];
 
     if (playerIds.length > 0) {
       allBlockedDays = await database
@@ -66,6 +67,11 @@ export async function GET(request: NextRequest) {
         .select()
         .from(playerDoNotPair)
         .where(inArray(playerDoNotPair.playerId, playerIds));
+
+      allGroupMembers = await database
+        .select()
+        .from(playerGroupMembers)
+        .where(inArray(playerGroupMembers.playerId, playerIds));
     }
 
     // Group by playerId in memory
@@ -90,11 +96,19 @@ export async function GET(request: NextRequest) {
       dnpByPlayer.set(d.playerId, arr);
     }
 
+    const gmByPlayer = new Map<number, number[]>();
+    for (const gm of allGroupMembers) {
+      const arr = gmByPlayer.get(gm.playerId) ?? [];
+      arr.push(gm.memberId);
+      gmByPlayer.set(gm.playerId, arr);
+    }
+
     const playersWithDetails = allPlayers.map((player) => ({
       ...player,
       blockedDays: blockedByPlayer.get(player.id) ?? [],
       vacations: vacsByPlayer.get(player.id) ?? [],
       doNotPair: dnpByPlayer.get(player.id) ?? [],
+      groupMembers: gmByPlayer.get(player.id) ?? [],
     }));
 
     return NextResponse.json(playersWithDetails);
@@ -128,6 +142,8 @@ export async function POST(request: NextRequest) {
       blockedDays,
       vacations,
       doNotPair,
+      groupPct,
+      groupMembers,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -191,6 +207,7 @@ export async function POST(request: NextRequest) {
         noEarlyGames: noEarlyGames ?? false,
         cGamesOk: cGamesOk ?? false,
         soloGames: soloGames || null,
+        groupPct: groupPct ?? 0,
       })
       .returning();
 
@@ -227,6 +244,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Insert group members
+    if (groupMembers?.length) {
+      await database.insert(playerGroupMembers).values(
+        groupMembers.map((memberId: number) => ({
+          playerId: newPlayer.id,
+          memberId,
+        }))
+      );
+    }
+
     return NextResponse.json(newPlayer, { status: 201 });
   } catch (err) {
     console.error("[players POST] error:", err);
@@ -258,6 +285,8 @@ export async function PUT(request: NextRequest) {
       blockedDays,
       vacations,
       doNotPair,
+      groupPct,
+      groupMembers,
     } = body;
 
     if (!id) {
@@ -291,6 +320,7 @@ export async function PUT(request: NextRequest) {
       noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
       cGamesOk: cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
+      groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,
     };
 
     // Check for duplicate name (excluding this player, scoped to season)
@@ -371,6 +401,16 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Replace group members
+    if (groupMembers !== undefined) {
+      await database.delete(playerGroupMembers).where(eq(playerGroupMembers.playerId, id));
+      if (groupMembers.length) {
+        await database.insert(playerGroupMembers).values(
+          groupMembers.map((memberId: number) => ({ playerId: id, memberId }))
+        );
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[players PUT] error:", err);
@@ -395,6 +435,8 @@ export async function DELETE(request: NextRequest) {
     await database.delete(playerBlockedDays).where(eq(playerBlockedDays.playerId, playerId));
     await database.delete(playerVacations).where(eq(playerVacations.playerId, playerId));
     await database.delete(playerDoNotPair).where(eq(playerDoNotPair.playerId, playerId));
+    await database.delete(playerGroupMembers).where(eq(playerGroupMembers.playerId, playerId));
+    await database.delete(playerGroupMembers).where(eq(playerGroupMembers.memberId, playerId));
     await database.delete(players).where(eq(players.id, playerId));
 
     return NextResponse.json({ success: true });

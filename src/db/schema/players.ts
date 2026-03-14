@@ -19,6 +19,7 @@ export const players = sqliteTable("players", {
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
   cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
+  groupPct: integer("group_pct").notNull().default(0), // 0, 25, 50, 100 — percentage of games filled from preferred group
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {
@@ -44,6 +45,16 @@ export const playerDoNotPair = sqliteTable("player_do_not_pair", {
     .notNull()
     .references(() => players.id, { onDelete: "cascade" }),
   pairedPlayerId: integer("paired_player_id")
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+});
+
+export const playerGroupMembers = sqliteTable("player_group_members", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerId: integer("player_id") // group head
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+  memberId: integer("member_id") // preferred partner
     .notNull()
     .references(() => players.id, { onDelete: "cascade" }),
 });

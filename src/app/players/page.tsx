@@ -21,9 +21,11 @@ interface Player {
   noEarlyGames: boolean;
   cGamesOk: boolean;
   soloGames: number | null;
+  groupPct: number;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
+  groupMembers: number[];
 }
 
 interface Season {
@@ -51,9 +53,11 @@ const emptyPlayer = {
   noEarlyGames: false,
   cGamesOk: false,
   soloGames: null as number | null,
+  groupPct: 0,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
+  groupMembers: [] as number[],
 };
 
 export default function PlayersPage() {
@@ -138,12 +142,14 @@ export default function PlayersPage() {
       noEarlyGames: player.noEarlyGames,
       cGamesOk: player.cGamesOk,
       soloGames: player.soloGames ?? null,
+      groupPct: player.groupPct ?? 0,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
         endDate: v.endDate,
       })),
       doNotPair: player.doNotPair ?? [],
+      groupMembers: player.groupMembers ?? [],
     });
     setEditingId(player.id);
     setShowForm(true);
@@ -947,6 +953,108 @@ export default function PlayersPage() {
             </select>
           </div>
 
+          {/* Player Group — head configuration */}
+          <div className="mb-4">
+            <label className="block text-sm text-muted mb-1">Group Leader — % of games from preferred group</label>
+            <div className="flex items-center gap-2 mb-1">
+              <select
+                value={form.groupPct}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  setForm({
+                    ...form,
+                    groupPct: val,
+                    groupMembers: val === 0 ? [] : form.groupMembers,
+                  });
+                }}
+                className="border border-border rounded px-3 py-1.5 text-sm w-48"
+              >
+                <option value={0}>Not a group leader</option>
+                <option value={25}>25% group games</option>
+                <option value={50}>50% group games</option>
+                <option value={100}>100% group games</option>
+              </select>
+            </div>
+          </div>
+
+          {form.groupPct > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm text-muted mb-2">
+                {form.lastName || "Player"} Group ({form.groupMembers.length}/15 members)
+              </label>
+              {form.groupMembers.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {form.groupMembers.map((id) => {
+                    const p = players.find((pl) => pl.id === id);
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 rounded px-2 py-0.5 text-xs"
+                      >
+                        {p ? `${p.lastName}, ${p.firstName}` : `Player #${id}`}
+                        <button
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              groupMembers: form.groupMembers.filter((mid) => mid !== id),
+                            })
+                          }
+                          className="text-blue-500 hover:text-blue-700 font-bold ml-1"
+                        >
+                          x
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <select
+                value=""
+                onChange={(e) => {
+                  const selectedId = parseInt(e.target.value);
+                  if (selectedId && !form.groupMembers.includes(selectedId) && form.groupMembers.length < 15) {
+                    setForm({
+                      ...form,
+                      groupMembers: [...form.groupMembers, selectedId],
+                    });
+                  }
+                }}
+                className="border border-border rounded px-3 py-1.5 text-sm w-64"
+                disabled={form.groupMembers.length >= 15}
+              >
+                <option value="">+ Add member...</option>
+                {players
+                  .filter(
+                    (p) =>
+                      p.id !== editingId &&
+                      !form.groupMembers.includes(p.id) &&
+                      p.isActive
+                  )
+                  .sort((a, b) => a.lastName.localeCompare(b.lastName))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.lastName}, {p.firstName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Show which group(s) this player belongs to (as a member, not head) */}
+          {editingId && (() => {
+            const memberOfGroups = players.filter(
+              (p) => p.id !== editingId && p.groupPct > 0 && p.groupMembers?.includes(editingId)
+            );
+            if (memberOfGroups.length === 0) return null;
+            return (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                <span className="text-blue-800">
+                  Member of: {memberOfGroups.map((p) => `${p.lastName} Group (${p.groupPct}%)`).join(", ")}
+                </span>
+              </div>
+            );
+          })()}
+
           <div className="flex gap-3">
             <button
               onClick={handleSave}
@@ -984,6 +1092,7 @@ export default function PlayersPage() {
               <th className="text-left px-2 py-1 border-b border-border">Blocked Days</th>
               <th className="text-left px-2 py-1 border-b border-border">Vacations</th>
               <th className="text-left px-2 py-1 border-b border-border">Does Not Play With</th>
+              <th className="text-left px-2 py-1 border-b border-border">Group</th>
               <th className="text-left px-2 py-1 border-b border-border">Actions</th>
             </tr>
           </thead>
@@ -1030,6 +1139,11 @@ export default function PlayersPage() {
                           return p ? p.lastName : `#${id}`;
                         })
                         .join(", ")
+                    : "-"}
+                </td>
+                <td className="px-2 py-1 text-xs text-blue-700">
+                  {player.groupPct > 0
+                    ? `${player.groupPct}% (${player.groupMembers?.length ?? 0})`
                     : "-"}
                 </td>
                 <td className="px-2 py-1 flex gap-3">

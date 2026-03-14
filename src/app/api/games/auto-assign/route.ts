@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, playerBlockedDays, playerVacations, playerDoNotPair } from "@/db/schema";
+import { games, gameAssignments, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 
 // Types
@@ -15,6 +15,8 @@ interface PlayerData {
   noEarlyGames: boolean;
   cGamesOk: boolean;
   soloGames: number | null;
+  groupPct: number;
+  groupMembers: number[];
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -120,11 +122,13 @@ export async function POST(request: NextRequest) {
     let blockedDaysRows: { playerId: number; dayOfWeek: number }[] = [];
     let vacationRows: { playerId: number; startDate: string; endDate: string }[] = [];
     let dnpRows: { playerId: number; pairedPlayerId: number }[] = [];
+    let groupMemberRows: { playerId: number; memberId: number }[] = [];
 
     if (playerIds.length > 0) {
       blockedDaysRows = await database.select().from(playerBlockedDays).where(inArray(playerBlockedDays.playerId, playerIds));
       vacationRows = await database.select().from(playerVacations).where(inArray(playerVacations.playerId, playerIds));
       dnpRows = await database.select().from(playerDoNotPair).where(inArray(playerDoNotPair.playerId, playerIds));
+      groupMemberRows = await database.select().from(playerGroupMembers).where(inArray(playerGroupMembers.playerId, playerIds));
     }
 
     const blockedByPlayer = new Map<number, number[]>();
@@ -145,12 +149,20 @@ export async function POST(request: NextRequest) {
       arr.push(d.pairedPlayerId);
       dnpByPlayer.set(d.playerId, arr);
     }
+    const gmByPlayer = new Map<number, number[]>();
+    for (const gm of groupMemberRows) {
+      const arr = gmByPlayer.get(gm.playerId) ?? [];
+      arr.push(gm.memberId);
+      gmByPlayer.set(gm.playerId, arr);
+    }
 
     const playerData: PlayerData[] = allPlayers.map((p) => ({
       ...p,
       blockedDays: blockedByPlayer.get(p.id) ?? [],
       vacations: vacsByPlayer.get(p.id) ?? [],
       doNotPair: dnpByPlayer.get(p.id) ?? [],
+      groupPct: p.groupPct ?? 0,
+      groupMembers: gmByPlayer.get(p.id) ?? [],
     }));
 
     // Only contracted active players (not subs) for Don's auto-assign
@@ -395,10 +407,10 @@ export async function POST(request: NextRequest) {
     // options.playerPool: custom player pool to search (e.g. subPlayers for Pass 4)
     function getAvailablePlayers(
       game: GameData, currentAssignments: number[], firstGameOnly = false,
-      options?: { allowExtras?: boolean; playerPool?: PlayerData[] }
+      options?: { allowExtras?: boolean; playerPool?: PlayerData[]; isSubs?: boolean }
     ): PlayerData[] {
       const pool = options?.playerPool ?? contractedPlayers;
-      const isSubs = !!options?.playerPool; // using a custom pool means we're in subs mode
+      const isSubs = !!options?.isSubs;
       const assignedInGame = new Set(currentAssignments);
       const assignedOnDate = new Set<number>();
       // Players assigned to other games on same date
@@ -525,6 +537,27 @@ export async function POST(request: NextRequest) {
     const gameAssignmentState = new Map<number, number[]>();
     for (const g of donsGames) {
       gameAssignmentState.set(g.id, g.assignments.map((a) => a.playerId));
+    }
+
+    // Track group game fulfillment per group head
+    const groupTotalGames = new Map<number, number>(); // head → total games assigned
+    const groupGroupGames = new Map<number, number>(); // head → games where all 3 co-players from group
+    for (const p of playerData) {
+      if (p.groupPct > 0 && p.groupMembers.length > 0) {
+        let totalGames = 0;
+        let groupGames = 0;
+        for (const g of donsGames) {
+          const assigned = g.assignments.map((a) => a.playerId);
+          if (!assigned.includes(p.id)) continue;
+          totalGames++;
+          const coPlayers = assigned.filter((pid) => pid !== p.id);
+          if (coPlayers.length === 3 && coPlayers.every((pid) => p.groupMembers.includes(pid))) {
+            groupGames++;
+          }
+        }
+        groupTotalGames.set(p.id, totalGames);
+        groupGroupGames.set(p.id, groupGames);
+      }
     }
 
     // Priority scoring for a player
@@ -711,6 +744,58 @@ export async function POST(request: NextRequest) {
         for (let slot = existingCount + 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
 
+          // --- Group-filling logic ---
+          // Check if any assigned player is a group head needing group games
+          let groupFilled = false;
+          for (const assignedId of currentAssigned) {
+            const headPlayer = playerData.find((p) => p.id === assignedId);
+            if (!headPlayer || headPlayer.groupPct === 0 || headPlayer.groupMembers.length === 0) continue;
+
+            // Calculate current group ratio for this head
+            const total = groupTotalGames.get(assignedId) ?? 0;
+            const grp = groupGroupGames.get(assignedId) ?? 0;
+            const targetRatio = headPlayer.groupPct / 100;
+            const currentRatio = total > 0 ? grp / total : 0;
+
+            if (currentRatio < targetRatio) {
+              // Try group-exclusive filling
+              const groupMemberSet = new Set(headPlayer.groupMembers);
+              const groupPool = contractedPlayers.filter((p) => groupMemberSet.has(p.id));
+              let groupEligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: groupPool }).filter((p) => {
+                if (usedOnDay.has(p.id)) return false;
+                return true;
+              });
+              // Also try first-game-only pass for fairness
+              if (groupEligible.length === 0) {
+                groupEligible = getAvailablePlayers(game, currentAssigned, true, { playerPool: groupPool }).filter((p) => {
+                  if (usedOnDay.has(p.id)) return false;
+                  return true;
+                });
+              }
+
+              if (groupEligible.length > 0) {
+                // Random selection among eligible group members to distribute play evenly
+                const chosen = groupEligible[Math.floor(Math.random() * groupEligible.length)];
+                log.push({
+                  type: "info",
+                  day: DAYS[dow],
+                  message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned from ${headPlayer.lastName} Group`,
+                });
+                await assignPlayer(game, chosen.id, slot);
+                groupFilled = true;
+                break;
+              } else {
+                log.push({
+                  type: "info",
+                  day: DAYS[dow],
+                  message: `Game #${game.gameNumber} slot ${slot}: no ${headPlayer.lastName} Group members available, using normal pool`,
+                });
+              }
+            }
+            break; // only process first group head found
+          }
+          if (groupFilled) continue; // skip normal passes
+
           let passUsed = 1;
 
           // First pass: only players with zero Don's games this week (everyone gets at least 1)
@@ -763,7 +848,7 @@ export async function POST(request: NextRequest) {
           // Pass 4: subs — allow substitute players to fill remaining gaps
           if (eligible.length === 0 && assignCSubs) {
             passUsed = 4;
-            eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers }).filter((p) => {
+            eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers, isSubs: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               return true;
             });
@@ -797,6 +882,23 @@ export async function POST(request: NextRequest) {
             });
           }
         }
+
+        // --- Update group tracking after game is filled ---
+        const finalAssigned = gameAssignmentState.get(game.id) ?? [];
+        if (finalAssigned.length === 4) {
+          for (const pid of finalAssigned) {
+            const headPlayer = playerData.find((p) => p.id === pid);
+            if (!headPlayer || headPlayer.groupPct === 0 || headPlayer.groupMembers.length === 0) continue;
+            // This player is a group head — update their tracking
+            const prevTotal = groupTotalGames.get(pid) ?? 0;
+            groupTotalGames.set(pid, prevTotal + 1);
+            const coPlayers = finalAssigned.filter((id) => id !== pid);
+            if (coPlayers.every((id) => headPlayer.groupMembers.includes(id))) {
+              const prevGroup = groupGroupGames.get(pid) ?? 0;
+              groupGroupGames.set(pid, prevGroup + 1);
+            }
+          }
+        }
       }
 
       // Pass summary
@@ -825,6 +927,19 @@ export async function POST(request: NextRequest) {
         players: [...(gameAssignmentState.get(g.id) ?? [])],
       }));
 
+      // Identify group games (head + all 3 co-players from head's group) — protect from swaps
+      const groupGameIds = new Set<number>();
+      for (const gs of dayStates) {
+        for (const pid of gs.players) {
+          const head = playerData.find((p) => p.id === pid);
+          if (!head || head.groupPct === 0 || head.groupMembers.length === 0) continue;
+          const coPlayers = gs.players.filter((id) => id !== pid);
+          if (coPlayers.every((id) => head.groupMembers.includes(id))) {
+            groupGameIds.add(gs.game.id);
+          }
+        }
+      }
+
       let totalViolations = dayStates.filter((gs) => hasCompositionViolation(gs.players)).length;
 
       if (totalViolations > 0) {
@@ -832,7 +947,11 @@ export async function POST(request: NextRequest) {
         while (swapMade) {
           swapMade = false;
           for (let i = 0; i < dayStates.length && !swapMade; i++) {
+            // Skip group-protected games
+            if (groupGameIds.has(dayStates[i].game.id)) continue;
             for (let j = i + 1; j < dayStates.length && !swapMade; j++) {
+              // Skip group-protected games
+              if (groupGameIds.has(dayStates[j].game.id)) continue;
               for (let pi = 0; pi < 4 && !swapMade; pi++) {
                 for (let pj = 0; pj < 4 && !swapMade; pj++) {
                   const pidI = dayStates[i].players[pi];
@@ -910,6 +1029,19 @@ export async function POST(request: NextRequest) {
 
     // Summary is conveyed via the assignedCount/totalSlots in the response
     // and by the per-slot warnings above — no need for a duplicate summary line.
+
+    // Group game summary
+    for (const p of playerData) {
+      if (p.groupPct > 0 && p.groupMembers.length > 0) {
+        const total = groupTotalGames.get(p.id) ?? 0;
+        const grp = groupGroupGames.get(p.id) ?? 0;
+        const achieved = total > 0 ? Math.round((grp / total) * 100) : 0;
+        log.push({
+          type: "info",
+          message: `${p.lastName} Group: ${grp}/${total} group games (target ${p.groupPct}%, achieved ${achieved}%)`,
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

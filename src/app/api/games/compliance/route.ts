@@ -95,12 +95,13 @@ export async function GET(request: NextRequest) {
 
     const playerMap = allPlayersMap;
 
-    // Load blocked days for assigned players
-    const blockedDays = assignedPlayerIds.length > 0
+    // Load blocked days for ALL season players (needed for under-assigned reason)
+    const allPlayerIds = [...playerMap.keys()];
+    const blockedDays = allPlayerIds.length > 0
       ? await database
           .select()
           .from(playerBlockedDays)
-          .where(inArray(playerBlockedDays.playerId, assignedPlayerIds))
+          .where(inArray(playerBlockedDays.playerId, allPlayerIds))
       : [];
 
     const blockedByPlayer = new Map<number, number[]>();
@@ -110,12 +111,12 @@ export async function GET(request: NextRequest) {
       blockedByPlayer.set(bd.playerId, existing);
     }
 
-    // Load vacations for assigned players
-    const vacations = assignedPlayerIds.length > 0
+    // Load vacations for ALL season players (needed for under-assigned reason)
+    const vacations = allPlayerIds.length > 0
       ? await database
           .select()
           .from(playerVacations)
-          .where(inArray(playerVacations.playerId, assignedPlayerIds))
+          .where(inArray(playerVacations.playerId, allPlayerIds))
       : [];
 
     const vacationsByPlayer = new Map<number, { startDate: string; endDate: string }[]>();
@@ -439,6 +440,9 @@ export async function GET(request: NextRequest) {
       weeklyCount.set(a.playerId, (weeklyCount.get(a.playerId) ?? 0) + 1);
     }
 
+    // Collect unique game dates for this week (for vacation/blocked-day reason checking)
+    const weekDates = [...new Set(weekGames.filter((g) => g.status === "normal").map((g) => g.date))].sort();
+
     if (group === "solo") {
       // Solo: report WTD=0 for full-share (36 games) players
       for (const [, p] of playerMap) {
@@ -447,6 +451,32 @@ export async function GET(request: NextRequest) {
         if (p.contractedFrequency === "0") continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count === 0) {
+          // Determine reason for under-assignment
+          const reasons: string[] = [];
+          const pVacations = vacationsByPlayer.get(p.id) ?? [];
+          for (const v of pVacations) {
+            const overlapping = weekDates.filter((d) => d >= v.startDate && d <= v.endDate);
+            if (overlapping.length > 0) {
+              if (overlapping.length === weekDates.length) {
+                reasons.push(`on vacation all week (${v.startDate} – ${v.endDate})`);
+              } else {
+                reasons.push(`on vacation ${overlapping.join(", ")} (${v.startDate} – ${v.endDate})`);
+              }
+            }
+          }
+          const pBlocked = blockedByPlayer.get(p.id) ?? [];
+          if (pBlocked.length > 0) {
+            const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            const blockedDates = weekDates.filter((d) => {
+              const dow = new Date(d + "T12:00:00").getDay();
+              return pBlocked.includes(dow);
+            });
+            if (blockedDates.length > 0) {
+              const blockedDayNames = [...new Set(pBlocked.map((d) => dayNames[d]))];
+              reasons.push(`blocked on ${blockedDayNames.join(", ")}`);
+            }
+          }
+          const reasonStr = reasons.length > 0 ? ` — ${reasons.join("; ")}` : "";
           violations.push({
             rule: "Under-assigned",
             severity: "warning",
@@ -454,7 +484,7 @@ export async function GET(request: NextRequest) {
             gameNumber: 0,
             date: "",
             playerName: playerName(p.id),
-            detail: `Solo: full-share player (${p.soloGames} games) with 0 games this week`,
+            detail: `Solo: full-share player (${p.soloGames} games) with 0 games this week${reasonStr}`,
           });
         }
       }
@@ -508,6 +538,37 @@ export async function GET(request: NextRequest) {
         if (freq === 0) continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count < freq) {
+          // Determine reason for under-assignment
+          const reasons: string[] = [];
+
+          // Check vacation overlap
+          const pVacations = vacationsByPlayer.get(p.id) ?? [];
+          for (const v of pVacations) {
+            const overlapping = weekDates.filter((d) => d >= v.startDate && d <= v.endDate);
+            if (overlapping.length > 0) {
+              if (overlapping.length === weekDates.length) {
+                reasons.push(`on vacation all week (${v.startDate} – ${v.endDate})`);
+              } else {
+                reasons.push(`on vacation ${overlapping.join(", ")} (${v.startDate} – ${v.endDate})`);
+              }
+            }
+          }
+
+          // Check blocked days overlap
+          const pBlocked = blockedByPlayer.get(p.id) ?? [];
+          if (pBlocked.length > 0) {
+            const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            const blockedDates = weekDates.filter((d) => {
+              const dow = new Date(d + "T12:00:00").getDay();
+              return pBlocked.includes(dow);
+            });
+            if (blockedDates.length > 0 && blockedDates.length >= weekDates.length - count) {
+              const blockedDayNames = [...new Set(pBlocked.map((d) => dayNames[d]))];
+              reasons.push(`blocked on ${blockedDayNames.join(", ")}`);
+            }
+          }
+
+          const reasonStr = reasons.length > 0 ? ` — ${reasons.join("; ")}` : "";
           violations.push({
             rule: "Under-assigned",
             severity: "warning",
@@ -515,7 +576,7 @@ export async function GET(request: NextRequest) {
             gameNumber: 0,
             date: "",
             playerName: playerName(p.id),
-            detail: `${groupLabel}: assigned ${count} game(s), expected ${freq}`,
+            detail: `${groupLabel}: assigned ${count} game(s), expected ${freq}${reasonStr}`,
           });
         }
       }
