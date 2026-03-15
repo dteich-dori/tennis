@@ -992,48 +992,34 @@ export default function SchedulePage() {
                 {autoAssignLoading ? "Clearing..." : "Clear Don's"}
               </button>
             )}
-            <button
-              onClick={handleAutoAssign}
-              disabled={autoAssignLoading || runAllLoading || games.length === 0}
-              title="Auto-assign open Don's game slots for this week"
-              className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
-            >
-              {autoAssignLoading ? "Assigning..." : "Auto-Assign"}
-            </button>
-            <button
-              onClick={handleRunAllWeeks}
-              disabled={autoAssignLoading || runAllLoading || games.length === 0}
-              title="Auto-assign Don's games for all unassigned weeks. Uses the Extra and C Subs options."
-              className="px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg shadow-sm hover:bg-teal-600 active:bg-teal-700 disabled:opacity-40 transition-colors text-sm"
-            >
-              {runAllLoading ? (runAllWeek ? `Running Wk ${runAllWeek}...` : "Preparing...") : "Run All Weeks"}
-            </button>
-            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={assignExtra}
-                onChange={(e) => setAssignExtra(e.target.checked)}
-                className="accent-indigo-500"
-              />
-              Assign extra
-            </label>
-            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={assignCSubs}
-                onChange={(e) => setAssignCSubs(e.target.checked)}
-                className="accent-indigo-500"
-              />
-              Assign C subs
-            </label>
-            <button
-              onClick={() => handleBalanceBallsPreview("dons")}
-              disabled={balanceBallsLoading || games.length === 0}
-              className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 active:bg-purple-700 disabled:opacity-40 transition-colors text-sm"
-              title="Balance ball-bringing duty across Don's group players"
-            >
-              {balanceBallsLoading && balanceBallsGroup === "dons" ? "..." : "Balls Don's"}
-            </button>
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
+              <button
+                onClick={handleAutoAssign}
+                disabled={autoAssignLoading || runAllLoading || games.length === 0}
+                title="Auto-assign open Don's game slots for this week"
+                className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
+              >
+                {autoAssignLoading ? "Assigning..." : "Assign Week"}
+              </button>
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={assignExtra}
+                  onChange={(e) => setAssignExtra(e.target.checked)}
+                  className="accent-indigo-500"
+                />
+                Assign extra
+              </label>
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={assignCSubs}
+                  onChange={(e) => setAssignCSubs(e.target.checked)}
+                  className="accent-indigo-500"
+                />
+                Assign C subs
+              </label>
+            </div>
             <button
               onClick={() => setShowPlayerInfo(true)}
               className="px-4 py-2 font-semibold rounded-lg shadow-sm transition-colors text-sm bg-blue-500 text-white hover:bg-blue-600"
@@ -1349,7 +1335,7 @@ export default function SchedulePage() {
             <div className="bg-indigo-50 border border-indigo-200 rounded px-4 py-3 mb-4 text-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold text-indigo-800">
-                  Auto-Assign Report {autoAssignCount > 0 ? `\u2014 ${autoAssignCount} players assigned` : ""}
+                  Assign Week Report {autoAssignCount > 0 ? `\u2014 ${autoAssignCount} players assigned` : ""}
                 </span>
                 <button
                   onClick={() => { setAutoAssignLog([]); }}
@@ -1359,7 +1345,7 @@ export default function SchedulePage() {
                 </button>
               </div>
               <div className="space-y-0.5 max-h-64 overflow-y-auto">
-                {autoAssignLog.filter((e) => runAllMessage ? true : (e.type === "warning" || e.type === "error")).map((entry, idx) => (
+                {autoAssignLog.filter((e) => runAllMessage ? true : (e.type === "warning" || e.type === "error" || e.message.includes("Composition swap"))).map((entry, idx) => (
                   <div
                     key={idx}
                     className={`text-xs flex items-start gap-2 ${
@@ -2107,19 +2093,21 @@ export default function SchedulePage() {
                         </div>
                       </div>
 
-                      {/* Explanation */}
-                      <div className="px-3 py-2 border-b border-border bg-amber-50/50">
-                        <div className="text-xs text-gray-700">
-                          {isCompositionViolation ? (
-                            <>A+C without 2 B-level bridges — need to swap an <span className="font-semibold">{comp.includes("A") && (comp.match(/A/g) ?? []).length > 1 ? "A" : comp.includes("C") && (comp.match(/C/g) ?? []).length > 1 ? "C" : "A or C"}</span> player for a <span className="font-semibold">B</span> player.</>
-                          ) : (
-                            <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} who owe{data.emptySlots === 1 ? "s" : ""} games this week.</>
-                          )}
+                      {/* Explanation — only shown when there are issues */}
+                      {(isIncomplete || isCompositionViolation) && (
+                        <div className="px-3 py-2 border-b border-border bg-amber-50/50">
+                          <div className="text-xs text-gray-700">
+                            {isCompositionViolation ? (
+                              <>A+C without 2 B-level bridges — need to swap an <span className="font-semibold">{comp.includes("A") && (comp.match(/A/g) ?? []).length > 1 ? "A" : comp.includes("C") && (comp.match(/C/g) ?? []).length > 1 ? "C" : "A or C"}</span> player for a <span className="font-semibold">B</span> player.</>
+                            ) : (
+                              <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} who owe{data.emptySlots === 1 ? "s" : ""} games this week.</>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Candidates: B players who owe (for composition) or all who owe (for incomplete) */}
-                      {candidates.length > 0 ? (
+                      {/* Candidates — only shown when there are issues */}
+                      {(isIncomplete || isCompositionViolation) && (candidates.length > 0 ? (
                         <div>
                           <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                             {isCompositionViolation ? "B Players Who Owe Games" : "Players Who Owe Games"} ({candidates.length})
@@ -2151,6 +2139,13 @@ export default function SchedulePage() {
                           {isCompositionViolation
                             ? "No B players owe games this week — no swap available."
                             : "No players owe games this week."}
+                        </div>
+                      ))}
+
+                      {/* No issues — compact confirmation */}
+                      {!isIncomplete && !isCompositionViolation && (
+                        <div className="px-3 py-2 text-xs text-green-600 text-center">
+                          ✓ No issues
                         </div>
                       )}
                     </>

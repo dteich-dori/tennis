@@ -655,19 +655,24 @@ export async function POST(request: NextRequest) {
       const sortByPriority = (players: PlayerData[], game: GameData) => {
         const currentAssignedIds = gameAssignmentState.get(game.id) ?? [];
 
-        // Pre-compute game composition for A/C mixing penalty
-        const gamePlayers = currentAssignedIds.map((id) => playerData.find((p) => p.id === id));
-        const hasC = gamePlayers.some((p) => p?.skillLevel === "C");
-        const hasA = gamePlayers.some((p) => p?.skillLevel === "A");
-        const bCount = gamePlayers.filter((p) => p?.skillLevel === "B").length;
-        const aCount = gamePlayers.filter((p) => p?.skillLevel === "A").length;
-        const cCount = gamePlayers.filter((p) => p?.skillLevel === "C").length;
-
-        // Soft penalty for A+C combos without sufficient B bridges (was a hard block)
+        // Composition quality penalty: prefer candidates that maintain/improve game composition
+        // Uses a hypothetical roster to compute quality score with vs without the candidate
         function compositionPenalty(p: PlayerData): number {
-          if (p.skillLevel === "A" && !p.cGamesOk && hasC && (bCount < 2 || aCount >= 1)) return 1;
-          if (p.skillLevel === "C" && hasA && (bCount < 2 || cCount >= 1)) return 1;
-          return 0;
+          if (currentAssignedIds.length === 0) return 0;
+          const hypothetical = [...currentAssignedIds, p.id];
+          const levels = hypothetical.map((id) => {
+            if (id === p.id) return p.skillLevel;
+            return playerData.find((pl) => pl.id === id)?.skillLevel ?? "B";
+          });
+          const aCount = levels.filter((l) => l === "A").length;
+          const bCount = levels.filter((l) => l === "B").length;
+          const cCount = levels.filter((l) => l === "C").length;
+          const hasA = aCount > 0;
+          const hasC = cCount > 0;
+          if (!hasA || !hasC) return 0; // no A+C gap, no penalty
+          if (bCount >= 2) return 1; // bridged but still A+C
+          if (bCount === 1) return 2; // weakly bridged
+          return 3; // no bridge — worst
         }
 
         return [...players].sort((a, b) => {
@@ -911,15 +916,32 @@ export async function POST(request: NextRequest) {
 
       // --- Day-level composition optimization ---
       // After filling all games on this day, try swapping players between games
-      // to reduce A+C composition violations (e.g., group C players together).
+      // to improve composition quality (group similar skill levels together).
       const filledDayGames = openGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length === 4);
 
-      function hasCompositionViolation(pids: number[]): boolean {
-        const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "?");
-        const hA = levels.includes("A");
-        const hC = levels.includes("C");
-        const bCnt = levels.filter((l) => l === "B").length;
-        return hA && hC && bCnt < 2;
+      // Composition quality score (0-4, higher is better):
+      //   4 = all same level (AAAA, BBBB, CCCC)
+      //   3 = adjacent levels only (AABB, ABBB, BBBC, BBCC)
+      //   2 = A+C with good bridge (2+ B's — e.g., ABBC)
+      //   1 = A+C with weak bridge (1 B — e.g., ABAC)
+      //   0 = A+C with no bridge (e.g., AACC, ACCC)
+      function getCompositionScore(pids: number[]): number {
+        const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
+        const aCount = levels.filter((l) => l === "A").length;
+        const bCount = levels.filter((l) => l === "B").length;
+        const cCount = levels.filter((l) => l === "C").length;
+        const hasA = aCount > 0;
+        const hasC = cCount > 0;
+
+        if (!hasA || !hasC) {
+          // No A+C gap — check if all same level
+          const distinct = new Set(levels).size;
+          return distinct === 1 ? 4 : 3; // all same or adjacent-only
+        }
+        // Has both A and C players
+        if (bCount >= 2) return 2; // well-bridged
+        if (bCount === 1) return 1; // weakly bridged
+        return 0; // no bridge
       }
 
       const dayStates = filledDayGames.map((g) => ({
@@ -940,81 +962,127 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      let totalViolations = dayStates.filter((gs) => hasCompositionViolation(gs.players)).length;
-
-      if (totalViolations > 0) {
-        let swapMade = true;
-        while (swapMade) {
-          swapMade = false;
-          for (let i = 0; i < dayStates.length && !swapMade; i++) {
+      let swapMade = true;
+      while (swapMade) {
+        swapMade = false;
+        for (let i = 0; i < dayStates.length && !swapMade; i++) {
+          // Skip group-protected games
+          if (groupGameIds.has(dayStates[i].game.id)) continue;
+          for (let j = i + 1; j < dayStates.length && !swapMade; j++) {
             // Skip group-protected games
-            if (groupGameIds.has(dayStates[i].game.id)) continue;
-            for (let j = i + 1; j < dayStates.length && !swapMade; j++) {
-              // Skip group-protected games
-              if (groupGameIds.has(dayStates[j].game.id)) continue;
-              for (let pi = 0; pi < 4 && !swapMade; pi++) {
-                for (let pj = 0; pj < 4 && !swapMade; pj++) {
-                  const pidI = dayStates[i].players[pi];
-                  const pidJ = dayStates[j].players[pj];
-                  if (pidI === pidJ) continue;
+            if (groupGameIds.has(dayStates[j].game.id)) continue;
+            for (let pi = 0; pi < 4 && !swapMade; pi++) {
+              for (let pj = 0; pj < 4 && !swapMade; pj++) {
+                const pidI = dayStates[i].players[pi];
+                const pidJ = dayStates[j].players[pj];
+                if (pidI === pidJ) continue;
 
-                  // Build swapped rosters
-                  const newI = [...dayStates[i].players]; newI[pi] = pidJ;
-                  const newJ = [...dayStates[j].players]; newJ[pj] = pidI;
+                // Build swapped rosters
+                const newI = [...dayStates[i].players]; newI[pi] = pidJ;
+                const newJ = [...dayStates[j].players]; newJ[pj] = pidI;
 
-                  const oldViols = (hasCompositionViolation(dayStates[i].players) ? 1 : 0)
-                                 + (hasCompositionViolation(dayStates[j].players) ? 1 : 0);
-                  const newViols = (hasCompositionViolation(newI) ? 1 : 0)
-                                 + (hasCompositionViolation(newJ) ? 1 : 0);
+                const oldScore = getCompositionScore(dayStates[i].players)
+                               + getCompositionScore(dayStates[j].players);
+                const newScore = getCompositionScore(newI)
+                               + getCompositionScore(newJ);
 
-                  if (newViols >= oldViols) continue;
+                if (newScore <= oldScore) continue;
 
-                  // Verify DNP constraints in new rosters
-                  let dnpOk = true;
-                  const pI = playerData.find((p) => p.id === pidI);
-                  const pJ = playerData.find((p) => p.id === pidJ);
+                // Verify DNP constraints in new rosters
+                let dnpOk = true;
+                const pI = playerData.find((p) => p.id === pidI);
+                const pJ = playerData.find((p) => p.id === pidJ);
+                for (const otherId of newI) {
+                  if (otherId === pidJ) continue;
+                  if (pJ?.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                  const other = playerData.find((p) => p.id === otherId);
+                  if (other?.doNotPair.includes(pidJ)) { dnpOk = false; break; }
+                }
+                if (dnpOk) {
+                  for (const otherId of newJ) {
+                    if (otherId === pidI) continue;
+                    if (pI?.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                    const other = playerData.find((p) => p.id === otherId);
+                    if (other?.doNotPair.includes(pidI)) { dnpOk = false; break; }
+                  }
+                }
+                if (!dnpOk) continue;
+
+                // Verify derated pairing limits in new rosters
+                let deratedOk = true;
+                if (maxDeratedPerWeek != null) {
+                  const gamesToCheck = [...donsGames.map((g) => ({
+                    ...g,
+                    assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
+                  }))];
+                  if (maxDeratedPerWeek === 2) {
+                    gamesToCheck.push(...prevWeekGamesData.map((g) => ({
+                      ...g,
+                      assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
+                    })));
+                  }
+
+                  // Check pidJ in game i (new roster newI)
                   for (const otherId of newI) {
                     if (otherId === pidJ) continue;
-                    if (pJ?.doNotPair.includes(otherId)) { dnpOk = false; break; }
-                    const other = playerData.find((p) => p.id === otherId);
-                    if (other?.doNotPair.includes(pidJ)) { dnpOk = false; break; }
+                    const otherPlayer = playerData.find((p) => p.id === otherId);
+                    if (!otherPlayer || !pJ) continue;
+                    if (pJ.isDerated === otherPlayer.isDerated) continue;
+                    let alreadyPaired = false;
+                    for (const g of gamesToCheck) {
+                      if (g.status !== "normal") continue;
+                      if (g.id === dayStates[i].game.id || g.id === dayStates[j].game.id) continue;
+                      const inGame = g.assignments.some((a) => a.playerId === otherId);
+                      if (!inGame) continue;
+                      if (g.assignments.some((a) => a.playerId === pidJ)) { alreadyPaired = true; break; }
+                    }
+                    if (alreadyPaired) { deratedOk = false; break; }
                   }
-                  if (dnpOk) {
+                  // Check pidI in game j (new roster newJ)
+                  if (deratedOk) {
                     for (const otherId of newJ) {
                       if (otherId === pidI) continue;
-                      if (pI?.doNotPair.includes(otherId)) { dnpOk = false; break; }
-                      const other = playerData.find((p) => p.id === otherId);
-                      if (other?.doNotPair.includes(pidI)) { dnpOk = false; break; }
+                      const otherPlayer = playerData.find((p) => p.id === otherId);
+                      if (!otherPlayer || !pI) continue;
+                      if (pI.isDerated === otherPlayer.isDerated) continue;
+                      let alreadyPaired = false;
+                      for (const g of gamesToCheck) {
+                        if (g.status !== "normal") continue;
+                        if (g.id === dayStates[i].game.id || g.id === dayStates[j].game.id) continue;
+                        const inGame = g.assignments.some((a) => a.playerId === otherId);
+                        if (!inGame) continue;
+                        if (g.assignments.some((a) => a.playerId === pidI)) { alreadyPaired = true; break; }
+                      }
+                      if (alreadyPaired) { deratedOk = false; break; }
                     }
                   }
-                  if (!dnpOk) continue;
-
-                  // Apply swap in DB
-                  const [rowI] = await database.select().from(gameAssignments)
-                    .where(and(eq(gameAssignments.gameId, dayStates[i].game.id), eq(gameAssignments.playerId, pidI)));
-                  const [rowJ] = await database.select().from(gameAssignments)
-                    .where(and(eq(gameAssignments.gameId, dayStates[j].game.id), eq(gameAssignments.playerId, pidJ)));
-                  if (rowI && rowJ) {
-                    await database.update(gameAssignments).set({ playerId: pidJ }).where(eq(gameAssignments.id, rowI.id));
-                    await database.update(gameAssignments).set({ playerId: pidI }).where(eq(gameAssignments.id, rowJ.id));
-                  }
-
-                  // Update state
-                  dayStates[i].players = newI;
-                  dayStates[j].players = newJ;
-                  gameAssignmentState.set(dayStates[i].game.id, newI);
-                  gameAssignmentState.set(dayStates[j].game.id, newJ);
-                  totalViolations = dayStates.filter((gs) => hasCompositionViolation(gs.players)).length;
-
-                  const nameI = pI ? `${pI.lastName}` : `#${pidI}`;
-                  const nameJ = pJ ? `${pJ.lastName}` : `#${pidJ}`;
-                  log.push({
-                    type: "info",
-                    day: DAYS[dow],
-                    message: `Composition swap: ${nameI} (game #${dayStates[j].game.gameNumber}) ↔ ${nameJ} (game #${dayStates[i].game.gameNumber}) — reduced A+C violations`,
-                  });
-                  swapMade = true;
                 }
+                if (!deratedOk) continue;
+
+                // Apply swap in DB
+                const [rowI] = await database.select().from(gameAssignments)
+                  .where(and(eq(gameAssignments.gameId, dayStates[i].game.id), eq(gameAssignments.playerId, pidI)));
+                const [rowJ] = await database.select().from(gameAssignments)
+                  .where(and(eq(gameAssignments.gameId, dayStates[j].game.id), eq(gameAssignments.playerId, pidJ)));
+                if (rowI && rowJ) {
+                  await database.update(gameAssignments).set({ playerId: pidJ }).where(eq(gameAssignments.id, rowI.id));
+                  await database.update(gameAssignments).set({ playerId: pidI }).where(eq(gameAssignments.id, rowJ.id));
+                }
+
+                // Update state
+                dayStates[i].players = newI;
+                dayStates[j].players = newJ;
+                gameAssignmentState.set(dayStates[i].game.id, newI);
+                gameAssignmentState.set(dayStates[j].game.id, newJ);
+
+                const nameI = pI ? `${pI.lastName}` : `#${pidI}`;
+                const nameJ = pJ ? `${pJ.lastName}` : `#${pidJ}`;
+                log.push({
+                  type: "info",
+                  day: DAYS[dow],
+                  message: `Composition swap: ${nameI} (game #${dayStates[i].game.gameNumber}) ↔ ${nameJ} (game #${dayStates[j].game.gameNumber}) — quality ${oldScore} → ${newScore}`,
+                });
+                swapMade = true;
               }
             }
           }
