@@ -97,6 +97,7 @@ export default function SchedulePage() {
   } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [playerCounts, setPlayerCounts] = useState<Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>>({});
+  const [adjustedFreqs, setAdjustedFreqs] = useState<Record<number, number>>({});
   const [showPlayerInfo, setShowPlayerInfo] = useState(false);
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
   const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
@@ -257,8 +258,15 @@ export default function SchedulePage() {
   const loadPlayerCounts = useCallback(async (seasonId: number, weekNum: number) => {
     try {
       const res = await fetch(`/api/games/counts?seasonId=${seasonId}&weekNumber=${weekNum}`);
-      const data = (await res.json()) as Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>;
-      setPlayerCounts(data);
+      const data = await res.json();
+      // API now returns { counts, adjustedFreqs } but handle legacy shape too
+      if (data.counts) {
+        setPlayerCounts(data.counts);
+        setAdjustedFreqs(data.adjustedFreqs ?? {});
+      } else {
+        setPlayerCounts(data as Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>);
+        setAdjustedFreqs({});
+      }
     } catch (err) {
       console.error("Failed to load player counts:", err);
     }
@@ -717,12 +725,13 @@ export default function SchedulePage() {
   };
 
   // Get the effective weekly frequency for a player in a given group
-  // For dons: uses contract frequency. For solo: uses soloGames / 36.
+  // For dons: uses adjusted frequency (vacation front-loading) if available, else contract frequency.
+  // For solo: uses soloGames / 36.
   const getEffectiveFreq = (player: Player, gameGroup: string): number => {
     if (gameGroup === "solo") {
       return player.soloGames ? player.soloGames / 36 : 0;
     }
-    return parseInt(player.contractedFrequency) || 0;
+    return adjustedFreqs[player.id] ?? (parseInt(player.contractedFrequency) || 0);
   };
 
   const getPlayerName = (playerId: number): string => {
@@ -829,11 +838,14 @@ export default function SchedulePage() {
   // (i.e., it's their only remaining playable day this week and they still owe games)
   const isMustPlay = (player: Player, game: Game): boolean => {
     const counts = playerCounts[player.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
-    const freq = getEffectiveFreq(player, game.group);
+    // MUST play uses BASE frequency — front-loaded extras don't trigger MUST
+    const baseFreq = game.group === "solo"
+      ? (player.soloGames ? player.soloGames / 36 : 0)
+      : (parseInt(player.contractedFrequency) || 0);
     const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
-    const remaining = freq - groupWtd;
+    const remaining = baseFreq - groupWtd;
 
-    // Player doesn't owe any more games this week
+    // Player doesn't owe any more games this week at base contract
     if (remaining <= 0) return false;
 
     // Get all unique dates this week that have open slots for this game's group
@@ -1131,7 +1143,9 @@ export default function SchedulePage() {
                   {donsPlayers.map((p) => {
                     const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
                     const freq = parseInt(p.contractedFrequency) || 0;
-                    const owe = freq - counts.wtdDons;
+                    const adjFreq = adjustedFreqs[p.id];
+                    const effectiveFreq = adjFreq ?? freq;
+                    const owe = effectiveFreq - counts.wtdDons;
                     const expectedYtd = freq * Math.min(currentWeek, 36);
                     const ytdOwed = expectedYtd - counts.ytdDons;
                     const onVacation = weekStart && weekEnd && p.vacations?.some(
@@ -1145,16 +1159,16 @@ export default function SchedulePage() {
                         className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-white border border-blue-100"
                       >
                         <span
-                          className="font-mono w-3 text-center text-gray-500"
-                          title={`Contract: ${freq}/week`}
+                          className={`font-mono ${adjFreq ? "w-8 text-blue-600 font-bold" : "w-3 text-gray-500"} text-center`}
+                          title={adjFreq ? `Contract: ${freq}/week → adjusted to ${adjFreq}/week (vacation makeup)` : `Contract: ${freq}/week`}
                         >
-                          {freq}
+                          {adjFreq ? `${freq}→${adjFreq}` : freq}
                         </span>
                         <span
                           className={`font-mono w-4 text-center ${
                             owe > 0 ? "text-red-600 font-bold" : "text-gray-500"
                           }`}
-                          title={`Owed ${owe} game(s) this week (${freq} contracted − ${counts.wtdDons} played)`}
+                          title={adjFreq ? `Owed ${owe} game(s) this week (${adjFreq} adjusted − ${counts.wtdDons} played)` : `Owed ${owe} game(s) this week (${freq} contracted − ${counts.wtdDons} played)`}
                         >
                           {owe}
                         </span>
@@ -1345,7 +1359,7 @@ export default function SchedulePage() {
                 </button>
               </div>
               <div className="space-y-0.5 max-h-64 overflow-y-auto">
-                {autoAssignLog.filter((e) => runAllMessage ? true : (e.type === "warning" || e.type === "error" || e.message.includes("Composition swap"))).map((entry, idx) => (
+                {autoAssignLog.filter((e) => runAllMessage ? true : (e.type === "warning" || e.type === "error" || e.message.includes("Composition swap") || e.message.includes("Cross-day swap"))).map((entry, idx) => (
                   <div
                     key={idx}
                     className={`text-xs flex items-start gap-2 ${
@@ -1677,15 +1691,31 @@ export default function SchedulePage() {
                                         {(() => {
                                           const allAvailable = getAvailablePlayers(game);
 
-                                          // Regular players: owe games or have YTD deficit
-                                          const regularPlayers = allAvailable
-                                            .filter((p) => {
-                                              const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
-                                              const freq = getEffectiveFreq(p, game.group);
-                                              const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
-                                              const weeklyOwed = freq - groupWtd;
-                                              return weeklyOwed > 0 || hasYtdDeficit(p, game.group);
-                                            })
+                                          // Base-owed players: owe games at BASE contract frequency or have YTD deficit
+                                          const baseOwedPlayers = allAvailable.filter((p) => {
+                                            const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                            const baseFreq = game.group === "solo"
+                                              ? (p.soloGames ? p.soloGames / 36 : 0)
+                                              : (parseInt(p.contractedFrequency) || 0);
+                                            const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
+                                            return (baseFreq - groupWtd) > 0 || hasYtdDeficit(p, game.group);
+                                          });
+
+                                          // Front-load players: only available when no base-owed players exist
+                                          // These are players whose adjusted freq > base freq and who've met base but not adjusted
+                                          const frontLoadPlayers = baseOwedPlayers.length === 0
+                                            ? allAvailable.filter((p) => {
+                                                if (game.group !== "dons") return false;
+                                                const adj = adjustedFreqs[p.id];
+                                                if (!adj) return false;
+                                                const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                                const baseFreq = parseInt(p.contractedFrequency) || 0;
+                                                // Met base contract but still owe front-loaded games
+                                                return counts.wtdDons >= baseFreq && counts.wtdDons < adj;
+                                              })
+                                            : [];
+
+                                          const regularPlayers = [...baseOwedPlayers, ...frontLoadPlayers]
                                             .sort((a, b) => {
                                               // MUST players always first
                                               const aMust = isMustPlay(a, game);
@@ -1723,6 +1753,9 @@ export default function SchedulePage() {
                                               if (bYtdOwed !== aYtdOwed) return bYtdOwed - aYtdOwed;
                                               return a.lastName.localeCompare(b.lastName);
                                             });
+
+                                          // Track front-load player IDs for visual indicator
+                                          const frontLoadIds = new Set(frontLoadPlayers.map((p) => p.id));
 
                                           // Bonus players: available but NOT in regular list (already met weekly quota)
                                           const regularIds = new Set(regularPlayers.map((p) => p.id));
@@ -1763,6 +1796,7 @@ export default function SchedulePage() {
                                             const remaining = freq - groupWtd;
                                             const deficit = hasYtdDeficit(p, game.group);
                                             const mustPlay = !isBonus && isMustPlay(p, game);
+                                            const isFrontLoad = frontLoadIds.has(p.id);
                                             return (
                                               <button
                                                 key={p.id}
@@ -1772,17 +1806,24 @@ export default function SchedulePage() {
                                                 className={`w-full text-left px-2 py-0.5 text-xs hover:bg-primary/10 transition-colors flex justify-between items-center ${
                                                   isBonus
                                                     ? "bg-green-50 border-l-3 border-l-green-500"
-                                                    : mustPlay
-                                                      ? "bg-red-50 border-l-3 border-l-red-500"
-                                                      : remaining <= 0 && deficit
-                                                        ? "bg-amber-50"
-                                                        : ""
+                                                    : isFrontLoad
+                                                      ? "bg-blue-50 border-l-3 border-l-blue-500"
+                                                      : mustPlay
+                                                        ? "bg-red-50 border-l-3 border-l-red-500"
+                                                        : remaining <= 0 && deficit
+                                                          ? "bg-amber-50"
+                                                          : ""
                                                 }`}
                                               >
                                                 <span>
                                                   {isBonus && (
                                                     <span className="text-green-600 font-bold mr-1" title="Bonus game">
                                                       BONUS
+                                                    </span>
+                                                  )}
+                                                  {isFrontLoad && (
+                                                    <span className="text-blue-600 font-bold mr-1" title="Vacation makeup — front-loaded extra game">
+                                                      MAKEUP
                                                     </span>
                                                   )}
                                                   {mustPlay && (

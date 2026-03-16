@@ -640,6 +640,29 @@ export async function POST(request: NextRequest) {
       return surplusA - surplusB; // tightest first
     });
 
+    // Composition quality score (0-4, higher is better):
+    //   4 = all same level (AAAA, BBBB, CCCC)
+    //   3 = adjacent levels only (AABB, ABBB, BBBC, BBCC)
+    //   2 = A+C with good bridge (2+ B's — e.g., ABBC)
+    //   1 = A+C with weak bridge (1 B — e.g., ABAC)
+    //   0 = A+C with no bridge (e.g., AACC, ACCC)
+    function getCompositionScore(pids: number[]): number {
+      const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
+      const aCount = levels.filter((l) => l === "A").length;
+      const bCount = levels.filter((l) => l === "B").length;
+      const cCount = levels.filter((l) => l === "C").length;
+      const hasA = aCount > 0;
+      const hasC = cCount > 0;
+
+      if (!hasA || !hasC) {
+        const distinct = new Set(levels).size;
+        return distinct === 1 ? 4 : 3;
+      }
+      if (bCount >= 2) return 2;
+      if (bCount === 1) return 1;
+      return 0;
+    }
+
     for (const [date, dateGames] of dayEntries) {
       const dow = dateGames[0].dayOfWeek;
 
@@ -919,31 +942,6 @@ export async function POST(request: NextRequest) {
       // to improve composition quality (group similar skill levels together).
       const filledDayGames = openGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length === 4);
 
-      // Composition quality score (0-4, higher is better):
-      //   4 = all same level (AAAA, BBBB, CCCC)
-      //   3 = adjacent levels only (AABB, ABBB, BBBC, BBCC)
-      //   2 = A+C with good bridge (2+ B's — e.g., ABBC)
-      //   1 = A+C with weak bridge (1 B — e.g., ABAC)
-      //   0 = A+C with no bridge (e.g., AACC, ACCC)
-      function getCompositionScore(pids: number[]): number {
-        const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
-        const aCount = levels.filter((l) => l === "A").length;
-        const bCount = levels.filter((l) => l === "B").length;
-        const cCount = levels.filter((l) => l === "C").length;
-        const hasA = aCount > 0;
-        const hasC = cCount > 0;
-
-        if (!hasA || !hasC) {
-          // No A+C gap — check if all same level
-          const distinct = new Set(levels).size;
-          return distinct === 1 ? 4 : 3; // all same or adjacent-only
-        }
-        // Has both A and C players
-        if (bCount >= 2) return 2; // well-bridged
-        if (bCount === 1) return 1; // weakly bridged
-        return 0; // no bridge
-      }
-
       const dayStates = filledDayGames.map((g) => ({
         game: g,
         players: [...(gameAssignmentState.get(g.id) ?? [])],
@@ -1084,6 +1082,230 @@ export async function POST(request: NextRequest) {
                 });
                 swapMade = true;
               }
+            }
+          }
+        }
+      }
+    }
+
+    // --- Cross-day composition optimization ---
+    // After all days are processed, try swapping players between games on DIFFERENT days
+    // to improve composition quality. Each swap must validate that both players are
+    // eligible to play on the other's day (availability, blocked days, consecutive days, DNP, derated).
+    const allFilledGames = donsGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length === 4);
+    const allDayStates = allFilledGames.map((g) => ({
+      game: g,
+      players: [...(gameAssignmentState.get(g.id) ?? [])],
+    }));
+
+    // Reuse groupGameIds from day-level pass — recalculate for all games
+    const crossDayGroupGameIds = new Set<number>();
+    for (const gs of allDayStates) {
+      for (const pid of gs.players) {
+        const head = playerData.find((p) => p.id === pid);
+        if (!head || head.groupPct === 0 || head.groupMembers.length === 0) continue;
+        const coPlayers = gs.players.filter((id) => id !== pid);
+        if (coPlayers.every((id) => head.groupMembers.includes(id))) {
+          crossDayGroupGameIds.add(gs.game.id);
+        }
+      }
+    }
+
+    let crossDaySwapMade = true;
+    while (crossDaySwapMade) {
+      crossDaySwapMade = false;
+      for (let i = 0; i < allDayStates.length && !crossDaySwapMade; i++) {
+        if (crossDayGroupGameIds.has(allDayStates[i].game.id)) continue;
+        for (let j = i + 1; j < allDayStates.length && !crossDaySwapMade; j++) {
+          if (crossDayGroupGameIds.has(allDayStates[j].game.id)) continue;
+          // Only cross-day swaps (same-day already handled)
+          if (allDayStates[i].game.date === allDayStates[j].game.date) continue;
+
+          for (let pi = 0; pi < 4 && !crossDaySwapMade; pi++) {
+            for (let pj = 0; pj < 4 && !crossDaySwapMade; pj++) {
+              const pidI = allDayStates[i].players[pi];
+              const pidJ = allDayStates[j].players[pj];
+              if (pidI === pidJ) continue;
+
+              // Check composition improvement first (cheap)
+              const newI = [...allDayStates[i].players]; newI[pi] = pidJ;
+              const newJ = [...allDayStates[j].players]; newJ[pj] = pidI;
+
+              const oldScore = getCompositionScore(allDayStates[i].players)
+                             + getCompositionScore(allDayStates[j].players);
+              const newScore = getCompositionScore(newI) + getCompositionScore(newJ);
+              if (newScore <= oldScore) continue;
+
+              const pI = playerData.find((p) => p.id === pidI);
+              const pJ = playerData.find((p) => p.id === pidJ);
+              if (!pI || !pJ) continue;
+
+              const gameI = allDayStates[i].game;
+              const gameJ = allDayStates[j].game;
+
+              // --- Constraint 1: Blocked days ---
+              if (pJ.blockedDays.includes(gameI.dayOfWeek)) continue;
+              if (pI.blockedDays.includes(gameJ.dayOfWeek)) continue;
+
+              // --- Constraint 1b: No early games ---
+              if (pJ.noEarlyGames && gameI.startTime < "10:00") continue;
+              if (pI.noEarlyGames && gameJ.startTime < "10:00") continue;
+
+              // --- Constraint 2: Vacation ---
+              if (pJ.vacations.some((v) => gameI.date >= v.startDate && gameI.date <= v.endDate)) continue;
+              if (pI.vacations.some((v) => gameJ.date >= v.startDate && gameJ.date <= v.endDate)) continue;
+
+              // --- Constraint 3: No double-booking ---
+              // pidJ must not already play on gameI's date (other than gameJ which they're leaving)
+              const pJDates = assignedDates.get(pidJ) ?? new Set();
+              if (pJDates.has(gameI.date) && !pJDates.has(gameJ.date)) continue; // already on gameI's date via another game
+              // More precise: check if pidJ plays any OTHER game on gameI's date
+              const pJOtherOnDateI = allDayStates.some((gs) =>
+                gs.game.id !== gameJ.id && gs.game.date === gameI.date && gs.players.includes(pidJ));
+              if (pJOtherOnDateI) continue;
+
+              const pIDates = assignedDates.get(pidI) ?? new Set();
+              const pIOtherOnDateJ = allDayStates.some((gs) =>
+                gs.game.id !== gameI.id && gs.game.date === gameJ.date && gs.players.includes(pidI));
+              if (pIOtherOnDateJ) continue;
+
+              // --- Constraint 4: No consecutive days ---
+              if (pJ.noConsecutiveDays) {
+                const dateI = new Date(gameI.date + "T12:00:00");
+                const prevDay = new Date(dateI); prevDay.setDate(prevDay.getDate() - 1);
+                const nextDay = new Date(dateI); nextDay.setDate(nextDay.getDate() + 1);
+                // Get all dates pidJ will be assigned to after swap (remove gameJ.date, add gameI.date)
+                const pJNewDates = new Set(pJDates);
+                if (!allDayStates.some((gs) => gs.game.id !== gameJ.id && gs.game.date === gameJ.date && gs.players.includes(pidJ))) {
+                  pJNewDates.delete(gameJ.date);
+                }
+                pJNewDates.add(gameI.date);
+                const prevStr = prevDay.toISOString().split("T")[0];
+                const nextStr = nextDay.toISOString().split("T")[0];
+                if (pJNewDates.has(prevStr) || pJNewDates.has(nextStr)) continue;
+              }
+              if (pI.noConsecutiveDays) {
+                const dateJ = new Date(gameJ.date + "T12:00:00");
+                const prevDay = new Date(dateJ); prevDay.setDate(prevDay.getDate() - 1);
+                const nextDay = new Date(dateJ); nextDay.setDate(nextDay.getDate() + 1);
+                const pINewDates = new Set(pIDates);
+                if (!allDayStates.some((gs) => gs.game.id !== gameI.id && gs.game.date === gameI.date && gs.players.includes(pidI))) {
+                  pINewDates.delete(gameI.date);
+                }
+                pINewDates.add(gameJ.date);
+                const prevStr = prevDay.toISOString().split("T")[0];
+                const nextStr = nextDay.toISOString().split("T")[0];
+                if (pINewDates.has(prevStr) || pINewDates.has(nextStr)) continue;
+              }
+
+              // --- Constraint 5: DNP ---
+              let dnpOk = true;
+              for (const otherId of newI) {
+                if (otherId === pidJ) continue;
+                if (pJ.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                const other = playerData.find((p) => p.id === otherId);
+                if (other?.doNotPair.includes(pidJ)) { dnpOk = false; break; }
+              }
+              if (dnpOk) {
+                for (const otherId of newJ) {
+                  if (otherId === pidI) continue;
+                  if (pI.doNotPair.includes(otherId)) { dnpOk = false; break; }
+                  const other = playerData.find((p) => p.id === otherId);
+                  if (other?.doNotPair.includes(pidI)) { dnpOk = false; break; }
+                }
+              }
+              if (!dnpOk) continue;
+
+              // --- Constraint 6: Derated pairing ---
+              let deratedOk = true;
+              if (maxDeratedPerWeek != null) {
+                const gamesToCheck = [...donsGames.map((g) => ({
+                  ...g,
+                  assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
+                }))];
+                if (maxDeratedPerWeek === 2) {
+                  gamesToCheck.push(...prevWeekGamesData.map((g) => ({
+                    ...g,
+                    assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
+                  })));
+                }
+
+                // Check pidJ in game i (new roster newI)
+                for (const otherId of newI) {
+                  if (otherId === pidJ) continue;
+                  const otherPlayer = playerData.find((p) => p.id === otherId);
+                  if (!otherPlayer) continue;
+                  if (pJ.isDerated === otherPlayer.isDerated) continue;
+                  let alreadyPaired = false;
+                  for (const g of gamesToCheck) {
+                    if (g.status !== "normal") continue;
+                    if (g.id === gameI.id || g.id === gameJ.id) continue;
+                    const inGame = g.assignments.some((a) => a.playerId === otherId);
+                    if (!inGame) continue;
+                    if (g.assignments.some((a) => a.playerId === pidJ)) { alreadyPaired = true; break; }
+                  }
+                  if (alreadyPaired) { deratedOk = false; break; }
+                }
+                if (deratedOk) {
+                  for (const otherId of newJ) {
+                    if (otherId === pidI) continue;
+                    const otherPlayer = playerData.find((p) => p.id === otherId);
+                    if (!otherPlayer) continue;
+                    if (pI.isDerated === otherPlayer.isDerated) continue;
+                    let alreadyPaired = false;
+                    for (const g of gamesToCheck) {
+                      if (g.status !== "normal") continue;
+                      if (g.id === gameI.id || g.id === gameJ.id) continue;
+                      const inGame = g.assignments.some((a) => a.playerId === otherId);
+                      if (!inGame) continue;
+                      if (g.assignments.some((a) => a.playerId === pidI)) { alreadyPaired = true; break; }
+                    }
+                    if (alreadyPaired) { deratedOk = false; break; }
+                  }
+                }
+              }
+              if (!deratedOk) continue;
+
+              // Apply cross-day swap in DB
+              const [rowI] = await database.select().from(gameAssignments)
+                .where(and(eq(gameAssignments.gameId, gameI.id), eq(gameAssignments.playerId, pidI)));
+              const [rowJ] = await database.select().from(gameAssignments)
+                .where(and(eq(gameAssignments.gameId, gameJ.id), eq(gameAssignments.playerId, pidJ)));
+              if (rowI && rowJ) {
+                await database.update(gameAssignments).set({ playerId: pidJ }).where(eq(gameAssignments.id, rowI.id));
+                await database.update(gameAssignments).set({ playerId: pidI }).where(eq(gameAssignments.id, rowJ.id));
+              }
+
+              // Update in-memory state
+              allDayStates[i].players = newI;
+              allDayStates[j].players = newJ;
+              gameAssignmentState.set(gameI.id, newI);
+              gameAssignmentState.set(gameJ.id, newJ);
+
+              // Update assignedDates tracking
+              // pidJ: remove gameJ.date (if no other game on that date), add gameI.date
+              const pJDatesUpd = assignedDates.get(pidJ) ?? new Set();
+              if (!allDayStates.some((gs) => gs.game.id !== gameJ.id && gs.game.date === gameJ.date && gs.players.includes(pidJ))) {
+                pJDatesUpd.delete(gameJ.date);
+              }
+              pJDatesUpd.add(gameI.date);
+              assignedDates.set(pidJ, pJDatesUpd);
+
+              // pidI: remove gameI.date (if no other game on that date), add gameJ.date
+              const pIDatesUpd = assignedDates.get(pidI) ?? new Set();
+              if (!allDayStates.some((gs) => gs.game.id !== gameI.id && gs.game.date === gameI.date && gs.players.includes(pidI))) {
+                pIDatesUpd.delete(gameI.date);
+              }
+              pIDatesUpd.add(gameJ.date);
+              assignedDates.set(pidI, pIDatesUpd);
+
+              const nameI = `${pI.lastName}`;
+              const nameJ = `${pJ.lastName}`;
+              log.push({
+                type: "info",
+                message: `Cross-day swap: ${nameI} (game #${gameI.gameNumber}, ${DAYS[gameI.dayOfWeek]}) ↔ ${nameJ} (game #${gameJ.gameNumber}, ${DAYS[gameJ.dayOfWeek]}) — quality ${oldScore} → ${newScore}`,
+              });
+              crossDaySwapMade = true;
             }
           }
         }
