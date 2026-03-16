@@ -453,7 +453,19 @@ export async function POST(request: NextRequest) {
             // (front-loading extras are handled in a separate pass to avoid
             // stealing slots from players who haven't met their base contract)
             const freq = parseInt(p.contractedFrequency) || 0;
-            if (freq - wtd <= 0) return false;
+            if (freq - wtd <= 0) {
+              // Allow through if allowExtras and player has front-loaded adjusted freq
+              if (options?.allowExtras) {
+                const adjFreq = adjustedFreqMap.get(p.id) ?? freq;
+                if (adjFreq > freq && wtd < adjFreq) {
+                  // eligible — front-loaded player, let Pass 2.5 filter handle it
+                } else {
+                  return false;
+                }
+              } else {
+                return false;
+              }
+            }
           }
         }
 
