@@ -13,6 +13,8 @@ interface PlayerStat {
   ballsBrought: number;
   weeksPlayed: number;
   wednesdayCount: number;
+  vacationDays: number;
+  vacationGameDays: number;
 }
 
 interface Season {
@@ -90,11 +92,13 @@ export function generatePlayerStatsPdf(
   // --- Column layout ---
   const columns = group === "dons"
     ? [
-        { header: "Player", width: tableWidth * 0.35 },
-        { header: "Contract", width: tableWidth * 0.15 },
-        { header: "STD", width: tableWidth * 0.15 },
-        { header: "Extra", width: tableWidth * 0.15 },
-        { header: "Ball Count", width: tableWidth * 0.20 },
+        { header: "Player", width: tableWidth * 0.26 },
+        { header: "Contract", width: tableWidth * 0.11 },
+        { header: "STD", width: tableWidth * 0.10 },
+        { header: "Extra", width: tableWidth * 0.10 },
+        { header: "Balls", width: tableWidth * 0.11 },
+        { header: "Vac Days", width: tableWidth * 0.16 },
+        { header: "Vac Games", width: tableWidth * 0.16 },
       ]
     : [
         { header: "Player", width: tableWidth * 0.34 },
@@ -189,6 +193,8 @@ export function generatePlayerStatsPdf(
             String(stat.std),
             extra > 0 ? String(extra) : "—",
             String(stat.ballsBrought),
+            stat.vacationDays > 0 ? String(stat.vacationDays) : "—",
+            stat.vacationGameDays > 0 ? String(stat.vacationGameDays) : "—",
           ]
         : [
             stat.lastName,
@@ -252,6 +258,9 @@ export function generatePlayerStatsPdf(
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
+    const totalVacDays = sectionStats.reduce((sum, s) => sum + (s.vacationDays ?? 0), 0);
+    const totalVacGameDays = sectionStats.reduce((sum, s) => sum + (s.vacationGameDays ?? 0), 0);
+
     const totalsValues = group === "dons"
       ? [
           "Total",
@@ -259,6 +268,8 @@ export function generatePlayerStatsPdf(
           String(totalStd),
           totalExtra > 0 ? String(totalExtra) : "—",
           String(totalBalls),
+          totalVacDays > 0 ? String(totalVacDays) : "—",
+          totalVacGameDays > 0 ? String(totalVacGameDays) : "—",
         ]
       : (() => {
           const totalWed = sectionStats.reduce((sum, s) => sum + s.wednesdayCount, 0);

@@ -269,6 +269,7 @@ export async function POST(request: NextRequest) {
       if (p.contractedFrequency === "2+") continue; // 2+ already uncapped per-week
       const freq = parseInt(p.contractedFrequency) || 0;
       if (freq === 0) continue;
+      if (p.skillLevel === "C") continue; // no vacation makeup for C players
 
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
       const totalTarget = freq * contractWeeks;

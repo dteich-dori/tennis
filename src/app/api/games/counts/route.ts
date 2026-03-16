@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
         if (p.contractedFrequency === "2+" || p.contractedFrequency === "0") continue;
         const freq = parseInt(p.contractedFrequency) || 0;
         if (freq === 0) continue;
+        if (p.skillLevel === "C") continue; // no vacation makeup for C players
 
         const ytdDons = counts[p.id]?.ytdDons ?? 0;
         const totalTarget = freq * contractWeeks;

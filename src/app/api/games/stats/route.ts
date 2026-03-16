@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { games, gameAssignments, players, playerVacations, holidays } from "@/db/schema";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 /**
  * GET /api/games/stats?seasonId=1&group=dons
@@ -151,6 +151,70 @@ export async function GET(request: NextRequest) {
 
     const incompleteGameCount = incompleteRows.length;
 
+    // --- Vacation days computation (Don's group only) ---
+    const vacationDaysMap = new Map<number, number>();   // weekday vacation days (excl weekends & holidays)
+    const vacationGameDaysMap = new Map<number, number>(); // game dates missed due to vacation
+
+    if (group === "dons") {
+      const playerIds = allPlayers.map((p) => p.id);
+
+      if (playerIds.length > 0) {
+        // Load vacations and holidays
+        const vacRows = await database.select().from(playerVacations)
+          .where(inArray(playerVacations.playerId, playerIds));
+        const holidayRows = await database.select().from(holidays)
+          .where(eq(holidays.seasonId, sid));
+
+        const holidaySet = new Set(holidayRows.map((h) => h.date));
+
+        // Load all Don's game dates for the season
+        const donsGameDates = await database
+          .select({ date: games.date })
+          .from(games)
+          .where(and(eq(games.seasonId, sid), eq(games.group, "dons"), eq(games.status, "normal")));
+
+        // Deduplicate game dates
+        const uniqueGameDates = [...new Set(donsGameDates.map((g) => g.date))];
+
+        // Group vacations by player
+        const vacsByPlayer = new Map<number, { startDate: string; endDate: string }[]>();
+        for (const v of vacRows) {
+          const arr = vacsByPlayer.get(v.playerId) ?? [];
+          arr.push(v);
+          vacsByPlayer.set(v.playerId, arr);
+        }
+
+        for (const p of allPlayers) {
+          const pVacs = vacsByPlayer.get(p.id) ?? [];
+          if (pVacs.length === 0) continue;
+
+          // Count weekday vacation days (exclude weekends & holidays)
+          let vacDays = 0;
+          for (const vac of pVacs) {
+            const start = new Date(vac.startDate + "T12:00:00");
+            const end = new Date(vac.endDate + "T12:00:00");
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+              const dow = d.getDay(); // 0=Sun, 6=Sat
+              if (dow === 0 || dow === 6) continue; // skip weekends
+              const iso = d.toISOString().substring(0, 10);
+              if (holidaySet.has(iso)) continue; // skip holidays
+              vacDays++;
+            }
+          }
+          if (vacDays > 0) vacationDaysMap.set(p.id, vacDays);
+
+          // Count Don's game dates that fall within vacation
+          let gameDatesMissed = 0;
+          for (const gd of uniqueGameDates) {
+            if (pVacs.some((v) => gd >= v.startDate && gd <= v.endDate)) {
+              gameDatesMissed++;
+            }
+          }
+          if (gameDatesMissed > 0) vacationGameDaysMap.set(p.id, gameDatesMissed);
+        }
+      }
+    }
+
     // Build stats
     const stats = allPlayers
       .sort((a, b) => a.lastName.localeCompare(b.lastName))
@@ -183,6 +247,8 @@ export async function GET(request: NextRequest) {
           ballsBrought,
           weeksPlayed,
           wednesdayCount: wednesdayMap.get(p.id) ?? 0,
+          vacationDays: vacationDaysMap.get(p.id) ?? 0,
+          vacationGameDays: vacationGameDaysMap.get(p.id) ?? 0,
         };
       });
 
