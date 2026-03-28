@@ -51,11 +51,12 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId, weekNumber, assignExtra, assignCSubs } = (await request.json()) as {
+    const { seasonId, weekNumber, assignExtra, assignCSubs, assignStdCatchup } = (await request.json()) as {
       seasonId: number;
       weekNumber: number;
       assignExtra?: boolean;
       assignCSubs?: boolean;
+      assignStdCatchup?: boolean;
     };
 
     if (!seasonId || !weekNumber) {
@@ -189,6 +190,20 @@ export async function POST(request: NextRequest) {
       if (row.group === "solo") entry.ytdSolo += row.count;
       ytdCounts.set(row.playerId, entry);
     }
+
+    // STD: count ALL assignments across the entire season (for full-season deficit)
+    const stdRows = await database
+      .select({ playerId: gameAssignments.playerId, count: sql<number>`count(*)`.as("count") })
+      .from(gameAssignments)
+      .innerJoin(games, eq(gameAssignments.gameId, games.id))
+      .where(and(eq(games.seasonId, seasonId), eq(games.status, "normal"), eq(games.group, "dons")))
+      .groupBy(gameAssignments.playerId);
+
+    const stdDonsCounts = new Map<number, number>();
+    for (const row of stdRows) {
+      stdDonsCounts.set(row.playerId, row.count);
+    }
+
 
     // 6. Per-day availability check
     const gamesByDate = new Map<string, GameData[]>();
@@ -574,13 +589,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Priority scoring for a player
-    function getPlayerPriority(p: PlayerData, game: GameData): { mustPlay: boolean; owed: number; ytdDeficit: number; playableDaysLeft: number } {
+    function getPlayerPriority(p: PlayerData, game: GameData): { mustPlay: boolean; owed: number; ytdDeficit: number; stdDeficit: number; playableDaysLeft: number } {
       const freq = parseInt(p.contractedFrequency) || 0;
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
       const owed = freq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
       const expectedYtd = freq * Math.min(weekNumber, contractWeeks);
       const ytdDeficit = expectedYtd - ytd;
+      const std = stdDonsCounts.get(p.id) ?? 0;
+      const stdDeficit = freq * contractWeeks - std;
 
       // Count remaining playable dates this week (not yet assigned on)
       const playerDates = assignedDates.get(p.id) ?? new Set();
@@ -597,10 +614,13 @@ export async function POST(request: NextRequest) {
       // Must-play: only one playable date left this week and they still owe
       const mustPlay = owed > 0 && playableDates.length === 1 && playableDates[0] === game.date;
 
-      return { mustPlay, owed, ytdDeficit, playableDaysLeft: playableDates.length };
+      return { mustPlay, owed, ytdDeficit, stdDeficit, playableDaysLeft: playableDates.length };
     }
 
     // Per-day availability report
+    let pass3Count = 0;
+    let pass35Count = 0;
+    let pass4Count = 0;
     for (const [date, dateGames] of gamesByDate) {
       const dow = dateGames[0].dayOfWeek;
       const slotsNeeded = dateGames.length * 4;
@@ -728,6 +748,7 @@ export async function POST(request: NextRequest) {
           }
           if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
           if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
+          if (pb.stdDeficit !== pa.stdDeficit) return pb.stdDeficit - pa.stdDeficit;
           return Math.random() - 0.5;
         });
       };
@@ -764,10 +785,11 @@ export async function POST(request: NextRequest) {
           assignedDates.set(playerId, dates);
           usedOnDay.add(playerId);
 
-          // Update YTD counts too
+          // Update YTD and STD counts too
           const ytdEntry = ytdCounts.get(playerId) ?? { ytdDons: 0, ytdSolo: 0 };
           ytdEntry.ytdDons += 1;
           ytdCounts.set(playerId, ytdEntry);
+          stdDonsCounts.set(playerId, (stdDonsCounts.get(playerId) ?? 0) + 1);
 
           return true;
         } catch (err) {
@@ -777,8 +799,6 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Unified assignment: all games treated equally, B and C in one pool ---
-      let pass3Count = 0;
-      let pass4Count = 0;
 
       for (const game of openGames) {
         const existingCount = (gameAssignmentState.get(game.id) ?? []).length;
@@ -886,6 +906,21 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
+          // Pass 3.5: STD catchup — contracted players with season-total deficit
+          if (eligible.length === 0 && assignStdCatchup) {
+            const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              if (p.contractedFrequency === "0") return false; // not subs
+              const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+              if (freq === 0) return false;
+              const std = stdDonsCounts.get(p.id) ?? 0;
+              return freq * contractWeeks - std > 0; // has season deficit
+            });
+            if (stdCatchupEligible.length > 0) {
+              passUsed = 3.5;
+              eligible = stdCatchupEligible;
+            }
+          }
           // Pass 4: subs — allow substitute players to fill remaining gaps
           if (eligible.length === 0 && assignCSubs) {
             passUsed = 4;
@@ -900,19 +935,25 @@ export async function POST(request: NextRequest) {
           if (prioritized.length > 0) {
             const chosen = prioritized[0];
             if (passUsed === 2.5) {
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
             } else if (passUsed === 3) {
               pass3Count++;
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
+            } else if (passUsed === 3.5) {
+              pass35Count++;
+              const freq = chosen.contractedFrequency === "2+" ? 2 : (parseInt(chosen.contractedFrequency) || 0);
+              const std = stdDonsCounts.get(chosen.id) ?? 0;
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 3.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as STD-CATCHUP (season deficit: ${freq * contractWeeks - std} games behind)` });
             } else if (passUsed === 4) {
               pass4Count++;
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB` });
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 4] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB` });
             } else if (usedOnDay.has(chosen.id)) {
-              log.push({ type: "info", day: DAYS[dow], message: `Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
             await assignPlayer(game, chosen.id, slot);
           } else {
             const hints: string[] = [];
+            if (!assignStdCatchup) hints.push("STD catchup");
             if (!assignExtra) hints.push("extras");
             if (!assignCSubs) hints.push("C subs");
             const hintStr = hints.length > 0 ? ` (enable ${hints.join(" and ")} for more options)` : "";
@@ -940,14 +981,6 @@ export async function POST(request: NextRequest) {
             }
           }
         }
-      }
-
-      // Pass summary
-      if (assignExtra) {
-        log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
-      }
-      if (assignCSubs) {
-        log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
       }
 
       // --- Day-level composition optimization ---
@@ -1330,8 +1363,26 @@ export async function POST(request: NextRequest) {
     const filled = createdAssignmentIds.length;
     const unfilled = totalSlots - filled;
 
-    // Summary is conveyed via the assignedCount/totalSlots in the response
-    // and by the per-slot warnings above — no need for a duplicate summary line.
+    // Pass summary
+    if (assignExtra && pass3Count > 0) {
+      log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
+    }
+    if (assignStdCatchup && pass35Count > 0) {
+      log.push({ type: "info", message: `Pass 3.5 (STD catchup): ${pass35Count} slots filled by players with season deficit` });
+    }
+    if (assignCSubs && pass4Count > 0) {
+      log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
+    }
+
+    // Determine the highest pass used
+    const lastPass = pass4Count > 0 ? "Pass 4 (subs)"
+      : pass35Count > 0 ? "Pass 3.5 (STD catchup)"
+      : pass3Count > 0 ? "Pass 3 (extras)"
+      : "Pass 2 (base)";
+    log.push({
+      type: "info",
+      message: `Complete: ${filled}/${totalSlots} slots filled, ${unfilled} unfilled. Last pass used: ${lastPass}.`,
+    });
 
     // Group game summary
     for (const p of playerData) {

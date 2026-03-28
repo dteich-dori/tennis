@@ -100,7 +100,7 @@ export default function SchedulePage() {
   const [adjustedFreqs, setAdjustedFreqs] = useState<Record<number, number>>({});
   const [showPlayerInfo, setShowPlayerInfo] = useState(false);
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
-  const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "level" | "levelDesc">("owed");
+  const [dropdownSort, setDropdownSort] = useState<"owed" | "ytd" | "std" | "level" | "levelDesc">("owed");
 
   // Game diagnostic side panel state
   const [explainModal, setExplainModal] = useState<{
@@ -722,6 +722,28 @@ export default function SchedulePage() {
     const counts = playerCounts[player.id];
     const actualYtd = group === "solo" ? (counts?.ytdSolo ?? 0) : group === "dons" ? (counts?.ytdDons ?? 0) : (counts?.ytd ?? 0);
     return actualYtd < expectedYtd;
+  };
+
+  // Check if player has an STD deficit (behind on full-season 36-week contract)
+  const hasStdDeficit = (player: Player, group?: string): boolean => {
+    const freq = group === "solo"
+      ? (player.soloGames ? player.soloGames / 36 : 0)
+      : (parseInt(player.contractedFrequency) || 0);
+    if (freq === 0) return false;
+    const counts = playerCounts[player.id];
+    const actualStd = group === "solo" ? (counts?.stdSolo ?? 0) : group === "dons" ? (counts?.stdDons ?? 0) : 0;
+    return actualStd < freq * 36;
+  };
+
+  // Get STD owed for a player (freq*36 - season total)
+  const getStdOwed = (player: Player, group: string): number => {
+    const freq = group === "solo"
+      ? (player.soloGames ? player.soloGames / 36 : 0)
+      : (parseInt(player.contractedFrequency) || 0);
+    if (freq === 0) return 0;
+    const counts = playerCounts[player.id];
+    const actualStd = group === "solo" ? (counts?.stdSolo ?? 0) : group === "dons" ? (counts?.stdDons ?? 0) : 0;
+    return freq * 36 - actualStd;
   };
 
   // Get the effective weekly frequency for a player in a given group
@@ -1665,6 +1687,12 @@ export default function SchedulePage() {
                                           >
                                             YTD {dropdownSort === "ytd" ? "v" : ""}
                                           </span>
+                                          <span
+                                            className={`w-8 text-center cursor-pointer hover:text-primary select-none ${dropdownSort === "std" ? "text-primary underline" : ""}`}
+                                            onClick={(e) => { e.stopPropagation(); setDropdownSort("std"); }}
+                                          >
+                                            STD {dropdownSort === "std" ? "v" : ""}
+                                          </span>
                                         </span>
                                       </div>
                                       {activeSlot?.replacingAssignmentId && (
@@ -1691,14 +1719,14 @@ export default function SchedulePage() {
                                         {(() => {
                                           const allAvailable = getAvailablePlayers(game);
 
-                                          // Base-owed players: owe games at BASE contract frequency or have YTD deficit
+                                          // Base-owed players: owe games at BASE contract frequency, have YTD deficit, or have STD deficit
                                           const baseOwedPlayers = allAvailable.filter((p) => {
-                                            const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                            const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                             const baseFreq = game.group === "solo"
                                               ? (p.soloGames ? p.soloGames / 36 : 0)
                                               : (parseInt(p.contractedFrequency) || 0);
                                             const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
-                                            return (baseFreq - groupWtd) > 0 || hasYtdDeficit(p, game.group);
+                                            return (baseFreq - groupWtd) > 0 || hasYtdDeficit(p, game.group) || hasStdDeficit(p, game.group);
                                           });
 
                                           // Front-load players: only available when no base-owed players exist
@@ -1730,6 +1758,8 @@ export default function SchedulePage() {
                                               const bOwed = bFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
                                               const aYtdOwed = aFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
                                               const bYtdOwed = bFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
+                                              const aStdOwed = getStdOwed(a, game.group);
+                                              const bStdOwed = getStdOwed(b, game.group);
 
                                               const skillOrder: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
 
@@ -1738,6 +1768,13 @@ export default function SchedulePage() {
                                                 const bSkill = skillOrder[b.skillLevel] ?? 9;
                                                 if (aSkill !== bSkill) return dropdownSort === "level" ? aSkill - bSkill : bSkill - aSkill;
                                                 if (bOwed !== aOwed) return bOwed - aOwed;
+                                                return a.lastName.localeCompare(b.lastName);
+                                              }
+
+                                              if (dropdownSort === "std") {
+                                                // Sort by STD owed descending, then YTD owed, then name
+                                                if (bStdOwed !== aStdOwed) return bStdOwed - aStdOwed;
+                                                if (bYtdOwed !== aYtdOwed) return bYtdOwed - aYtdOwed;
                                                 return a.lastName.localeCompare(b.lastName);
                                               }
 
@@ -1790,11 +1827,12 @@ export default function SchedulePage() {
                                             });
 
                                           const renderPlayer = (p: Player, isBonus: boolean) => {
-                                            const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                            const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                             const freq = getEffectiveFreq(p, game.group);
                                             const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
                                             const remaining = freq - groupWtd;
                                             const deficit = hasYtdDeficit(p, game.group);
+                                            const stdOwed = getStdOwed(p, game.group);
                                             const mustPlay = !isBonus && isMustPlay(p, game);
                                             const isFrontLoad = frontLoadIds.has(p.id);
                                             return (
@@ -1846,6 +1884,7 @@ export default function SchedulePage() {
                                                   <span className="w-6 text-center" title={`Skill level: ${p.skillLevel || "—"}`}>{p.skillLevel || "—"}</span>
                                                   <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
                                                   <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
+                                                  <span className={`w-8 text-center ${stdOwed > 0 ? "text-blue-600 font-medium" : "text-gray-400"}`} title={`STD Owed: ${Math.round(freq * 36)} target − ${game.group === "solo" ? (counts.stdSolo ?? 0) : (counts.stdDons ?? 0)} played`}>{stdOwed > 0 ? Math.round(stdOwed) : 0}</span>
                                                 </span>
                                               </button>
                                             );

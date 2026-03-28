@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, playerVacations, holidays } from "@/db/schema";
+import { games, gameAssignments, players, playerVacations, playerBlockedDays, holidays } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 
 /**
@@ -151,30 +151,40 @@ export async function GET(request: NextRequest) {
 
     const incompleteGameCount = incompleteRows.length;
 
-    // --- Vacation days computation (Don's group only) ---
-    const vacationDaysMap = new Map<number, number>();   // weekday vacation days (excl weekends & holidays)
-    const vacationGameDaysMap = new Map<number, number>(); // game dates missed due to vacation
+    // --- Vacation games lost computation (Don's group only) ---
+    // Per week: count game dates in vacation that are NOT blocked days and NOT holidays,
+    // then cap at the player's contract frequency. Sum across all weeks.
+    const vacationGamesLostMap = new Map<number, number>();
 
     if (group === "dons") {
       const playerIds = allPlayers.map((p) => p.id);
 
       if (playerIds.length > 0) {
-        // Load vacations and holidays
+        // Load vacations, blocked days, and holidays
         const vacRows = await database.select().from(playerVacations)
           .where(inArray(playerVacations.playerId, playerIds));
+        const blockedRows = await database.select().from(playerBlockedDays)
+          .where(inArray(playerBlockedDays.playerId, playerIds));
         const holidayRows = await database.select().from(holidays)
           .where(eq(holidays.seasonId, sid));
 
         const holidaySet = new Set(holidayRows.map((h) => h.date));
 
-        // Load all Don's game dates for the season
-        const donsGameDates = await database
-          .select({ date: games.date })
+        // Load all Don's game dates + week numbers for the season
+        const donsGameRows = await database
+          .select({ date: games.date, weekNumber: games.weekNumber, dayOfWeek: games.dayOfWeek })
           .from(games)
           .where(and(eq(games.seasonId, sid), eq(games.group, "dons"), eq(games.status, "normal")));
 
-        // Deduplicate game dates
-        const uniqueGameDates = [...new Set(donsGameDates.map((g) => g.date))];
+        // Deduplicate by date, keeping weekNumber and dayOfWeek
+        const seenDates = new Set<string>();
+        const uniqueGameDates: { date: string; weekNumber: number; dayOfWeek: number }[] = [];
+        for (const g of donsGameRows) {
+          if (!seenDates.has(g.date)) {
+            seenDates.add(g.date);
+            uniqueGameDates.push({ date: g.date, weekNumber: g.weekNumber, dayOfWeek: g.dayOfWeek });
+          }
+        }
 
         // Group vacations by player
         const vacsByPlayer = new Map<number, { startDate: string; endDate: string }[]>();
@@ -184,33 +194,41 @@ export async function GET(request: NextRequest) {
           vacsByPlayer.set(v.playerId, arr);
         }
 
+        // Group blocked days by player
+        const blockedByPlayer = new Map<number, Set<number>>();
+        for (const b of blockedRows) {
+          const s = blockedByPlayer.get(b.playerId) ?? new Set();
+          s.add(b.dayOfWeek);
+          blockedByPlayer.set(b.playerId, s);
+        }
+
         for (const p of allPlayers) {
           const pVacs = vacsByPlayer.get(p.id) ?? [];
           if (pVacs.length === 0) continue;
 
-          // Count weekday vacation days (exclude weekends & holidays)
-          let vacDays = 0;
-          for (const vac of pVacs) {
-            const start = new Date(vac.startDate + "T12:00:00");
-            const end = new Date(vac.endDate + "T12:00:00");
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-              const dow = d.getDay(); // 0=Sun, 6=Sat
-              if (dow === 0 || dow === 6) continue; // skip weekends
-              const iso = d.toISOString().substring(0, 10);
-              if (holidaySet.has(iso)) continue; // skip holidays
-              vacDays++;
-            }
-          }
-          if (vacDays > 0) vacationDaysMap.set(p.id, vacDays);
+          const pBlocked = blockedByPlayer.get(p.id) ?? new Set();
+          const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+          if (freq === 0) continue;
 
-          // Count Don's game dates that fall within vacation
-          let gameDatesMissed = 0;
+          // Group effective vacation game dates by week
+          const vacDatesByWeek = new Map<number, number>();
           for (const gd of uniqueGameDates) {
-            if (pVacs.some((v) => gd >= v.startDate && gd <= v.endDate)) {
-              gameDatesMissed++;
-            }
+            // Skip if not during a vacation
+            if (!pVacs.some((v) => gd.date >= v.startDate && gd.date <= v.endDate)) continue;
+            // Skip if this day is already blocked (player wouldn't have played anyway)
+            if (pBlocked.has(gd.dayOfWeek)) continue;
+            // Skip if this date is a holiday
+            if (holidaySet.has(gd.date)) continue;
+
+            vacDatesByWeek.set(gd.weekNumber, (vacDatesByWeek.get(gd.weekNumber) ?? 0) + 1);
           }
-          if (gameDatesMissed > 0) vacationGameDaysMap.set(p.id, gameDatesMissed);
+
+          // Sum: min(freq, effective vacation dates) per week
+          let gamesLost = 0;
+          for (const count of vacDatesByWeek.values()) {
+            gamesLost += Math.min(freq, count);
+          }
+          if (gamesLost > 0) vacationGamesLostMap.set(p.id, gamesLost);
         }
       }
     }
@@ -247,8 +265,18 @@ export async function GET(request: NextRequest) {
           ballsBrought,
           weeksPlayed,
           wednesdayCount: wednesdayMap.get(p.id) ?? 0,
-          vacationDays: vacationDaysMap.get(p.id) ?? 0,
-          vacationGameDays: vacationGameDaysMap.get(p.id) ?? 0,
+          vacationGamesLost: vacationGamesLostMap.get(p.id) ?? 0,
+          madeUpVac: (() => {
+            // Count weeks where assigned games exceed contracted frequency
+            const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+            if (freq === 0) return 0;
+            const weekly = weeklyMap.get(p.id) ?? {};
+            let surplus = 0;
+            for (const count of Object.values(weekly)) {
+              if (count > freq) surplus += count - freq;
+            }
+            return surplus;
+          })(),
         };
       });
 

@@ -961,15 +961,11 @@ export default function PlayersPage() {
                 value={form.groupPct}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setForm({
-                    ...form,
-                    groupPct: val,
-                    groupMembers: val === 0 ? [] : form.groupMembers,
-                  });
+                  setForm({ ...form, groupPct: val });
                 }}
                 className="border border-border rounded px-3 py-1.5 text-sm w-48"
               >
-                <option value={0}>Not a group leader</option>
+                <option value={0}>Inactive (0%)</option>
                 <option value={25}>25% group games</option>
                 <option value={50}>50% group games</option>
                 <option value={100}>100% group games</option>
@@ -977,10 +973,11 @@ export default function PlayersPage() {
             </div>
           </div>
 
-          {form.groupPct > 0 && (
-            <div className="mb-4">
+          {(form.groupPct > 0 || form.groupMembers.length > 0) && (
+            <div className={`mb-4${form.groupPct === 0 ? " opacity-60" : ""}`}>
               <label className="block text-sm text-muted mb-2">
                 {form.lastName || "Player"} Group ({form.groupMembers.length}/15 members)
+                {form.groupPct === 0 && <span className="ml-2 text-xs text-amber-600">(inactive — members preserved)</span>}
               </label>
               {form.groupMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -989,7 +986,7 @@ export default function PlayersPage() {
                     return (
                       <span
                         key={id}
-                        className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 rounded px-2 py-0.5 text-xs"
+                        className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs ${form.groupPct === 0 ? "bg-gray-50 border border-gray-200 text-gray-500" : "bg-blue-50 border border-blue-200 text-blue-800"}`}
                       >
                         {p ? `${p.lastName}, ${p.firstName}` : `Player #${id}`}
                         <button
@@ -999,7 +996,7 @@ export default function PlayersPage() {
                               groupMembers: form.groupMembers.filter((mid) => mid !== id),
                             })
                           }
-                          className="text-blue-500 hover:text-blue-700 font-bold ml-1"
+                          className={`font-bold ml-1 ${form.groupPct === 0 ? "text-gray-400 hover:text-gray-600" : "text-blue-500 hover:text-blue-700"}`}
                         >
                           x
                         </button>
@@ -1043,13 +1040,13 @@ export default function PlayersPage() {
           {/* Show which group(s) this player belongs to (as a member, not head) */}
           {editingId && (() => {
             const memberOfGroups = players.filter(
-              (p) => p.id !== editingId && p.groupPct > 0 && p.groupMembers?.includes(editingId)
+              (p) => p.id !== editingId && p.groupMembers?.includes(editingId)
             );
             if (memberOfGroups.length === 0) return null;
             return (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
                 <span className="text-blue-800">
-                  Member of: {memberOfGroups.map((p) => `${p.lastName} Group (${p.groupPct}%)`).join(", ")}
+                  Member of: {memberOfGroups.map((p) => `${p.lastName} Group (${p.groupPct}%)${p.groupPct === 0 ? " — inactive" : ""}`).join(", ")}
                 </span>
               </div>
             );

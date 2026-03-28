@@ -61,12 +61,14 @@ export default function SeasonPage() {
   // Don's auto-assign all state
   const [donsAssigning, setDonsAssigning] = useState(false);
   const [donsAssigningWeek, setDonsAssigningWeek] = useState<number | null>(null);
+  const donsStopRef = useRef(false);
   const [donsAssignMessage, setDonsAssignMessage] = useState("");
   const [donsAssignLog, setDonsAssignLog] = useState<
     { type: string; week?: number; message: string }[]
   >([]);
   const [donsAssignExtra, setDonsAssignExtra] = useState(false);
   const [donsAssignCSubs, setDonsAssignCSubs] = useState(false);
+  const [donsAssignStdCatchup, setDonsAssignStdCatchup] = useState(true);
 
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
@@ -491,6 +493,7 @@ export default function SeasonPage() {
 
   const handleDonsAssignAll = async () => {
     if (!activeSeason) return;
+    donsStopRef.current = false;
     setDonsAssigning(true);
     setDonsAssigningWeek(null);
     setDonsAssignMessage("");
@@ -538,10 +541,12 @@ export default function SeasonPage() {
       let totalSlots = 0;
       let totalUnfilled = 0;
       let weeksAssignedCount = 0;
-      let stopped = false;
-
       for (const week of weeksToAssign) {
-        if (stopped) break;
+        if (donsStopRef.current) {
+          log.push({ type: "warning", message: "Stopped by user." });
+          setDonsAssignLog([...log]);
+          break;
+        }
         setDonsAssigningWeek(week);
 
         try {
@@ -556,7 +561,7 @@ export default function SeasonPage() {
             log.push({ type: "error", week, message: `Week ${week}: ${data.error || "Failed"}` });
             if (data.error?.includes("Solo games must be fully assigned")) {
               log.push({ type: "error", message: "Stopping: Solo games must be fully assigned before Don's auto-assign." });
-              stopped = true;
+              donsStopRef.current = true;
             }
           } else {
             const filled = data.assignedCount ?? 0;
@@ -566,7 +571,11 @@ export default function SeasonPage() {
             totalSlots += slots;
             totalUnfilled += unfilled;
             weeksAssignedCount++;
-            log.push({ type: unfilled > 0 ? "warning" : "info", week, message: `Week ${week}: ${filled}/${slots} slots filled${unfilled > 0 ? ` (${unfilled} unfilled)` : ""}` });
+            // Find the last pass used from the API log
+            const completionEntry = data.log?.find((e: { message: string }) => e.message.startsWith("Complete:"));
+            const lastPassMatch = completionEntry?.message.match(/Last pass used: (.+)\./);
+            const lastPassInfo = lastPassMatch ? ` — ${lastPassMatch[1]}` : "";
+            log.push({ type: unfilled > 0 ? "warning" : "info", week, message: `${filled}/${slots} slots filled${unfilled > 0 ? ` (${unfilled} unfilled)` : ""}${lastPassInfo}` });
             if (data.log) {
               for (const entry of data.log) {
                 if (entry.type === "warning" || entry.type === "error") {
@@ -583,11 +592,55 @@ export default function SeasonPage() {
         setDonsAssignMessage(`Assigned ${weeksAssignedCount} of ${weeksToAssign.length} week(s)...`);
       }
 
+      // STD catchup second pass: re-run weeks with unfilled slots now that all weeks are assigned
+      if (donsAssignStdCatchup && totalUnfilled > 0 && !donsStopRef.current) {
+        log.push({ type: "info", message: "--- STD Catchup Pass: re-running weeks with unfilled slots ---" });
+        setDonsAssignLog([...log]);
+
+        for (const week of weeksToAssign) {
+          if (donsStopRef.current) {
+            log.push({ type: "warning", message: "Stopped by user." });
+            setDonsAssignLog([...log]);
+            break;
+          }
+          setDonsAssigningWeek(week);
+          try {
+            const res = await fetch("/api/games/auto-assign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignCSubs: donsAssignCSubs, assignStdCatchup: true }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              const filled = data.assignedCount ?? 0;
+              if (filled > 0) {
+                totalAssigned += filled;
+                totalUnfilled -= filled;
+                const completionEntry = data.log?.find((e: { message: string }) => e.message.startsWith("Complete:"));
+                const lastPassMatch = completionEntry?.message.match(/Last pass used: (.+)\./);
+                const lastPassInfo = lastPassMatch ? ` — ${lastPassMatch[1]}` : "";
+                log.push({ type: "info", week, message: `${filled} additional slots filled${lastPassInfo}` });
+              }
+              if (data.log) {
+                for (const entry of data.log) {
+                  if (entry.type === "warning" || entry.type === "error") {
+                    log.push({ type: entry.type, week, message: `  ${entry.message}` });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            log.push({ type: "error", week, message: `STD catchup Week ${week}: ${String(err)}` });
+          }
+          setDonsAssignLog([...log]);
+        }
+      }
+
       setDonsAssigningWeek(null);
       setDonsAssignMessage(
         `Assigned ${weeksAssignedCount} week(s): ${totalAssigned} of ${totalSlots} slots filled.${
           weeksSkipped.length ? ` ${weeksSkipped.length} week(s) skipped.` : ""
-        }${totalUnfilled ? ` ${totalUnfilled} unfilled.` : ""}`
+        }${totalUnfilled > 0 ? ` ${totalUnfilled} unfilled.` : ""}`
       );
       setDonsAssignLog(log);
     } catch {
@@ -1497,7 +1550,24 @@ export default function SeasonPage() {
             >
               {donsAssigning ? (donsAssigningWeek ? `Assigning Wk ${donsAssigningWeek}...` : "Preparing...") : "Auto-Assign Don's"}
             </button>
-            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+            {donsAssigning && (
+              <button
+                onClick={() => { donsStopRef.current = true; }}
+                className="border border-danger text-danger px-3 py-2 rounded text-sm hover:bg-red-50 transition-colors"
+              >
+                Stop
+              </button>
+            )}
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none" title="Fill incomplete games with contracted players who are behind on their full 36-week season total. Runs after base and extra passes.">
+              <input
+                type="checkbox"
+                checked={donsAssignStdCatchup}
+                onChange={(e) => setDonsAssignStdCatchup(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              STD catchup
+            </label>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none" title="Allow 2+ contract players to play beyond their weekly minimum of 2 games to fill remaining slots.">
               <input
                 type="checkbox"
                 checked={donsAssignExtra}
@@ -1506,7 +1576,7 @@ export default function SeasonPage() {
               />
               Assign extra
             </label>
-            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none" title="Allow substitute (frequency 0) players to fill any remaining empty slots after all other passes.">
               <input
                 type="checkbox"
                 checked={donsAssignCSubs}

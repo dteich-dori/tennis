@@ -13,8 +13,8 @@ interface PlayerStat {
   ballsBrought: number;
   weeksPlayed: number;
   wednesdayCount: number;
-  vacationDays: number;
-  vacationGameDays: number;
+  vacationGamesLost: number;
+  madeUpVac: number;
 }
 
 interface Season {
@@ -92,13 +92,14 @@ export function generatePlayerStatsPdf(
   // --- Column layout ---
   const columns = group === "dons"
     ? [
-        { header: "Player", width: tableWidth * 0.26 },
-        { header: "Contract", width: tableWidth * 0.11 },
-        { header: "STD", width: tableWidth * 0.10 },
-        { header: "Extra", width: tableWidth * 0.10 },
-        { header: "Balls", width: tableWidth * 0.11 },
-        { header: "Vac Days", width: tableWidth * 0.16 },
-        { header: "Vac Games", width: tableWidth * 0.16 },
+        { header: "Player", width: tableWidth * 0.22 },
+        { header: "Contract", width: tableWidth * 0.10 },
+        { header: "STD", width: tableWidth * 0.08 },
+        { header: "Deficit", width: tableWidth * 0.09 },
+        { header: "Extra", width: tableWidth * 0.08 },
+        { header: "Balls", width: tableWidth * 0.09 },
+        { header: "Vac Games", width: tableWidth * 0.17 },
+        { header: "Made Up Vac", width: tableWidth * 0.17 },
       ]
     : [
         { header: "Player", width: tableWidth * 0.34 },
@@ -184,6 +185,8 @@ export function generatePlayerStatsPdf(
         ? (stat.soloGames ? String(stat.soloGames) : "—")
         : (freq === 0 ? "Sub" : String(freq));
 
+      const contractTotal36 = freq * 36;
+      const deficit = stat.std - contractTotal36;
       const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
 
       const values = group === "dons"
@@ -191,10 +194,11 @@ export function generatePlayerStatsPdf(
             stat.lastName,
             contractValue,
             String(stat.std),
+            freq > 0 ? String(deficit) : "—",
             extra > 0 ? String(extra) : "—",
             String(stat.ballsBrought),
-            stat.vacationDays > 0 ? String(stat.vacationDays) : "—",
-            stat.vacationGameDays > 0 ? String(stat.vacationGameDays) : "—",
+            stat.vacationGamesLost > 0 ? String(stat.vacationGamesLost) : "—",
+            stat.madeUpVac > 0 ? String(stat.madeUpVac) : "—",
           ]
         : [
             stat.lastName,
@@ -258,18 +262,23 @@ export function generatePlayerStatsPdf(
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    const totalVacDays = sectionStats.reduce((sum, s) => sum + (s.vacationDays ?? 0), 0);
-    const totalVacGameDays = sectionStats.reduce((sum, s) => sum + (s.vacationGameDays ?? 0), 0);
+    const totalDeficit = sectionStats.reduce((sum, s) => {
+      const freq = parseInt(s.frequency) || 0;
+      return freq > 0 ? sum + (s.std - freq * 36) : sum;
+    }, 0);
+    const totalVacGameDays = sectionStats.reduce((sum, s) => sum + (s.vacationGamesLost ?? 0), 0);
+    const totalMadeUpVac = sectionStats.reduce((sum, s) => sum + (s.madeUpVac ?? 0), 0);
 
     const totalsValues = group === "dons"
       ? [
           "Total",
           contractTotal,
           String(totalStd),
+          String(totalDeficit),
           totalExtra > 0 ? String(totalExtra) : "—",
           String(totalBalls),
-          totalVacDays > 0 ? String(totalVacDays) : "—",
           totalVacGameDays > 0 ? String(totalVacGameDays) : "—",
+          totalMadeUpVac > 0 ? String(totalMadeUpVac) : "—",
         ]
       : (() => {
           const totalWed = sectionStats.reduce((sum, s) => sum + s.wednesdayCount, 0);
