@@ -520,19 +520,17 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // 1x A players must never share a game with C players (either direction)
-        if (p.skillLevel === "A" && p.contractedFrequency === "1") {
-          // 1x A candidate — block if any assigned player is C
+        // 1x A players without cGamesOk must never share a game with C players (either direction)
+        if (p.skillLevel === "A" && p.contractedFrequency === "1" && !p.cGamesOk) {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
             if (ap?.skillLevel === "C") return false;
           }
         }
         if (p.skillLevel === "C") {
-          // C candidate — block if any assigned player is a 1x A
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "A" && ap?.contractedFrequency === "1") return false;
+            if (ap?.skillLevel === "A" && ap?.contractedFrequency === "1" && !ap?.cGamesOk) return false;
           }
         }
 
@@ -772,12 +770,12 @@ export async function POST(request: NextRequest) {
       return 0;
     }
 
-    // Check if a game has a 1x A player paired with a C player (forbidden)
+    // Check if a game has a 1x A player (without cGamesOk) paired with a C player
     function has1xACViolation(pids: number[]): boolean {
-      const players = pids.map((id) => playerData.find((p) => p.id === id));
-      const hasC = players.some((p) => p?.skillLevel === "C");
-      const has1xA = players.some((p) => p?.skillLevel === "A" && p?.contractedFrequency === "1");
-      return hasC && has1xA;
+      const pls = pids.map((id) => playerData.find((p) => p.id === id));
+      const hasC = pls.some((p) => p?.skillLevel === "C");
+      const has1xANoCGames = pls.some((p) => p?.skillLevel === "A" && p?.contractedFrequency === "1" && !p?.cGamesOk);
+      return hasC && has1xANoCGames;
     }
 
     for (const [date, dateGames] of dayEntries) {

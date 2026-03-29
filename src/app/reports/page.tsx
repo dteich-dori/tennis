@@ -8,6 +8,7 @@ import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
+import { generateExceptionsPdf } from "@/lib/reports/exceptionsPdf";
 import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
 
 interface Season {
@@ -171,6 +172,96 @@ export default function ReportsPage() {
       }
     } catch {
       setError("Failed to generate Games By Date report.");
+    }
+
+    setGenerating(null);
+  };
+
+  const handleExceptionsReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("exceptions");
+
+    try {
+      const [gamesRes, playersRes] = await Promise.all([
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/players?seasonId=${season.id}`),
+      ]);
+      if (!gamesRes.ok || !playersRes.ok) {
+        setError("Failed to load data for exceptions report.");
+        setGenerating(null);
+        return;
+      }
+      const allGames = (await gamesRes.json()) as Game[];
+      const allPlayers = (await playersRes.json()) as Player[];
+
+      // Run compliance checks across all weeks
+      const totalWeeks = season.totalWeeks ?? 36;
+      const allViolations: { rule: string; severity: "error" | "warning"; gameId: number; gameNumber: number; date: string; playerName: string; detail: string }[] = [];
+      for (let wk = 1; wk <= totalWeeks; wk++) {
+        try {
+          const res = await fetch(`/api/games/compliance?seasonId=${season.id}&weekNumber=${wk}&group=dons`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.violations) {
+              // Only keep game-level violations (gameId > 0)
+              allViolations.push(...data.violations.filter((v: { gameId: number }) => v.gameId > 0));
+            }
+          }
+        } catch {
+          // skip week on error
+        }
+      }
+
+      // Also detect game-level issues directly from game data
+      const playerMap = new Map(allPlayers.map((p) => [p.id, p]));
+      const donsGames = allGames.filter((g) => g.group === "dons" && g.status === "normal");
+      for (const g of donsGames) {
+        const count = g.assignments?.length ?? 0;
+
+        // Incomplete games
+        if (count < 4 && count > 0) {
+          allViolations.push({
+            rule: "Incomplete",
+            severity: "error",
+            gameId: g.id,
+            gameNumber: g.gameNumber,
+            date: g.date,
+            playerName: "",
+            detail: `${count}/4 players assigned (${4 - count} open slot${4 - count > 1 ? "s" : ""})`,
+          });
+        }
+
+        // Composition violations: A+C without 2 B bridges
+        if (count === 4) {
+          const levels = g.assignments.map((a: { playerId: number }) => playerMap.get(a.playerId)?.skillLevel ?? "B");
+          const aCount = levels.filter((l: string) => l === "A").length;
+          const bCount = levels.filter((l: string) => l === "B").length;
+          const cCount = levels.filter((l: string) => l === "C").length;
+          if (aCount > 0 && cCount > 0 && bCount < 2) {
+            const composition = levels.sort().join("");
+            allViolations.push({
+              rule: "Composition",
+              severity: "warning",
+              gameId: g.id,
+              gameNumber: g.gameNumber,
+              date: g.date,
+              playerName: "",
+              detail: `A+C without 2B bridge (${composition})`,
+            });
+          }
+        }
+      }
+
+      if (allViolations.length === 0) {
+        setError("No exceptions found — all games pass compliance checks.");
+        setGenerating(null);
+        return;
+      }
+
+      generateExceptionsPdf(allGames, allPlayers, allViolations, season, totalWeeks);
+    } catch {
+      setError("Failed to generate exceptions report.");
     }
 
     setGenerating(null);
@@ -486,6 +577,14 @@ export default function ReportsPage() {
               className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
             >
               {generating === "soloByDate" ? "Generating..." : "Solo Only"}
+            </button>
+            <button
+              onClick={handleExceptionsReport}
+              disabled={generating === "exceptions"}
+              className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
+              title="Games with compliance violations — incomplete, DNP, composition, vacation conflicts, etc."
+            >
+              {generating === "exceptions" ? "Checking..." : "Exceptions"}
             </button>
           </div>
         </div>

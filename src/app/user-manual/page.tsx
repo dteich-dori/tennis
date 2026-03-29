@@ -208,6 +208,19 @@ export default function UserManualPage() {
                 <li><span className="font-semibold">Once per two weeks</span> &mdash; Same restriction but spanning two consecutive weeks.</li>
               </ul>
 
+              <h3 className="font-semibold mb-2">C Games Frequency for cGamesOk Players</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                Some A/B players are willing to play in games alongside C players (marked &ldquo;C games OK&rdquo; on their profile).
+                Two settings control how often these players are placed in C-player games:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-2">
+                <li><span className="font-semibold">C Games &mdash; 2x Players</span> &mdash; How often a 2x cGamesOk player can be assigned to a C-player game. Options: Once per week (default), Once per 2 weeks, Once per 4 weeks, No limit.</li>
+                <li><span className="font-semibold">C Games &mdash; 1x Players</span> &mdash; How often a 1x cGamesOk player can be assigned to a C-player game. Options: Once per 4 weeks (default), Once per 3 weeks, Once per 2 weeks, No limit.</li>
+              </ul>
+              <p className="text-sm leading-relaxed mb-4">
+                Note: 1x A players <em>without</em> the cGamesOk flag are never placed in games with C players. 1x A players who <em>do</em> have cGamesOk enabled will be placed with C players at the configured 1x frequency.
+              </p>
+
               <h3 className="font-semibold mb-2">Managing Holidays</h3>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
@@ -266,7 +279,13 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">Auto-Assign Don&apos;s</span> &mdash; Fills all
                   Don&apos;s game slots for the entire season. Weeks that already have assignments are
-                  skipped.
+                  skipped. Three checkboxes control optional passes:
+                  <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                    <li><span className="font-semibold">STD catchup</span> (on by default) &mdash; After the initial assignment completes, runs a second pass over all weeks to fill remaining empty slots with players who have a season-total deficit (behind on their 36-week contract).</li>
+                    <li><span className="font-semibold">Assign extra</span> &mdash; Allows 2+ contract players to play beyond their weekly minimum of 2 games.</li>
+                    <li><span className="font-semibold">Assign C subs</span> &mdash; Allows substitute (frequency 0) players to fill any remaining empty slots.</li>
+                  </ul>
+                  A <span className="font-semibold">Stop</span> button appears during the run to cancel the assignment mid-season.
                 </li>
                 <li>
                   <span className="font-semibold">Balance Solo Balls / Balance Don&apos;s Balls</span>{" "}
@@ -420,7 +439,26 @@ export default function UserManualPage() {
                   <span className="font-semibold">Derated</span> &mdash; Marks the player for
                   derated pairing limits (see Season Setup &gt; Derated Pairing Frequency).
                 </li>
+                <li>
+                  <span className="font-semibold">C Games OK</span> &mdash; Indicates the player is willing to play in games with C-level players.
+                  The auto-assign algorithm will place these A/B players into C-player games when slots cannot be filled from the normal pool,
+                  subject to the frequency limits set in Season Setup. Note: 1x A players are never placed with C players regardless of this flag.
+                </li>
+                <li>
+                  <span className="font-semibold">No Early Games</span> &mdash; Prevents scheduling before 10:00 AM.
+                </li>
               </ul>
+
+              <h3 className="font-semibold mb-2">Player Groups</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                A player can be designated as a <span className="font-semibold">Group Leader</span> with a preferred group of up to 15 members.
+                The group percentage (25%, 50%, or 100%) determines what fraction of the leader&apos;s games should include members from their group.
+              </p>
+              <p className="text-sm leading-relaxed mb-4">
+                Setting the group to <span className="font-semibold">Inactive (0%)</span> disables group-preferential assignment but
+                <em> preserves the member list</em>. This allows you to temporarily deactivate a group without losing the member configuration.
+                Members are shown dimmed with an &ldquo;inactive &mdash; members preserved&rdquo; label. You can still add or remove members while inactive.
+              </p>
 
               <h3 className="font-semibold mb-2">Blocked Days</h3>
               <p className="text-sm leading-relaxed mb-4">
@@ -545,8 +583,14 @@ export default function UserManualPage() {
                   only one remaining playable day this week and still owe games. Assign these first.
                 </li>
                 <li>
-                  Players are sorted by games owed this week (WTD), then YTD deficit, then alphabetically.
-                  You can toggle between Owed and YTD sort modes.
+                  The dropdown header shows four sortable columns: <span className="font-semibold">Lvl</span> (skill level),{" "}
+                  <span className="font-semibold">Owed</span> (games remaining this week),{" "}
+                  <span className="font-semibold">YTD</span> (behind pace through current week), and{" "}
+                  <span className="font-semibold">STD</span> (games remaining for the full 36-week season contract).
+                  Click any header to sort by that column. STD is shown in blue when the player has a season deficit.
+                </li>
+                <li>
+                  Players with WTD owed, YTD deficit, or STD deficit appear in the regular section even when their weekly quota is met.
                 </li>
                 <li>
                   <span className="font-semibold">Subs</span> appear in a separate purple section,
@@ -731,35 +775,58 @@ export default function UserManualPage() {
                 least 2 B players provide a buffer.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 7: Two-Pass Assignment (No Over-Assignment)</h3>
+              <h3 className="font-semibold mb-2">Step 7: Multi-Pass Assignment</h3>
               <p className="text-sm leading-relaxed mb-2">
-                For each game slot, the algorithm runs two passes to fill all 4 positions:
+                For each game slot, the algorithm runs a series of passes. Each pass only fires if the previous one found no eligible players:
               </p>
-              <ol className="list-decimal list-inside space-y-1 text-sm ml-4 mb-4">
+              <ol className="list-decimal list-inside space-y-2 text-sm ml-4 mb-4">
                 <li>
-                  <span className="font-semibold">First-game-only pass</span> &mdash; Only considers
-                  players who have not yet played any Don&apos;s game this week (WTD = 0). This
-                  ensures every contracted player gets at least one game before anyone gets a second.
+                  <span className="font-semibold">Pass 1: First-game-only</span> &mdash; Only players
+                  with zero Don&apos;s games this week (WTD = 0). Ensures every contracted player gets
+                  at least one game before anyone gets a second.
                 </li>
                 <li>
-                  <span className="font-semibold">All-owed pass</span> &mdash; Expands to any player
-                  who still owes games (frequency &minus; WTD &gt; 0). For 2+ players, this pass
-                  caps them at their minimum of 2 games per week &mdash; once a 2+ player has
-                  2 games, they are blocked from further automatic assignment.
+                  <span className="font-semibold">Pass 2: Base-owed</span> &mdash; Players who still
+                  owe games (frequency &minus; WTD &gt; 0). 2+ players capped at 2 games per week.
+                </li>
+                <li>
+                  <span className="font-semibold">Pass 2.5: Front-loading</span> &mdash; Players with
+                  upcoming vacations get a boosted weekly target (up to freq+1) to accumulate extra
+                  games before their absence. Applies to all contract types including 2+.
+                </li>
+                <li>
+                  <span className="font-semibold">Pass 2.8: cGamesOk</span> &mdash; Only fires when
+                  the game already has at least one C-level player. A/B players marked &ldquo;C games OK&rdquo;
+                  are eligible, subject to the per-week/per-month frequency limits set in Season Setup.
+                  1x A players are never eligible (hard composition block).
+                </li>
+                <li>
+                  <span className="font-semibold">Pass 3: Extras</span> (optional, checkbox) &mdash; Allows
+                  2+ players beyond their weekly minimum of 2 games.
+                </li>
+                <li>
+                  <span className="font-semibold">Pass 3.5: STD catchup</span> (optional, checkbox) &mdash;
+                  During full-season auto-assign only: after the initial pass completes all weeks, a second
+                  pass fills remaining empty slots with contracted players who have a season-total deficit
+                  (STD: behind on their 36-week contract).
+                </li>
+                <li>
+                  <span className="font-semibold">Pass 4: Subs</span> (optional, checkbox) &mdash; Allows
+                  substitute (frequency 0) players to fill any remaining empty slots.
                 </li>
               </ol>
               <p className="text-sm leading-relaxed mb-4">
-                There is intentionally <span className="font-semibold">no bonus pass</span>. If no
-                eligible player is found after both passes, the slot is left empty for manual
-                assignment. This prevents over-assignment and keeps bonus/extra games under manual
-                control via the Schedule page&apos;s Bonus and Bonus All modes.
+                If no eligible player is found after all enabled passes, the slot is left empty for
+                manual assignment. The log indicates the last pass used and suggests enabling additional
+                passes if slots remain unfilled.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 8: Summary</h3>
+              <h3 className="font-semibold mb-2">Step 8: Summary &amp; Logging</h3>
               <p className="text-sm leading-relaxed">
                 After processing all games, the algorithm reports total slots filled, unfilled slots,
-                and a per-day log of warnings (tight pools, unfilled positions, do-not-pair
-                constraints, etc.).
+                the last pass used, and a per-day log of warnings. Each special-pass assignment is
+                tagged with its pass number (e.g., [Pass 2.5], [Pass 2.8], [Pass 3.5]) for easy
+                identification in the log.
               </p>
             </div>
           </section>
@@ -1015,6 +1082,12 @@ export default function UserManualPage() {
                   Early games (9:00 AM) are highlighted with a pale yellow background for
                   easy identification.
                 </li>
+                <li>
+                  <span className="font-semibold">Exceptions</span> &mdash; A filtered report showing only games with violations.
+                  Runs compliance checks across all weeks and also detects incomplete games and composition issues (A+C without 2 B bridges).
+                  Each game row includes an Exception column showing the cause in red (errors) or amber (warnings).
+                  A summary at the bottom shows total games with issues and error/warning counts.
+                </li>
               </ul>
 
               <h3 className="font-semibold mb-2">Games By Player</h3>
@@ -1030,8 +1103,13 @@ export default function UserManualPage() {
                   Separate reports for Don&apos;s Group and Solo Group.
                 </li>
                 <li>
-                  Per-player metrics: games played STD (season total), expected STD, deficit, balls brought
-                  (slot 1 count), and skill level summary.
+                  Don&apos;s Group columns: Player, Contract, STD (season total games), Deficit (STD &minus; contract &times; 36),
+                  Extra (games beyond expected), Balls (bringing count), Vac Games (game dates lost to vacation,
+                  excluding blocked days and holidays, capped per-week at contract frequency), and Made Up Vac
+                  (weeks where the player was assigned more games than their contract &mdash; the surplus count).
+                </li>
+                <li>
+                  Includes summary tables by skill level and by contract type.
                 </li>
               </ul>
 

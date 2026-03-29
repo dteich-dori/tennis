@@ -56,6 +56,7 @@ interface Player {
   vacations: { startDate: string; endDate: string }[];
   noConsecutiveDays: boolean;
   isDerated: boolean;
+  cGamesOk: boolean;
   doNotPair: number[];
 }
 
@@ -1100,15 +1101,7 @@ export default function SchedulePage() {
             >
               {checkingCompliance && complianceGroup === "solo" ? "Checking..." : "Solo Compliance"}
             </button>
-            <button
-              onClick={handleShowExtraGames}
-              disabled={totalGames === 0}
-              className="px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg shadow-sm hover:bg-teal-600 active:bg-teal-700 disabled:opacity-40 transition-colors text-sm"
-              title="Show extra games assigned beyond contracted frequency (Don's group)"
-            >
-              Display Extra
-            </button>
-            <button
+<button
               onClick={handleFindIncomplete}
               disabled={findingIncomplete || totalGames === 0}
               className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg shadow-sm hover:bg-orange-600 active:bg-orange-700 disabled:opacity-40 transition-colors text-sm"
@@ -2105,11 +2098,35 @@ export default function SchedulePage() {
                     <span className="font-bold text-sm">
                       Game #{explainModal.incompleteData.game.gameNumber}
                     </span>
-                    {explainModal.incompleteData.composition && (
-                      <span className="text-xs font-mono font-medium text-blue-600">
-                        {explainModal.incompleteData.composition}
-                      </span>
-                    )}
+                    {explainModal.incompleteData.composition && (() => {
+                      const comp = explainModal.incompleteData.composition;
+                      const compHasC = comp.includes("C");
+                      // Get assigned players with their skill levels to check cGamesOk
+                      const assignedPlayers = explainModal.incompleteData.playerAnalysis
+                        .filter((p) => p.assigned)
+                        .map((p) => {
+                          const fullPlayer = players.find((pl) => `${pl.lastName}, ${pl.firstName}` === p.name || pl.lastName === p.name);
+                          return { skillLevel: p.skillLevel ?? "?", cGamesOk: fullPlayer?.cGamesOk ?? false };
+                        })
+                        .sort((a, b) => (a.skillLevel ?? "").localeCompare(b.skillLevel ?? ""));
+
+                      return (
+                        <span className="text-xs font-mono font-medium flex gap-0">
+                          {assignedPlayers.map((p, i) => {
+                            const isCGamesOkInACGame = compHasC && p.skillLevel !== "C" && p.cGamesOk;
+                            return (
+                              <span
+                                key={i}
+                                className={isCGamesOkInACGame ? "text-green-600 font-bold" : "text-blue-600"}
+                                title={isCGamesOkInACGame ? "C games OK — accepts playing with C players" : p.skillLevel ?? ""}
+                              >
+                                {p.skillLevel}{isCGamesOkInACGame ? "\u2713" : ""}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      );
+                    })()}
                     <span className="text-xs text-muted">
                       {explainModal.incompleteData.game.group === "solo" ? "Solo" : "Don\u2019s"}
                     </span>
