@@ -225,6 +225,8 @@ export async function POST(request: NextRequest) {
     const { seasons } = await import("@/db/schema");
     const [seasonRecord] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
     const maxDeratedPerWeek = seasonRecord?.maxDeratedPerWeek;
+    const maxCGamesPerWeek = seasonRecord?.maxCGamesPerWeek ?? 1;
+    const maxCGamesPerWeek1x = seasonRecord?.maxCGamesPerWeek1x ?? 4; // weeks between C games for 1x players
 
     let prevWeekGamesData: GameData[] = [];
     if (maxDeratedPerWeek === 2 && weekNumber > 1) {
@@ -281,8 +283,7 @@ export async function POST(request: NextRequest) {
     // Compute adjustedFreq per player
     const adjustedFreqMap = new Map<number, number>();
     for (const p of contractedPlayers) {
-      if (p.contractedFrequency === "2+") continue; // 2+ already uncapped per-week
-      const freq = parseInt(p.contractedFrequency) || 0;
+      const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
       if (freq === 0) continue;
       if (p.skillLevel === "C") continue; // no vacation makeup for C players
 
@@ -519,6 +520,22 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
+        // 1x A players must never share a game with C players (either direction)
+        if (p.skillLevel === "A" && p.contractedFrequency === "1") {
+          // 1x A candidate — block if any assigned player is C
+          for (const assignedId of assignedInGame) {
+            const ap = playerData.find((pl) => pl.id === assignedId);
+            if (ap?.skillLevel === "C") return false;
+          }
+        }
+        if (p.skillLevel === "C") {
+          // C candidate — block if any assigned player is a 1x A
+          for (const assignedId of assignedInGame) {
+            const ap = playerData.find((pl) => pl.id === assignedId);
+            if (ap?.skillLevel === "A" && ap?.contractedFrequency === "1") return false;
+          }
+        }
+
         // Derated pairing limit: check both directions
         // - If candidate is derated, check if any assigned non-derated player already paired with them
         // - If candidate is non-derated, check if any assigned derated player already paired with them
@@ -617,10 +634,69 @@ export async function POST(request: NextRequest) {
       return { mustPlay, owed, ytdDeficit, stdDeficit, playableDaysLeft: playableDates.length };
     }
 
+    // Pre-compute last C-game week for each cGamesOk player (for frequency limits)
+    // Look back the max of both intervals to cover both 1x and 2x players
+    const lastCGameWeek = new Map<number, number>(); // playerId → most recent week with a C-game
+    {
+      const maxLookback = Math.max(maxCGamesPerWeek ?? 0, maxCGamesPerWeek1x ?? 0);
+      if (maxLookback > 0) {
+        const lookbackStart = Math.max(1, weekNumber - maxLookback + 1);
+        if (lookbackStart < weekNumber) {
+          const recentGames = await database
+            .select({ id: games.id, weekNumber: games.weekNumber })
+            .from(games)
+            .where(and(
+              eq(games.seasonId, seasonId),
+              eq(games.group, "dons"),
+              eq(games.status, "normal"),
+              sql`${games.weekNumber} >= ${lookbackStart} AND ${games.weekNumber} < ${weekNumber}`
+            ));
+
+          if (recentGames.length > 0) {
+            const gameWeekMap = new Map<number, number>();
+            for (const g of recentGames) gameWeekMap.set(g.id, g.weekNumber);
+
+            const recentAssignments = await database
+              .select({ gameId: gameAssignments.gameId, playerId: gameAssignments.playerId })
+              .from(gameAssignments)
+              .where(inArray(gameAssignments.gameId, recentGames.map((g) => g.id)));
+
+            // Group assignments by game
+            const assignmentsByGame = new Map<number, number[]>();
+            for (const a of recentAssignments) {
+              const arr = assignmentsByGame.get(a.gameId) ?? [];
+              arr.push(a.playerId);
+              assignmentsByGame.set(a.gameId, arr);
+            }
+
+            // Find cGamesOk players who were in a game with a C player
+            for (const [gameId, pids] of assignmentsByGame) {
+              const hasC = pids.some((pid) => {
+                const p = playerData.find((pl) => pl.id === pid);
+                return p?.skillLevel === "C";
+              });
+              if (!hasC) continue;
+              const gWeek = gameWeekMap.get(gameId) ?? 0;
+              for (const pid of pids) {
+                const p = playerData.find((pl) => pl.id === pid);
+                if (p && p.cGamesOk && p.skillLevel !== "C") {
+                  const prev = lastCGameWeek.get(pid) ?? 0;
+                  if (gWeek > prev) lastCGameWeek.set(pid, gWeek);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Per-day availability report
+    let pass28Count = 0;
     let pass3Count = 0;
     let pass35Count = 0;
     let pass4Count = 0;
+    // Track how many C-player games each cGamesOk player has been assigned this week
+    const cGameWtdCounts = new Map<number, number>();
     for (const [date, dateGames] of gamesByDate) {
       const dow = dateGames[0].dayOfWeek;
       const slotsNeeded = dateGames.length * 4;
@@ -694,6 +770,14 @@ export async function POST(request: NextRequest) {
       if (bCount >= 2) return 2;
       if (bCount === 1) return 1;
       return 0;
+    }
+
+    // Check if a game has a 1x A player paired with a C player (forbidden)
+    function has1xACViolation(pids: number[]): boolean {
+      const players = pids.map((id) => playerData.find((p) => p.id === id));
+      const hasC = players.some((p) => p?.skillLevel === "C");
+      const has1xA = players.some((p) => p?.skillLevel === "A" && p?.contractedFrequency === "1");
+      return hasC && has1xA;
     }
 
     for (const [date, dateGames] of dayEntries) {
@@ -884,8 +968,7 @@ export async function POST(request: NextRequest) {
           if (eligible.length === 0) {
             const frontLoadEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
-              if (p.contractedFrequency === "2+") return false; // 2+ handled separately
-              const freq = parseInt(p.contractedFrequency) || 0;
+              const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
               const effectiveFreq = adjustedFreqMap.get(p.id) ?? freq;
               if (effectiveFreq <= freq) return false; // no front-loading needed
               const wtd = wtdDonsCounts.get(p.id) ?? 0;
@@ -896,6 +979,36 @@ export async function POST(request: NextRequest) {
             if (frontLoadEligible.length > 0) {
               passUsed = 2.5;
               eligible = frontLoadEligible;
+            }
+          }
+          // Pass 2.8: cGamesOk — A/B players willing to play in games with C players
+          // Only fires when the game already has at least one C-level player assigned
+          if (eligible.length === 0) {
+            const currentPlayers = gameAssignmentState.get(game.id) ?? [];
+            const hasCPlayer = currentPlayers.some((pid) => {
+              const pl = playerData.find((p) => p.id === pid);
+              return pl?.skillLevel === "C";
+            });
+            if (hasCPlayer) {
+              const cGameOkEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
+                if (usedOnDay.has(p.id)) return false;
+                if (!p.cGamesOk) return false;
+                if (p.skillLevel === "C") return false; // C players don't need this pass
+                // Already assigned a C-game this week — block (at most 1 per week for any player)
+                if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
+                // Check interval-based limit using recent history
+                const freq = parseInt(p.contractedFrequency) || 0;
+                const interval = freq === 1 ? maxCGamesPerWeek1x : maxCGamesPerWeek;
+                if (interval != null && interval > 1) {
+                  const lastWeek = lastCGameWeek.get(p.id) ?? 0;
+                  if (lastWeek > 0 && weekNumber - lastWeek < interval) return false;
+                }
+                return true;
+              });
+              if (cGameOkEligible.length > 0) {
+                passUsed = 2.8;
+                eligible = cGameOkEligible;
+              }
             }
           }
           // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2
@@ -936,6 +1049,11 @@ export async function POST(request: NextRequest) {
             const chosen = prioritized[0];
             if (passUsed === 2.5) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
+            } else if (passUsed === 2.8) {
+              pass28Count++;
+              cGameWtdCounts.set(chosen.id, (cGameWtdCounts.get(chosen.id) ?? 0) + 1);
+              lastCGameWeek.set(chosen.id, weekNumber);
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
             } else if (passUsed === 3) {
               pass3Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
@@ -1031,6 +1149,9 @@ export async function POST(request: NextRequest) {
                                + getCompositionScore(newJ);
 
                 if (newScore <= oldScore) continue;
+
+                // Block swaps that create 1x-A + C violations
+                if (has1xACViolation(newI) || has1xACViolation(newJ)) continue;
 
                 // Verify DNP constraints in new rosters
                 let dnpOk = true;
@@ -1181,6 +1302,9 @@ export async function POST(request: NextRequest) {
                              + getCompositionScore(allDayStates[j].players);
               const newScore = getCompositionScore(newI) + getCompositionScore(newJ);
               if (newScore <= oldScore) continue;
+
+              // Block swaps that create 1x-A + C violations
+              if (has1xACViolation(newI) || has1xACViolation(newJ)) continue;
 
               const pI = playerData.find((p) => p.id === pidI);
               const pJ = playerData.find((p) => p.id === pidJ);
@@ -1364,6 +1488,9 @@ export async function POST(request: NextRequest) {
     const unfilled = totalSlots - filled;
 
     // Pass summary
+    if (pass28Count > 0) {
+      log.push({ type: "info", message: `Pass 2.8 (cGamesOk): ${pass28Count} slots filled by A/B players in C-player games` });
+    }
     if (assignExtra && pass3Count > 0) {
       log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
     }
@@ -1378,6 +1505,7 @@ export async function POST(request: NextRequest) {
     const lastPass = pass4Count > 0 ? "Pass 4 (subs)"
       : pass35Count > 0 ? "Pass 3.5 (STD catchup)"
       : pass3Count > 0 ? "Pass 3 (extras)"
+      : pass28Count > 0 ? "Pass 2.8 (cGamesOk)"
       : "Pass 2 (base)";
     log.push({
       type: "info",

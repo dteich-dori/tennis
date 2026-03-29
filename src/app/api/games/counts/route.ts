@@ -163,8 +163,8 @@ export async function GET(request: NextRequest) {
       }
 
       for (const p of allPlayers) {
-        if (p.contractedFrequency === "2+" || p.contractedFrequency === "0") continue;
-        const freq = parseInt(p.contractedFrequency) || 0;
+        if (p.contractedFrequency === "0") continue;
+        const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
         if (freq === 0) continue;
         if (p.skillLevel === "C") continue; // no vacation makeup for C players
 

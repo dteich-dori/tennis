@@ -47,6 +47,8 @@ export default function SeasonPage() {
   const [editingSlot, setEditingSlot] = useState<CourtSlot | null>(null);
   const [courtForm, setCourtForm] = useState({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
   const [maxDeratedPerWeek, setMaxDeratedPerWeek] = useState<string>("none");
+  const [maxCGamesPerWeek, setMaxCGamesPerWeek] = useState<string>("1");
+  const [maxCGamesPerWeek1x, setMaxCGamesPerWeek1x] = useState<string>("4");
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -119,6 +121,8 @@ export default function SeasonPage() {
       setActiveSeason(latest);
       setStartDate(latest.startDate);
       setMaxDeratedPerWeek(latest.maxDeratedPerWeek != null ? String(latest.maxDeratedPerWeek) : "none");
+      setMaxCGamesPerWeek(latest.maxCGamesPerWeek != null ? String(latest.maxCGamesPerWeek) : "none");
+      setMaxCGamesPerWeek1x(latest.maxCGamesPerWeek1x != null ? String(latest.maxCGamesPerWeek1x) : "none");
     }
   }, []);
 
@@ -203,6 +207,38 @@ export default function SeasonPage() {
       body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxDeratedPerWeek: deratedValue }),
     });
   }, [maxDeratedPerWeek, activeSeason]);
+
+  // Auto-save C games per week setting when changed
+  const cGamesInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!cGamesInitialized.current) {
+      cGamesInitialized.current = true;
+      return;
+    }
+    const cGamesValue = maxCGamesPerWeek === "none" ? null : parseInt(maxCGamesPerWeek);
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxCGamesPerWeek: cGamesValue }),
+    });
+  }, [maxCGamesPerWeek, activeSeason]);
+
+  // Auto-save 1x C games frequency setting when changed
+  const cGames1xInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!cGames1xInitialized.current) {
+      cGames1xInitialized.current = true;
+      return;
+    }
+    const cGamesValue = maxCGamesPerWeek1x === "none" ? null : parseInt(maxCGamesPerWeek1x);
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxCGamesPerWeek1x: cGamesValue }),
+    });
+  }, [maxCGamesPerWeek1x, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -1053,6 +1089,38 @@ export default function SeasonPage() {
                 <option value="none">No limit</option>
                 <option value="1">Once per week</option>
                 <option value="2">Once per two weeks</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                C Games — 2x Players
+              </label>
+              <select
+                value={maxCGamesPerWeek}
+                onChange={(e) => setMaxCGamesPerWeek(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Frequency of C-player games for 2x cGamesOk players."
+              >
+                <option value="1">Once per week</option>
+                <option value="2">Once per 2 weeks</option>
+                <option value="4">Once per 4 weeks</option>
+                <option value="none">No limit</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                C Games — 1x Players
+              </label>
+              <select
+                value={maxCGamesPerWeek1x}
+                onChange={(e) => setMaxCGamesPerWeek1x(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Frequency of C-player games for 1x cGamesOk players. Value is weeks between C games (e.g., 4 = once per month)."
+              >
+                <option value="4">Once per 4 weeks</option>
+                <option value="3">Once per 3 weeks</option>
+                <option value="2">Once per 2 weeks</option>
+                <option value="none">No limit</option>
               </select>
             </div>
           </div>
