@@ -1745,12 +1745,16 @@ export default function SchedulePage() {
 
                                               const aCounts = playerCounts[a.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                               const bCounts = playerCounts[b.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                                              const aFreq = getEffectiveFreq(a, game.group);
-                                              const bFreq = getEffectiveFreq(b, game.group);
-                                              const aOwed = aFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
-                                              const bOwed = bFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
-                                              const aYtdOwed = aFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
-                                              const bYtdOwed = bFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
+                                              const aBaseFreq = game.group === "solo"
+                                                ? (a.soloGames ? a.soloGames / 36 : 0)
+                                                : (parseInt(a.contractedFrequency) || (a.contractedFrequency === "2+" ? 2 : 0));
+                                              const bBaseFreq = game.group === "solo"
+                                                ? (b.soloGames ? b.soloGames / 36 : 0)
+                                                : (parseInt(b.contractedFrequency) || (b.contractedFrequency === "2+" ? 2 : 0));
+                                              const aOwed = aBaseFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
+                                              const bOwed = bBaseFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
+                                              const aYtdOwed = aBaseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
+                                              const bYtdOwed = bBaseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? bCounts.ytdSolo : bCounts.ytdDons);
                                               const aStdOwed = getStdOwed(a, game.group);
                                               const bStdOwed = getStdOwed(b, game.group);
 
@@ -1821,9 +1825,11 @@ export default function SchedulePage() {
 
                                           const renderPlayer = (p: Player, isBonus: boolean) => {
                                             const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                                            const freq = getEffectiveFreq(p, game.group);
+                                            const baseFreq = game.group === "solo"
+                                              ? (p.soloGames ? p.soloGames / 36 : 0)
+                                              : (parseInt(p.contractedFrequency) || (p.contractedFrequency === "2+" ? 2 : 0));
                                             const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
-                                            const remaining = freq - groupWtd;
+                                            const remaining = baseFreq - groupWtd;
                                             const deficit = hasYtdDeficit(p, game.group);
                                             const stdOwed = getStdOwed(p, game.group);
                                             const mustPlay = !isBonus && isMustPlay(p, game);
@@ -1876,8 +1882,8 @@ export default function SchedulePage() {
                                                 <span className="flex gap-3 text-xs text-muted">
                                                   <span className="w-6 text-center" title={`Skill level: ${p.skillLevel || "—"}`}>{p.skillLevel || "—"}</span>
                                                   <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
-                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${freq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{freq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
-                                                  <span className={`w-8 text-center ${stdOwed > 0 ? "text-blue-600 font-medium" : "text-gray-400"}`} title={`STD Owed: ${Math.round(freq * 36)} target − ${game.group === "solo" ? (counts.stdSolo ?? 0) : (counts.stdDons ?? 0)} played`}>{stdOwed > 0 ? Math.round(stdOwed) : 0}</span>
+                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${baseFreq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{baseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
+                                                  <span className={`w-8 text-center ${stdOwed > 0 ? "text-blue-600 font-medium" : "text-gray-400"}`} title={`STD Owed: ${Math.round(baseFreq * 36)} target − ${game.group === "solo" ? (counts.stdSolo ?? 0) : (counts.stdDons ?? 0)} played`}>{stdOwed > 0 ? Math.round(stdOwed) : 0}</span>
                                                 </span>
                                               </button>
                                             );
