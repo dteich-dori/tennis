@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       gameId: number;
       date: string;
       gameNumber: number;
-      players: { name: string; level: string }[];
+      players: { name: string; level: string; cGamesOk: boolean }[];
       composition: string;
     }[] = [];
 
