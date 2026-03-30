@@ -218,7 +218,7 @@ export default function UserManualPage() {
                 <li><span className="font-semibold">C Games &mdash; 1x Players</span> &mdash; How often a 1x cGamesOk player can be assigned to a C-player game. Options: Once per 4 weeks (default), Once per 3 weeks, Once per 2 weeks, No limit.</li>
               </ul>
               <p className="text-sm leading-relaxed mb-4">
-                Note: 1x A players <em>without</em> the cGamesOk flag are never placed in games with C players. 1x A players who <em>do</em> have cGamesOk enabled will be placed with C players at the configured 1x frequency.
+                Note: A players <em>without</em> the cGamesOk flag are never placed in games with C players. A players who <em>do</em> have cGamesOk enabled will be placed with C players at the configured frequency for their contract type.
               </p>
 
               <h3 className="font-semibold mb-2">Managing Holidays</h3>

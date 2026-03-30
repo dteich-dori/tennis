@@ -520,8 +520,8 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // 1x A players without cGamesOk must never share a game with C players (either direction)
-        if (p.skillLevel === "A" && p.contractedFrequency === "1" && !p.cGamesOk) {
+        // A players without cGamesOk must never share a game with C players (either direction)
+        if (p.skillLevel === "A" && !p.cGamesOk) {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
             if (ap?.skillLevel === "C") return false;
@@ -530,7 +530,7 @@ export async function POST(request: NextRequest) {
         if (p.skillLevel === "C") {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "A" && ap?.contractedFrequency === "1" && !ap?.cGamesOk) return false;
+            if (ap?.skillLevel === "A" && !ap?.cGamesOk) return false;
           }
         }
 
@@ -770,12 +770,12 @@ export async function POST(request: NextRequest) {
       return 0;
     }
 
-    // Check if a game has a 1x A player (without cGamesOk) paired with a C player
-    function has1xACViolation(pids: number[]): boolean {
+    // Check if a game has an A player (without cGamesOk) paired with a C player
+    function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
       const hasC = pls.some((p) => p?.skillLevel === "C");
-      const has1xANoCGames = pls.some((p) => p?.skillLevel === "A" && p?.contractedFrequency === "1" && !p?.cGamesOk);
-      return hasC && has1xANoCGames;
+      const hasANoCGames = pls.some((p) => p?.skillLevel === "A" && !p?.cGamesOk);
+      return hasC && hasANoCGames;
     }
 
     for (const [date, dateGames] of dayEntries) {
@@ -1149,7 +1149,7 @@ export async function POST(request: NextRequest) {
                 if (newScore <= oldScore) continue;
 
                 // Block swaps that create 1x-A + C violations
-                if (has1xACViolation(newI) || has1xACViolation(newJ)) continue;
+                if (hasACViolation(newI) || hasACViolation(newJ)) continue;
 
                 // Verify DNP constraints in new rosters
                 let dnpOk = true;
@@ -1302,7 +1302,7 @@ export async function POST(request: NextRequest) {
               if (newScore <= oldScore) continue;
 
               // Block swaps that create 1x-A + C violations
-              if (has1xACViolation(newI) || has1xACViolation(newJ)) continue;
+              if (hasACViolation(newI) || hasACViolation(newJ)) continue;
 
               const pI = playerData.find((p) => p.id === pidI);
               const pJ = playerData.find((p) => p.id === pidJ);
