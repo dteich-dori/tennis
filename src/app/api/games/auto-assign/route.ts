@@ -1250,6 +1250,137 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+
+      // --- Under-assigned repair: DNP-unblock swaps ---
+      // For players who still owe games and were available today but couldn't be placed
+      // due to DNP conflicts: find a game where the DNP blocker can be swapped to another
+      // same-day game, AND that game has an over-assigned same-level player who can be replaced
+      // by the owed player.
+      for (const p of contractedPlayers) {
+        const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+        if (freq === 0) continue;
+        const wtd = wtdDonsCounts.get(p.id) ?? 0;
+        if (wtd >= freq) continue; // not under-assigned
+
+        // Must be available today
+        if (p.blockedDays.includes(dow)) continue;
+        if (p.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
+        if ((assignedDates.get(p.id) ?? new Set()).has(date)) continue;
+
+        let repairDone = false;
+        for (const gs of dayStates) {
+          if (repairDone) break;
+          if (gs.players.length < 4) continue;
+          if (gs.players.includes(p.id)) continue;
+
+          // Find the single DNP blocker in this game
+          const blockers = gs.players.filter((pid) => {
+            return p.doNotPair.includes(pid) ||
+              (playerData.find((pl) => pl.id === pid)?.doNotPair.includes(p.id) ?? false);
+          });
+          if (blockers.length !== 1) continue;
+          const blockerId = blockers[0];
+          const blocker = playerData.find((pl) => pl.id === blockerId);
+          if (!blocker || blocker.skillLevel !== p.skillLevel) continue;
+
+          // Find an over-assigned same-level player in this game (not the blocker)
+          // who can be replaced by p
+          for (const overPid of gs.players) {
+            if (overPid === blockerId) continue;
+            const overPlayer = playerData.find((pl) => pl.id === overPid);
+            if (!overPlayer || overPlayer.skillLevel !== p.skillLevel) continue;
+            const overWtd = wtdDonsCounts.get(overPid) ?? 0;
+            const overFreq = overPlayer.contractedFrequency === "2+" ? 2 : (parseInt(overPlayer.contractedFrequency) || 0);
+            if (overWtd <= overFreq) continue; // not over-assigned
+
+            // p would replace overPlayer. Check DNP: p with remaining roster (includes blocker? No — blocker is the problem)
+            // Wait: if we just replace overPlayer with p, blocker is still in the game → p is still DNP-blocked.
+            // We need to ALSO move the blocker out. So: swap blocker to another game, then replace overPlayer with p.
+            // Actually simpler: swap the blocker with a same-level from another game, then replace overPlayer with p.
+
+            // Find another game to absorb the blocker
+            for (const otherGs of dayStates) {
+              if (repairDone) break;
+              if (otherGs.game.id === gs.game.id) continue;
+              if (otherGs.players.length < 4) continue;
+
+              // Find a same-level player in otherGame to swap with blocker
+              for (const swapId of otherGs.players) {
+                const swapPlayer = playerData.find((pl) => pl.id === swapId);
+                if (!swapPlayer || swapPlayer.skillLevel !== blocker.skillLevel) continue;
+                if (swapId === p.id) continue;
+
+                // After swap: blocker goes to otherGame, swapPlayer goes to gs.game
+                // Then: overPlayer removed from gs.game, p added
+                const gsAfterSwap = gs.players.map((pid) => pid === blockerId ? swapId : pid);
+                const gsAfterReplace = gsAfterSwap.map((pid) => pid === overPid ? p.id : pid);
+                const otherAfterSwap = otherGs.players.map((pid) => pid === swapId ? blockerId : pid);
+
+                // Validate DNP in gsAfterReplace
+                let ok = true;
+                for (let a = 0; a < gsAfterReplace.length && ok; a++) {
+                  const pa = playerData.find((pl) => pl.id === gsAfterReplace[a]);
+                  for (let b = a + 1; b < gsAfterReplace.length && ok; b++) {
+                    const pb = playerData.find((pl) => pl.id === gsAfterReplace[b]);
+                    if (pa?.doNotPair.includes(gsAfterReplace[b]) || pb?.doNotPair.includes(gsAfterReplace[a])) ok = false;
+                  }
+                }
+                // Validate DNP in otherAfterSwap
+                for (let a = 0; a < otherAfterSwap.length && ok; a++) {
+                  const pa = playerData.find((pl) => pl.id === otherAfterSwap[a]);
+                  for (let b = a + 1; b < otherAfterSwap.length && ok; b++) {
+                    const pb = playerData.find((pl) => pl.id === otherAfterSwap[b]);
+                    if (pa?.doNotPair.includes(otherAfterSwap[b]) || pb?.doNotPair.includes(otherAfterSwap[a])) ok = false;
+                  }
+                }
+                if (!ok) continue;
+
+                // Validate composition
+                if (hasACViolation(gsAfterReplace) || hasACViolation(otherAfterSwap)) continue;
+
+                // Execute: 1) swap blocker ↔ swapPlayer
+                const [rowBlocker] = await database.select().from(gameAssignments)
+                  .where(and(eq(gameAssignments.gameId, gs.game.id), eq(gameAssignments.playerId, blockerId)));
+                const [rowSwap] = await database.select().from(gameAssignments)
+                  .where(and(eq(gameAssignments.gameId, otherGs.game.id), eq(gameAssignments.playerId, swapId)));
+                if (rowBlocker && rowSwap) {
+                  await database.update(gameAssignments).set({ playerId: swapId }).where(eq(gameAssignments.id, rowBlocker.id));
+                  await database.update(gameAssignments).set({ playerId: blockerId }).where(eq(gameAssignments.id, rowSwap.id));
+                }
+
+                // Execute: 2) replace overPlayer with p in gs.game
+                const [rowOver] = await database.select().from(gameAssignments)
+                  .where(and(eq(gameAssignments.gameId, gs.game.id), eq(gameAssignments.playerId, overPid)));
+                if (rowOver) {
+                  await database.update(gameAssignments).set({ playerId: p.id }).where(eq(gameAssignments.id, rowOver.id));
+                }
+
+                // Update state
+                gs.players = gsAfterReplace;
+                otherGs.players = otherAfterSwap;
+                gameAssignmentState.set(gs.game.id, gsAfterReplace);
+                gameAssignmentState.set(otherGs.game.id, otherAfterSwap);
+
+                // Update counts
+                wtdDonsCounts.set(p.id, (wtdDonsCounts.get(p.id) ?? 0) + 1);
+                wtdDonsCounts.set(overPid, (wtdDonsCounts.get(overPid) ?? 0) - 1);
+                const pDatesSet = assignedDates.get(p.id) ?? new Set();
+                pDatesSet.add(date);
+                assignedDates.set(p.id, pDatesSet);
+
+                log.push({
+                  type: "info",
+                  day: DAYS[dow],
+                  message: `DNP-unblock: ${blocker.lastName} ↔ ${swapPlayer.lastName} (game #${gs.game.gameNumber} ↔ #${otherGs.game.gameNumber}), then ${overPlayer.lastName} replaced by ${p.lastName} in #${gs.game.gameNumber}`,
+                });
+
+                repairDone = true;
+                break;
+              }
+            }
+          }
+        }
+      }
     }
 
     // --- Cross-day composition optimization ---
