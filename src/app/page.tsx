@@ -1,7 +1,9 @@
+import { APP_VERSION } from "@/lib/version";
+
 export default function Home() {
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-4">Tennis Club Scheduler</h1>
+      <h1 className="text-2xl font-bold mb-4">Tennis Club Scheduler <span className="text-sm font-normal text-gray-600">v{APP_VERSION}</span></h1>
       <p className="text-muted mb-8">
         Manage your tennis club season, court schedules, and player assignments.
       </p>
