@@ -6,7 +6,8 @@ set -e
 
 BACKUP_DIR="Backup"
 TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
-BACKUP_FILE="${BACKUP_DIR}/${TIMESTAMP}.sqlite"
+VERSION=$(grep 'APP_VERSION' src/lib/version.ts 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "unknown")
+BACKUP_FILE="${BACKUP_DIR}/v${VERSION}_${TIMESTAMP}.sqlite"
 
 # Ensure backup directory exists
 mkdir -p "$BACKUP_DIR"
