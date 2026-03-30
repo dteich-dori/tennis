@@ -672,6 +672,31 @@ export default function SeasonPage() {
         }
       }
 
+      // Balance Pairings: swap same-level players between same-day games to reduce pairing concentrations
+      if (!donsStopRef.current && weeksAssignedCount > 0) {
+        log.push({ type: "info", message: "--- Balance Pairings: reducing pairing concentrations ---" });
+        setDonsAssignLog([...log]);
+        setDonsAssigningWeek(null);
+        try {
+          const bpRes = await fetch("/api/games/balance-pairings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seasonId: activeSeason.id }),
+          });
+          const bpData = await bpRes.json();
+          if (bpRes.ok) {
+            log.push({
+              type: "info",
+              message: `Balance Pairings: ${bpData.swaps} swaps, imbalance ${Math.round(bpData.imbalanceBefore)} → ${Math.round(bpData.imbalanceAfter)}`,
+            });
+          } else {
+            log.push({ type: "error", message: `Balance Pairings failed: ${bpData.error ?? "unknown error"}` });
+          }
+        } catch (err) {
+          log.push({ type: "error", message: `Balance Pairings: ${String(err)}` });
+        }
+      }
+
       setDonsAssigningWeek(null);
       setDonsAssignMessage(
         `Assigned ${weeksAssignedCount} week(s): ${totalAssigned} of ${totalSlots} slots filled.${

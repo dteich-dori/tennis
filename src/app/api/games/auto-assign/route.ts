@@ -821,13 +821,13 @@ export async function POST(request: NextRequest) {
           const compA = compositionPenalty(a);
           const compB = compositionPenalty(b);
           if (compA !== compB) return compA - compB;
-          if (pb.owed !== pa.owed) return pb.owed - pa.owed;
           // Pairing diversity: prefer candidates who've been paired LESS with current game members
           if (currentAssignedIds.length > 0) {
             const penaltyA = getPairingPenalty(a.id, currentAssignedIds);
             const penaltyB = getPairingPenalty(b.id, currentAssignedIds);
             if (penaltyA !== penaltyB) return penaltyA - penaltyB;
           }
+          if (pb.owed !== pa.owed) return pb.owed - pa.owed;
           if (pa.playableDaysLeft !== pb.playableDaysLeft) return pa.playableDaysLeft - pb.playableDaysLeft;
           if (pb.ytdDeficit !== pa.ytdDeficit) return pb.ytdDeficit - pa.ytdDeficit;
           if (pb.stdDeficit !== pa.stdDeficit) return pb.stdDeficit - pa.stdDeficit;
