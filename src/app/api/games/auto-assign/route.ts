@@ -1367,6 +1367,22 @@ export async function POST(request: NextRequest) {
                 const pDatesSet = assignedDates.get(p.id) ?? new Set();
                 pDatesSet.add(date);
                 assignedDates.set(p.id, pDatesSet);
+                // Update YTD/STD for both players
+                const pYtd = ytdCounts.get(p.id) ?? { ytdDons: 0, ytdSolo: 0 };
+                pYtd.ytdDons += 1;
+                ytdCounts.set(p.id, pYtd);
+                stdDonsCounts.set(p.id, (stdDonsCounts.get(p.id) ?? 0) + 1);
+                const overYtd = ytdCounts.get(overPid) ?? { ytdDons: 0, ytdSolo: 0 };
+                overYtd.ytdDons -= 1;
+                ytdCounts.set(overPid, overYtd);
+                stdDonsCounts.set(overPid, (stdDonsCounts.get(overPid) ?? 0) - 1);
+                // Remove date from overPlayer if they're no longer playing on this day
+                const overStillOnDay = dateGames.some((g) =>
+                  (gameAssignmentState.get(g.id) ?? []).includes(overPid));
+                if (!overStillOnDay) {
+                  const overDates = assignedDates.get(overPid);
+                  if (overDates) overDates.delete(date);
+                }
 
                 log.push({
                   type: "info",
@@ -1607,6 +1623,28 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+    }
+
+    // --- Integrity check: detect any player assigned to multiple games on the same day ---
+    const playerDateGames = new Map<string, { playerId: number; gameIds: number[] }>();
+    for (const g of donsGames) {
+      const assigned = gameAssignmentState.get(g.id) ?? [];
+      for (const pid of assigned) {
+        const key = `${pid}-${g.date}`;
+        const entry = playerDateGames.get(key) ?? { playerId: pid, gameIds: [] };
+        entry.gameIds.push(g.id);
+        playerDateGames.set(key, entry);
+      }
+    }
+    for (const [, entry] of playerDateGames) {
+      if (entry.gameIds.length > 1) {
+        const pName = playerData.find((p) => p.id === entry.playerId)?.lastName ?? `#${entry.playerId}`;
+        const gameNums = entry.gameIds.map((gid) => donsGames.find((g) => g.id === gid)?.gameNumber).join(", ");
+        log.push({
+          type: "error",
+          message: `INTEGRITY: ${pName} assigned to multiple games on same day (games #${gameNums})`,
+        });
       }
     }
 
