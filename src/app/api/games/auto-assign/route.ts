@@ -1069,7 +1069,6 @@ export async function POST(request: NextRequest) {
             await assignPlayer(game, chosen.id, slot);
           } else {
             const hints: string[] = [];
-            if (!assignStdCatchup) hints.push("STD catchup");
             if (!assignExtra) hints.push("extras");
             if (!assignCSubs) hints.push("C subs");
             const hintStr = hints.length > 0 ? ` (enable ${hints.join(" and ")} for more options)` : "";
