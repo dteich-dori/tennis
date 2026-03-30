@@ -9,6 +9,8 @@ interface Season {
   endDate: string;
   totalWeeks: number;
   maxDeratedPerWeek: number | null;
+  maxCGamesPerWeek: number | null;
+  maxCGamesPerWeek1x: number | null;
 }
 
 interface Holiday {

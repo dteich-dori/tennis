@@ -97,7 +97,7 @@ export default function SchedulePage() {
     replacingAssignmentId?: number;
   } | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [playerCounts, setPlayerCounts] = useState<Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>>({});
+  const [playerCounts, setPlayerCounts] = useState<Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number; stdDons: number; stdSolo: number }>>({});
   const [adjustedFreqs, setAdjustedFreqs] = useState<Record<number, number>>({});
   const [showPlayerInfo, setShowPlayerInfo] = useState(false);
   const [bonusMode, setBonusMode] = useState<"off" | "bonus" | "bonusAll">("off");
@@ -265,7 +265,7 @@ export default function SchedulePage() {
         setPlayerCounts(data.counts);
         setAdjustedFreqs(data.adjustedFreqs ?? {});
       } else {
-        setPlayerCounts(data as Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number }>);
+        setPlayerCounts(data as Record<number, { wtd: number; ytd: number; ytdDons: number; ytdSolo: number; wtdDons: number; wtdSolo: number; stdDons: number; stdSolo: number }>);
         setAdjustedFreqs({});
       }
     } catch (err) {
@@ -860,7 +860,7 @@ export default function SchedulePage() {
   // Check if a player MUST be assigned to this specific game's date
   // (i.e., it's their only remaining playable day this week and they still owe games)
   const isMustPlay = (player: Player, game: Game): boolean => {
-    const counts = playerCounts[player.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+    const counts = playerCounts[player.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
     // MUST play uses BASE frequency — front-loaded extras don't trigger MUST
     const baseFreq = game.group === "solo"
       ? (player.soloGames ? player.soloGames / 36 : 0)
@@ -921,7 +921,7 @@ export default function SchedulePage() {
       const freq = parseInt(p.contractedFrequency) || 0;
       if (freq === 0) continue; // skip subs and 2+ (which is "2+", not a number)
       if (p.contractedFrequency === "2+") continue;
-      const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+      const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
       if (counts.wtdDons < freq) return false;
     }
     return true;
@@ -1156,7 +1156,7 @@ export default function SchedulePage() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                   {donsPlayers.map((p) => {
-                    const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                    const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                     const freq = parseInt(p.contractedFrequency) || 0;
                     const adjFreq = adjustedFreqs[p.id];
                     const effectiveFreq = adjFreq ?? freq;
@@ -1729,7 +1729,7 @@ export default function SchedulePage() {
                                                 if (game.group !== "dons") return false;
                                                 const adj = adjustedFreqs[p.id];
                                                 if (!adj) return false;
-                                                const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                                const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                                 const baseFreq = parseInt(p.contractedFrequency) || 0;
                                                 // Met base contract but still owe front-loaded games
                                                 return counts.wtdDons >= baseFreq && counts.wtdDons < adj;
@@ -1743,8 +1743,8 @@ export default function SchedulePage() {
                                               const bMust = isMustPlay(b, game);
                                               if (aMust !== bMust) return aMust ? -1 : 1;
 
-                                              const aCounts = playerCounts[a.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
-                                              const bCounts = playerCounts[b.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0 };
+                                              const aCounts = playerCounts[a.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
+                                              const bCounts = playerCounts[b.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                               const aFreq = getEffectiveFreq(a, game.group);
                                               const bFreq = getEffectiveFreq(b, game.group);
                                               const aOwed = aFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
