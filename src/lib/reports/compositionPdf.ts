@@ -9,7 +9,9 @@ interface CompositionRow {
 interface ACGame {
   date: string;
   gameNumber: number;
+  composition?: string;
   players: string; // e.g. "Name (A), Name (C), ..."
+  playerDetails?: { name: string; level: string; cGamesOk: boolean }[];
 }
 
 interface CompositionData {
@@ -221,9 +223,10 @@ export function generateCompositionPdf(data: CompositionData): void {
     currentY += 8;
 
     const detailCols = [
-      { header: "Date", width: tableWidth * 0.15 },
-      { header: "Game #", width: tableWidth * 0.10 },
-      { header: "Players", width: tableWidth * 0.75 },
+      { header: "Date", width: tableWidth * 0.12 },
+      { header: "Game #", width: tableWidth * 0.09 },
+      { header: "Comp", width: tableWidth * 0.12 },
+      { header: "Players", width: tableWidth * 0.67 },
     ];
 
     // Header
@@ -279,16 +282,41 @@ export function generateCompositionPdf(data: CompositionData): void {
       const parts = game.date.split("-");
       const dateFormatted = `${parts[1]}/${parts[2]}`;
 
+      doc.setTextColor(0, 0, 0);
       doc.text(dateFormatted, marginLeft + 4, currentY + 11);
       doc.text(String(game.gameNumber), marginLeft + detailCols[0].width + 4, currentY + 11);
 
+      // Draw composition with per-letter coloring (green+bold for cGamesOk non-C players)
+      const compX = marginLeft + detailCols[0].width + detailCols[1].width + 4;
+      if (game.playerDetails && game.playerDetails.length > 0) {
+        let cx2 = compX;
+        for (const pd of game.playerDetails) {
+          const isCOk = pd.cGamesOk && pd.level !== "C";
+          if (isCOk) {
+            doc.setTextColor(0, 140, 0); // green
+            doc.setFont("helvetica", "bold");
+          } else {
+            doc.setTextColor(0, 0, 0);
+            doc.setFont("helvetica", "normal");
+          }
+          const letter = pd.level + (isCOk ? "\u2713" : "");
+          doc.text(letter, cx2, currentY + 11);
+          cx2 += doc.getTextWidth(letter) + 1;
+        }
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+      } else if (game.composition) {
+        doc.text(game.composition, compX, currentY + 11);
+      }
+
       // Truncate player text if too long
-      const maxPlayerWidth = detailCols[2].width - 8;
+      const playersX = marginLeft + detailCols[0].width + detailCols[1].width + detailCols[2].width + 4;
+      const maxPlayerWidth = detailCols[3].width - 8;
       let playerText = game.players;
       while (doc.getTextWidth(playerText) > maxPlayerWidth && playerText.length > 10) {
         playerText = playerText.substring(0, playerText.length - 4) + "...";
       }
-      doc.text(playerText, marginLeft + detailCols[0].width + detailCols[1].width + 4, currentY + 11);
+      doc.text(playerText, playersX, currentY + 11);
       currentY += rowHeight;
     }
   }

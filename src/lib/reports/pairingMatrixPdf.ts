@@ -83,11 +83,11 @@ export function generatePairingMatrixPdf(
   }
 
   // Layout calculations
-  const marginLeft = 30;
-  const marginRight = 20;
-  const headerBottom = 42; // title/subtitle ends here
-  const footerTop = pageHeight - 25; // footer starts here
-  const headerRowNameHeight = 45; // height reserved for rotated column names
+  const marginLeft = 20;
+  const marginRight = 10;
+  const headerBottom = 22; // title ends here
+  const footerTop = pageHeight - 2; // no footer — use full page
+  const headerRowNameHeight = 35; // height reserved for rotated column names
 
   // Compute player name display
   // Check for duplicate last names
@@ -106,7 +106,7 @@ export function generatePairingMatrixPdf(
   // Calculate cell size to fit everything between header and footer
   const rowHeaderWidth = 90; // width for row labels
   const availableWidth = pageWidth - marginLeft - marginRight - rowHeaderWidth;
-  const availableHeight = footerTop - headerBottom - headerRowNameHeight - 5;
+  const availableHeight = footerTop - headerBottom - headerRowNameHeight;
 
   const maxCellFromWidth = availableWidth / N;
   const maxCellFromHeight = availableHeight / N;
@@ -129,21 +129,10 @@ export function generatePairingMatrixPdf(
   }
 
   // --- Draw header ---
-  doc.setFontSize(13);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0, 0, 0);
-  doc.text(title, pageWidth / 2, 22, { align: "center" });
-
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(100, 100, 100);
-  doc.text(
-    "Brooklake (973) 377-2235 x137   brooklaketennis.com     |     Green (1-10)  Yellow (11-15)  Orange (16-20)  Red (21+)     DNP violation = bold red     Gray = self",
-    pageWidth / 2,
-    34,
-    { align: "center" }
-  );
-  doc.setTextColor(0, 0, 0);
+  doc.text(title, pageWidth / 2, 14, { align: "center" });
 
   // Grid origin — place grid as high as possible (right after header + column names)
   const gridX = marginLeft + rowHeaderWidth;
@@ -221,40 +210,6 @@ export function generatePairingMatrixPdf(
       doc.setLineWidth(0.3);
       doc.rect(x, y, cellSize, cellSize, "S");
     }
-  }
-
-  // --- Footer ---
-  const totalPages = doc.getNumberOfPages();
-  const now = new Date();
-  const dayNames = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  const dayName = dayNames[now.getDay()];
-  const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")}/${now.getFullYear()}`;
-  const timeStr = now.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-  const preparedText = `Prepared: ${dayName}, ${dateStr} ${timeStr}`;
-  const footerY = pageHeight - 12;
-
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(130, 130, 130);
-    doc.text(preparedText, marginLeft, footerY);
-    doc.text(`${N} players  |  Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, {
-      align: "right",
-    });
-    doc.setTextColor(0, 0, 0);
   }
 
   // --- Open in new tab ---
