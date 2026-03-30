@@ -451,20 +451,21 @@ export async function GET(request: NextRequest) {
         if (p.contractedFrequency === "0") continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count === 0) {
-          // Determine reason for under-assignment
-          const reasons: string[] = [];
+          // Count playable dates: not on vacation and not blocked
           const pVacations = vacationsByPlayer.get(p.id) ?? [];
-          for (const v of pVacations) {
-            const overlapping = weekDates.filter((d) => d >= v.startDate && d <= v.endDate);
-            if (overlapping.length > 0) {
-              if (overlapping.length === weekDates.length) {
-                reasons.push(`on vacation all week (${v.startDate} – ${v.endDate})`);
-              } else {
-                reasons.push(`on vacation ${overlapping.join(", ")} (${v.startDate} – ${v.endDate})`);
-              }
-            }
-          }
           const pBlocked = blockedByPlayer.get(p.id) ?? [];
+          const playableDates = weekDates.filter((d) => {
+            if (pVacations.some((v) => d >= v.startDate && d <= v.endDate)) return false;
+            const dow = new Date(d + "T12:00:00").getDay();
+            if (pBlocked.includes(dow)) return false;
+            return true;
+          });
+
+          // If no playable dates, the under-assignment is expected — skip
+          if (playableDates.length === 0) continue;
+
+          // Determine reason
+          const reasons: string[] = [];
           if (pBlocked.length > 0) {
             const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
             const blockedDates = weekDates.filter((d) => {
@@ -538,24 +539,25 @@ export async function GET(request: NextRequest) {
         if (freq === 0) continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count < freq) {
+          // Count playable dates: not on vacation and not on a blocked day
+          const pVacations = vacationsByPlayer.get(p.id) ?? [];
+          const pBlocked = blockedByPlayer.get(p.id) ?? [];
+          const playableDates = weekDates.filter((d) => {
+            // Check vacation
+            if (pVacations.some((v) => d >= v.startDate && d <= v.endDate)) return false;
+            // Check blocked day
+            const dow = new Date(d + "T12:00:00").getDay();
+            if (pBlocked.includes(dow)) return false;
+            return true;
+          });
+
+          // If playable dates can't meet the contract, the shortfall is expected — skip
+          if (playableDates.length < freq) continue;
+
           // Determine reason for under-assignment
           const reasons: string[] = [];
 
-          // Check vacation overlap
-          const pVacations = vacationsByPlayer.get(p.id) ?? [];
-          for (const v of pVacations) {
-            const overlapping = weekDates.filter((d) => d >= v.startDate && d <= v.endDate);
-            if (overlapping.length > 0) {
-              if (overlapping.length === weekDates.length) {
-                reasons.push(`on vacation all week (${v.startDate} – ${v.endDate})`);
-              } else {
-                reasons.push(`on vacation ${overlapping.join(", ")} (${v.startDate} – ${v.endDate})`);
-              }
-            }
-          }
-
           // Check blocked days overlap
-          const pBlocked = blockedByPlayer.get(p.id) ?? [];
           if (pBlocked.length > 0) {
             const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
             const blockedDates = weekDates.filter((d) => {
