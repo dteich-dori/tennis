@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { APP_VERSION } from "@/lib/version";
 
 const links = [
   { href: "/", label: "Home" },
@@ -24,7 +25,10 @@ export function Nav() {
 
   return (
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
-      <div className="text-lg font-bold mb-6 px-3">Tennis Scheduler</div>
+      <div className="mb-6 px-3">
+        <div className="text-lg font-bold">Tennis Scheduler</div>
+        <div className="text-[10px] text-muted">v{APP_VERSION}</div>
+      </div>
       {links.map((link) => {
         const isActive =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
