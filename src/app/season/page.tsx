@@ -697,6 +697,30 @@ export default function SeasonPage() {
         } catch (err) {
           log.push({ type: "error", message: `Balance Pairings: ${String(err)}` });
         }
+
+        // Balance Don's Balls
+        if (!donsStopRef.current) {
+          log.push({ type: "info", message: "--- Balance Balls: redistributing ball-bringing duty ---" });
+          setDonsAssignLog([...log]);
+          try {
+            const bbRes = await fetch("/api/games/balance-balls", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ seasonId: activeSeason.id, group: "dons", allWeeks: true }),
+            });
+            const bbData = await bbRes.json();
+            if (bbRes.ok) {
+              log.push({
+                type: "info",
+                message: `Balance Balls: ${bbData.swaps ?? 0} swaps, imbalance score ${bbData.imbalance ?? 0}`,
+              });
+            } else {
+              log.push({ type: "error", message: `Balance Balls failed: ${bbData.error ?? "unknown error"}` });
+            }
+          } catch (err) {
+            log.push({ type: "error", message: `Balance Balls: ${String(err)}` });
+          }
+        }
       }
 
       setDonsAssigningWeek(null);

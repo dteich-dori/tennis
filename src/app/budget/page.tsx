@@ -319,7 +319,16 @@ export default function BudgetPage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold mb-6">Budget</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Budget</h1>
+        <button
+          onClick={() => window.print()}
+          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors print:hidden"
+          title="Print this page or save as PDF"
+        >
+          Print / PDF
+        </button>
+      </div>
 
       {/* Parameters */}
       <div className="border border-border rounded-lg p-6 mb-6">
