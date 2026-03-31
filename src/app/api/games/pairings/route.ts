@@ -131,6 +131,7 @@ export async function GET(request: NextRequest) {
         firstName: p.firstName,
         lastName: p.lastName,
         skillLevel: p.skillLevel,
+        contractedFrequency: p.contractedFrequency,
       }));
 
     const pairingsResponse: { player1Id: number; player2Id: number; count: number }[] = [];

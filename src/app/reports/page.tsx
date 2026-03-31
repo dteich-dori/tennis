@@ -336,7 +336,7 @@ export default function ReportsPage() {
         return;
       }
       const data = (await res.json()) as {
-        players: { id: number; firstName: string; lastName: string; skillLevel: string }[];
+        players: { id: number; firstName: string; lastName: string; skillLevel: string; contractedFrequency: string }[];
         pairings: { player1Id: number; player2Id: number; count: number }[];
         doNotPairs: { playerId: number; pairedPlayerId: number }[];
       };
