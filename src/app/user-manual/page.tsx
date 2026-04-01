@@ -159,7 +159,7 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">Balance Balls</span> &mdash; On the Season Setup
                   page, use &ldquo;Balance Solo Balls&rdquo; and &ldquo;Balance Don&apos;s Balls&rdquo;
-                  season-wide. Or use per-week ball balancing on the Schedule page.
+                  to redistribute ball-bringing duty across the entire season.
                 </li>
                 <li>
                   <span className="font-semibold">Generate Reports</span> &mdash; Go to{" "}
@@ -969,18 +969,11 @@ export default function UserManualPage() {
               </ol>
 
               <h3 className="font-semibold mb-2">Where to Run It</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
-                <li>
-                  <span className="font-semibold">Season-wide</span> (Season Setup page): &ldquo;Balance
-                  Solo Balls&rdquo; and &ldquo;Balance Don&apos;s Balls&rdquo; buttons. These apply
-                  changes immediately and show a per-player summary table.
-                </li>
-                <li>
-                  <span className="font-semibold">Per-week</span> (Schedule page): &ldquo;Balls
-                  Don&apos;s&rdquo; button. This shows a preview of proposed swaps with an
-                  &ldquo;Apply Swaps&rdquo; button to confirm.
-                </li>
-              </ul>
+              <p className="text-sm leading-relaxed mb-4">
+                Use the &ldquo;Balance Solo Balls&rdquo; and &ldquo;Balance Don&apos;s Balls&rdquo; buttons on the
+                Season Setup page. These apply changes season-wide and show a per-player summary table.
+                Ball balancing also runs automatically as the final step of full-season Don&apos;s auto-assign.
+              </p>
               <div className="bg-blue-50 border border-blue-200 rounded px-4 py-3 text-sm">
                 <span className="font-semibold">Tip:</span> Run ball balancing after all player
                 assignments are complete, so the algorithm has the most data to work with.
