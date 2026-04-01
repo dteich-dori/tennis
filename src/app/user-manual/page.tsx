@@ -3,6 +3,8 @@
 // User Manual for Tennis Scheduler
 // Keep in sync with feature changes across the application.
 
+import { generateFlowchartPdf } from "@/lib/reports/flowchartPdf";
+
 const tocSections = [
   { id: "overview", label: "Overview" },
   { id: "getting-started", label: "Getting Started" },
@@ -648,7 +650,15 @@ export default function UserManualPage() {
           {/* ===== AUTO-ASSIGN: DON'S ALGORITHM ===== */}
           <section id="auto-assign-dons" className="scroll-mt-8">
             <div className="border border-border rounded-lg p-6">
-              <h2 className="font-semibold text-lg mb-4">Auto-Assign: Don&apos;s Group Algorithm</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-lg">Auto-Assign: Don&apos;s Group Algorithm</h2>
+                <button
+                  onClick={() => generateFlowchartPdf()}
+                  className="bg-primary text-white px-3 py-1.5 rounded text-xs hover:bg-primary-hover transition-colors"
+                >
+                  View Flowchart PDF
+                </button>
+              </div>
               <p className="text-sm leading-relaxed mb-4">
                 The Don&apos;s auto-assign algorithm fills all Don&apos;s game slots for a given week.
                 It can be run per-week from the Schedule page, or for all weeks at once from the
