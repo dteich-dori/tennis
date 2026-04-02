@@ -20,6 +20,7 @@ interface Player {
   isDerated: boolean;
   noEarlyGames: boolean;
   cGamesOk: boolean;
+  cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
   blockedDays: number[];
@@ -52,6 +53,7 @@ const emptyPlayer = {
   isDerated: false,
   noEarlyGames: false,
   cGamesOk: false,
+  cGamesLimit: 1 as number | null,
   soloGames: null as number | null,
   groupPct: 0,
   blockedDays: [] as number[],
@@ -141,6 +143,7 @@ export default function PlayersPage() {
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
       cGamesOk: player.cGamesOk,
+      cGamesLimit: player.cGamesLimit ?? 1,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
       blockedDays: player.blockedDays,
@@ -813,6 +816,24 @@ export default function PlayersPage() {
                 />
                 C games OK
               </label>
+              {form.cGamesOk && (
+                <label className="flex items-center gap-2 text-sm ml-6">
+                  <span>Limit:</span>
+                  <select
+                    value={form.cGamesLimit ?? 1}
+                    onChange={(e) => setForm({ ...form, cGamesLimit: parseInt(e.target.value) })}
+                    className="border border-border rounded px-2 py-1 text-sm w-24"
+                    title="Maximum A+C games per season for this player"
+                  >
+                    <option value={1}>1 / season</option>
+                    <option value={2}>2 / season</option>
+                    <option value={3}>3 / season</option>
+                    <option value={4}>4 / season</option>
+                    <option value={5}>5 / season</option>
+                    <option value={6}>6 / season</option>
+                  </select>
+                </label>
+              )}
             </div>
           </div>
 

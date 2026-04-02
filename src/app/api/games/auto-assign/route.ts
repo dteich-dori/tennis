@@ -14,6 +14,7 @@ interface PlayerData {
   noConsecutiveDays: boolean;
   noEarlyGames: boolean;
   cGamesOk: boolean;
+  cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
   groupMembers: number[];
@@ -557,7 +558,7 @@ export async function POST(request: NextRequest) {
         // A+C season limit: block A players from C-player games if they've hit their season cap
         // Non-cGamesOk A players have an effective cap of 0; cGamesOk players use maxACGamesPerSeason
         if (p.skillLevel === "A") {
-          const seasonCap = p.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+          const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? maxACGamesPerSeason ?? Infinity) : (maxACGamesPerSeason ?? 0);
           const seasonCount = acGameCounts.get(p.id) ?? 0;
           if (seasonCount >= seasonCap) {
             for (const assignedId of assignedInGame) {
@@ -570,7 +571,7 @@ export async function POST(request: NextRequest) {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
             if (!ap || ap.skillLevel !== "A") continue;
-            const seasonCap = ap.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+            const seasonCap = ap.cGamesOk ? (ap.cGamesLimit ?? maxACGamesPerSeason ?? Infinity) : (maxACGamesPerSeason ?? 0);
             const seasonCount = acGameCounts.get(ap.id) ?? 0;
             if (seasonCount >= seasonCap) return false;
           }
@@ -820,7 +821,7 @@ export async function POST(request: NextRequest) {
       if (!hasC) return false;
       return pls.some((p) => {
         if (!p || p.skillLevel !== "A") return false;
-        const seasonCap = p.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+        const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? maxACGamesPerSeason ?? Infinity) : (maxACGamesPerSeason ?? 0);
         const seasonCount = acGameCounts.get(p.id) ?? 0;
         return seasonCount >= seasonCap;
       });
@@ -1040,11 +1041,10 @@ export async function POST(request: NextRequest) {
                 if (usedOnDay.has(p.id)) return false;
                 if (!p.cGamesOk) return false;
                 if (p.skillLevel === "C") return false; // C players don't need this pass
-                // Season limit on A+C games
-                if (maxACGamesPerSeason != null) {
-                  const seasonCount = acGameCounts.get(p.id) ?? 0;
-                  if (seasonCount >= maxACGamesPerSeason) return false;
-                }
+                // Player-level A+C season limit
+                const playerCap = p.cGamesLimit ?? maxACGamesPerSeason ?? Infinity;
+                const seasonCount = acGameCounts.get(p.id) ?? 0;
+                if (seasonCount >= playerCap) return false;
                 // Already assigned a C-game this week — block (at most 1 per week for any player)
                 if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
                 // Check interval-based limit using recent history
