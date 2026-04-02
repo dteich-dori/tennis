@@ -554,17 +554,25 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // A players without cGamesOk must never share a game with C players (either direction)
-        if (p.skillLevel === "A" && !p.cGamesOk) {
-          for (const assignedId of assignedInGame) {
-            const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "C") return false;
+        // A+C season limit: block A players from C-player games if they've hit their season cap
+        // Non-cGamesOk A players have an effective cap of 0; cGamesOk players use maxACGamesPerSeason
+        if (p.skillLevel === "A") {
+          const seasonCap = p.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+          const seasonCount = acGameCounts.get(p.id) ?? 0;
+          if (seasonCount >= seasonCap) {
+            for (const assignedId of assignedInGame) {
+              const ap = playerData.find((pl) => pl.id === assignedId);
+              if (ap?.skillLevel === "C") return false;
+            }
           }
         }
         if (p.skillLevel === "C") {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "A" && !ap?.cGamesOk) return false;
+            if (!ap || ap.skillLevel !== "A") continue;
+            const seasonCap = ap.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+            const seasonCount = acGameCounts.get(ap.id) ?? 0;
+            if (seasonCount >= seasonCap) return false;
           }
         }
 
@@ -805,11 +813,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if a game has an A player (without cGamesOk) paired with a C player
+    // Check if a game roster has an A player at their A+C season cap paired with a C player
     function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
       const hasC = pls.some((p) => p?.skillLevel === "C");
-      const hasANoCGames = pls.some((p) => p?.skillLevel === "A" && !p?.cGamesOk);
-      return hasC && hasANoCGames;
+      if (!hasC) return false;
+      return pls.some((p) => {
+        if (!p || p.skillLevel !== "A") return false;
+        const seasonCap = p.cGamesOk ? (maxACGamesPerSeason ?? Infinity) : 0;
+        const seasonCount = acGameCounts.get(p.id) ?? 0;
+        return seasonCount >= seasonCap;
+      });
     }
 
     for (const [date, dateGames] of dayEntries) {
