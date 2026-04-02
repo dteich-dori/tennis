@@ -1173,8 +1173,11 @@ export default function SeasonPage() {
               >
                 <option value="1">Once per week</option>
                 <option value="2">Once per 2 weeks</option>
+                <option value="3">Once per 3 weeks</option>
                 <option value="4">Once per 4 weeks</option>
-                <option value="none">No limit</option>
+                <option value="5">Once per 5 weeks</option>
+                <option value="6">Once per 6 weeks</option>
+                <option value="0">Never</option>
               </select>
             </div>
             <div>
