@@ -555,10 +555,10 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // A+C season limit: block A players from C-player games if they've hit their season cap
-        // Non-cGamesOk A players have an effective cap of 0; cGamesOk players use maxACGamesPerSeason
+        // A+C season limit: cGamesOk A players blocked when they've hit their per-player cGamesLimit
+        // Non-cGamesOk A players are controlled by the weekly/monthly frequency settings, not blocked here
         if (p.skillLevel === "A") {
-          const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : 0;
+          const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : Infinity;
           const seasonCount = acGameCounts.get(p.id) ?? 0;
           if (seasonCount >= seasonCap) {
             for (const assignedId of assignedInGame) {
@@ -571,7 +571,7 @@ export async function POST(request: NextRequest) {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
             if (!ap || ap.skillLevel !== "A") continue;
-            const seasonCap = ap.cGamesOk ? (ap.cGamesLimit ?? Infinity) : 0;
+            const seasonCap = ap.cGamesOk ? (ap.cGamesLimit ?? Infinity) : Infinity;
             const seasonCount = acGameCounts.get(ap.id) ?? 0;
             if (seasonCount >= seasonCap) return false;
           }
@@ -821,7 +821,7 @@ export async function POST(request: NextRequest) {
       if (!hasC) return false;
       return pls.some((p) => {
         if (!p || p.skillLevel !== "A") return false;
-        const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : 0;
+        const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : Infinity;
         const seasonCount = acGameCounts.get(p.id) ?? 0;
         return seasonCount >= seasonCap;
       });
