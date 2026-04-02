@@ -186,7 +186,7 @@ export function generatePlayerStatsPdf(
         : (freq === 0 ? "Sub" : String(freq));
 
       const contractTotal36 = freq * 36;
-      const deficit = stat.std - contractTotal36;
+      const deficit = contractTotal36 - stat.std;
       const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
 
       const values = group === "dons"
@@ -264,7 +264,7 @@ export function generatePlayerStatsPdf(
     doc.setFontSize(9);
     const totalDeficit = sectionStats.reduce((sum, s) => {
       const freq = parseInt(s.frequency) || 0;
-      return freq > 0 ? sum + (s.std - freq * 36) : sum;
+      return freq > 0 ? sum + (freq * 36 - s.std) : sum;
     }, 0);
     const totalVacGameDays = sectionStats.reduce((sum, s) => sum + (s.vacationGamesLost ?? 0), 0);
     const totalMadeUpVac = sectionStats.reduce((sum, s) => sum + (s.madeUpVac ?? 0), 0);
