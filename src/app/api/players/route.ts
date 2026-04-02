@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
       isDerated,
       noEarlyGames,
       cGamesOk,
+      cGamesLimit,
       soloGames,
       blockedDays,
       vacations,
@@ -206,6 +207,7 @@ export async function POST(request: NextRequest) {
         isDerated: isDerated ?? false,
         noEarlyGames: noEarlyGames ?? false,
         cGamesOk: cGamesOk ?? false,
+        cGamesLimit: cGamesLimit ?? 1,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
       })
@@ -281,6 +283,7 @@ export async function PUT(request: NextRequest) {
       isDerated,
       noEarlyGames,
       cGamesOk,
+      cGamesLimit,
       soloGames,
       blockedDays,
       vacations,
@@ -319,6 +322,7 @@ export async function PUT(request: NextRequest) {
       isDerated: isDerated !== undefined ? isDerated : currentPlayer.isDerated,
       noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
       cGamesOk: cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
+      cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
       groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,
     };
