@@ -1107,6 +1107,7 @@ export default function PlayersPage() {
               <th className="text-left px-2 py-1 border-b border-border">Solo</th>
               <th className="text-left px-2 py-1 border-b border-border">Active</th>
               <th className="text-left px-2 py-1 border-b border-border">Drtd</th>
+              <th className="text-left px-2 py-1 border-b border-border">cOK</th>
               <th className="text-left px-2 py-1 border-b border-border">Blocked Days</th>
               <th className="text-left px-2 py-1 border-b border-border">Vacations</th>
               <th className="text-left px-2 py-1 border-b border-border">Does Not Play With</th>
@@ -1141,6 +1142,7 @@ export default function PlayersPage() {
                 </td>
                 <td className="px-2 py-1">{player.isActive ? "Yes" : "No"}</td>
                 <td className="px-2 py-1">{player.isDerated ? "✓" : "-"}</td>
+                <td className="px-2 py-1">{player.cGamesOk ? (player.cGamesLimit ? `${player.cGamesLimit}wk` : "✓") : "-"}</td>
                 <td className="px-2 py-1">
                   {player.blockedDays.map((d) => DAYS[d]).join(", ") || "-"}
                 </td>
