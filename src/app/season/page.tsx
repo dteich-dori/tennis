@@ -1187,10 +1187,13 @@ export default function SeasonPage() {
                 className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
                 title="Frequency of C-player games for 1x cGamesOk players. Value is weeks between C games (e.g., 4 = once per month)."
               >
-                <option value="4">Once per 4 weeks</option>
-                <option value="3">Once per 3 weeks</option>
+                <option value="1">Once per week</option>
                 <option value="2">Once per 2 weeks</option>
-                <option value="none">No limit</option>
+                <option value="3">Once per 3 weeks</option>
+                <option value="4">Once per 4 weeks</option>
+                <option value="5">Once per 5 weeks</option>
+                <option value="6">Once per 6 weeks</option>
+                <option value="0">Never</option>
               </select>
             </div>
           </div>
