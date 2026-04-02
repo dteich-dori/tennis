@@ -1193,23 +1193,6 @@ export default function SeasonPage() {
                 <option value="none">No limit</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                A+C Limit (non-cOK)
-              </label>
-              <select
-                value={maxACGamesPerSeason}
-                onChange={(e) => setMaxACGamesPerSeason(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Maximum A+C games per season for A players WITHOUT cGamesOk. cGamesOk players have their own limit set in their profile."
-              >
-                <option value="0">0 (never)</option>
-                <option value="1">1 per season</option>
-                <option value="2">2 per season</option>
-                <option value="3">3 per season</option>
-                <option value="4">4 per season</option>
-              </select>
-            </div>
           </div>
         </div>
 
