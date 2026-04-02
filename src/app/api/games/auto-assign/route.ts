@@ -204,6 +204,39 @@ export async function POST(request: NextRequest) {
       stdDonsCounts.set(row.playerId, row.count);
     }
 
+    // Count existing A+C games per player for the season (for maxACGamesPerSeason limit)
+    const acGameCounts = new Map<number, number>(); // playerId → number of games shared with C players
+    {
+      // Load all Don's game assignments for the season
+      const allDonsGameRows = await database
+        .select({ gameId: gameAssignments.gameId, playerId: gameAssignments.playerId })
+        .from(gameAssignments)
+        .innerJoin(games, eq(gameAssignments.gameId, games.id))
+        .where(and(eq(games.seasonId, seasonId), eq(games.group, "dons"), eq(games.status, "normal")));
+
+      // Group by game
+      const byGame = new Map<number, number[]>();
+      for (const r of allDonsGameRows) {
+        const arr = byGame.get(r.gameId) ?? [];
+        arr.push(r.playerId);
+        byGame.set(r.gameId, arr);
+      }
+
+      // For each game with a C player, count non-C players as having an A+C game
+      for (const [, pids] of byGame) {
+        const hasC = pids.some((pid) => {
+          const p = playerData.find((pl) => pl.id === pid);
+          return p?.skillLevel === "C";
+        });
+        if (!hasC) continue;
+        for (const pid of pids) {
+          const p = playerData.find((pl) => pl.id === pid);
+          if (p && p.skillLevel !== "C") {
+            acGameCounts.set(pid, (acGameCounts.get(pid) ?? 0) + 1);
+          }
+        }
+      }
+    }
 
     // 6. Per-day availability check
     const gamesByDate = new Map<string, GameData[]>();
@@ -227,6 +260,7 @@ export async function POST(request: NextRequest) {
     const maxDeratedPerWeek = seasonRecord?.maxDeratedPerWeek;
     const maxCGamesPerWeek = seasonRecord?.maxCGamesPerWeek ?? 1;
     const maxCGamesPerWeek1x = seasonRecord?.maxCGamesPerWeek1x ?? 4; // weeks between C games for 1x players
+    const maxACGamesPerSeason = seasonRecord?.maxACGamesPerSeason ?? 1; // max A+C games per season
 
     let prevWeekGamesData: GameData[] = [];
     if (maxDeratedPerWeek === 2 && weekNumber > 1) {
@@ -992,6 +1026,11 @@ export async function POST(request: NextRequest) {
                 if (usedOnDay.has(p.id)) return false;
                 if (!p.cGamesOk) return false;
                 if (p.skillLevel === "C") return false; // C players don't need this pass
+                // Season limit on A+C games
+                if (maxACGamesPerSeason != null) {
+                  const seasonCount = acGameCounts.get(p.id) ?? 0;
+                  if (seasonCount >= maxACGamesPerSeason) return false;
+                }
                 // Already assigned a C-game this week — block (at most 1 per week for any player)
                 if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
                 // Check interval-based limit using recent history
@@ -1051,6 +1090,7 @@ export async function POST(request: NextRequest) {
               pass28Count++;
               cGameWtdCounts.set(chosen.id, (cGameWtdCounts.get(chosen.id) ?? 0) + 1);
               lastCGameWeek.set(chosen.id, weekNumber);
+              acGameCounts.set(chosen.id, (acGameCounts.get(chosen.id) ?? 0) + 1);
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
             } else if (passUsed === 3) {
               pass3Count++;

@@ -11,6 +11,7 @@ interface Season {
   maxDeratedPerWeek: number | null;
   maxCGamesPerWeek: number | null;
   maxCGamesPerWeek1x: number | null;
+  maxACGamesPerSeason: number | null;
 }
 
 interface Holiday {
@@ -51,6 +52,7 @@ export default function SeasonPage() {
   const [maxDeratedPerWeek, setMaxDeratedPerWeek] = useState<string>("none");
   const [maxCGamesPerWeek, setMaxCGamesPerWeek] = useState<string>("1");
   const [maxCGamesPerWeek1x, setMaxCGamesPerWeek1x] = useState<string>("4");
+  const [maxACGamesPerSeason, setMaxACGamesPerSeason] = useState<string>("1");
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -125,6 +127,7 @@ export default function SeasonPage() {
       setMaxDeratedPerWeek(latest.maxDeratedPerWeek != null ? String(latest.maxDeratedPerWeek) : "none");
       setMaxCGamesPerWeek(latest.maxCGamesPerWeek != null ? String(latest.maxCGamesPerWeek) : "none");
       setMaxCGamesPerWeek1x(latest.maxCGamesPerWeek1x != null ? String(latest.maxCGamesPerWeek1x) : "none");
+      setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
     }
   }, []);
 
@@ -241,6 +244,22 @@ export default function SeasonPage() {
       body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxCGamesPerWeek1x: cGamesValue }),
     });
   }, [maxCGamesPerWeek1x, activeSeason]);
+
+  // Auto-save A+C games per season setting
+  const acSeasonInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!acSeasonInitialized.current) {
+      acSeasonInitialized.current = true;
+      return;
+    }
+    const val = maxACGamesPerSeason === "none" ? null : parseInt(maxACGamesPerSeason);
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxACGamesPerSeason: val }),
+    });
+  }, [maxACGamesPerSeason, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -1171,6 +1190,22 @@ export default function SeasonPage() {
                 <option value="4">Once per 4 weeks</option>
                 <option value="3">Once per 3 weeks</option>
                 <option value="2">Once per 2 weeks</option>
+                <option value="none">No limit</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                A+C Games / Season
+              </label>
+              <select
+                value={maxACGamesPerSeason}
+                onChange={(e) => setMaxACGamesPerSeason(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Maximum number of A+C games per season for each cGamesOk player."
+              >
+                <option value="1">1 per season</option>
+                <option value="2">2 per season</option>
+                <option value="3">3 per season</option>
                 <option value="none">No limit</option>
               </select>
             </div>
