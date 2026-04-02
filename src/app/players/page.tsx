@@ -818,19 +818,19 @@ export default function PlayersPage() {
               </label>
               {form.cGamesOk && (
                 <label className="flex items-center gap-2 text-sm ml-6">
-                  <span>Limit:</span>
+                  <span>Frequency:</span>
                   <select
-                    value={form.cGamesLimit ?? 1}
+                    value={form.cGamesLimit ?? 4}
                     onChange={(e) => setForm({ ...form, cGamesLimit: parseInt(e.target.value) })}
-                    className="border border-border rounded px-2 py-1 text-sm w-24"
-                    title="Maximum A+C games per season for this player"
+                    className="border border-border rounded px-2 py-1 text-sm w-32"
+                    title="Weeks between A+C games for this cGamesOk player"
                   >
-                    <option value={1}>1 / season</option>
-                    <option value={2}>2 / season</option>
-                    <option value={3}>3 / season</option>
-                    <option value={4}>4 / season</option>
-                    <option value={5}>5 / season</option>
-                    <option value={6}>6 / season</option>
+                    <option value={1}>Every week</option>
+                    <option value={2}>Every 2 weeks</option>
+                    <option value={3}>Every 3 weeks</option>
+                    <option value={4}>Every 4 weeks</option>
+                    <option value={5}>Every 5 weeks</option>
+                    <option value={6}>Every 6 weeks</option>
                   </select>
                 </label>
               )}

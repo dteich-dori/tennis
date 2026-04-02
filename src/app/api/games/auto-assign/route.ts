@@ -555,12 +555,13 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // A+C season limit: cGamesOk A players blocked when they've hit their per-player cGamesLimit
-        // Non-cGamesOk A players are controlled by the weekly/monthly frequency settings, not blocked here
-        if (p.skillLevel === "A") {
-          const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : Infinity;
-          const seasonCount = acGameCounts.get(p.id) ?? 0;
-          if (seasonCount >= seasonCap) {
+        // A+C frequency limit: check if player has had a recent A+C game within their interval
+        // cGamesOk players use their per-player cGamesLimit (weeks between A+C games)
+        // Non-cGamesOk A players use the season-level 1x/2x frequency settings
+        if (p.skillLevel === "A" && p.cGamesOk) {
+          const interval = p.cGamesLimit ?? Infinity;
+          const lastWeek = lastCGameWeek.get(p.id) ?? 0;
+          if (lastWeek > 0 && weekNumber - lastWeek < interval) {
             for (const assignedId of assignedInGame) {
               const ap = playerData.find((pl) => pl.id === assignedId);
               if (ap?.skillLevel === "C") return false;
@@ -570,10 +571,10 @@ export async function POST(request: NextRequest) {
         if (p.skillLevel === "C") {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
-            if (!ap || ap.skillLevel !== "A") continue;
-            const seasonCap = ap.cGamesOk ? (ap.cGamesLimit ?? Infinity) : Infinity;
-            const seasonCount = acGameCounts.get(ap.id) ?? 0;
-            if (seasonCount >= seasonCap) return false;
+            if (!ap || ap.skillLevel !== "A" || !ap.cGamesOk) continue;
+            const interval = ap.cGamesLimit ?? Infinity;
+            const lastWeek = lastCGameWeek.get(ap.id) ?? 0;
+            if (lastWeek > 0 && weekNumber - lastWeek < interval) return false;
           }
         }
 
@@ -815,15 +816,16 @@ export async function POST(request: NextRequest) {
 
     // Check if a game has an A player (without cGamesOk) paired with a C player
     // Check if a game roster has an A player at their A+C season cap paired with a C player
+    // Check if a game roster has a cGamesOk A player who recently had an A+C game (within their interval)
     function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
       const hasC = pls.some((p) => p?.skillLevel === "C");
       if (!hasC) return false;
       return pls.some((p) => {
-        if (!p || p.skillLevel !== "A") return false;
-        const seasonCap = p.cGamesOk ? (p.cGamesLimit ?? Infinity) : Infinity;
-        const seasonCount = acGameCounts.get(p.id) ?? 0;
-        return seasonCount >= seasonCap;
+        if (!p || p.skillLevel !== "A" || !p.cGamesOk) return false;
+        const interval = p.cGamesLimit ?? Infinity;
+        const lastWeek = lastCGameWeek.get(p.id) ?? 0;
+        return lastWeek > 0 && weekNumber - lastWeek < interval;
       });
     }
 
@@ -1041,10 +1043,10 @@ export async function POST(request: NextRequest) {
                 if (usedOnDay.has(p.id)) return false;
                 if (!p.cGamesOk) return false;
                 if (p.skillLevel === "C") return false; // C players don't need this pass
-                // Player-level A+C season limit
-                const playerCap = p.cGamesLimit ?? Infinity;
-                const seasonCount = acGameCounts.get(p.id) ?? 0;
-                if (seasonCount >= playerCap) return false;
+                // Player-level A+C frequency limit (weeks between A+C games)
+                const playerInterval = p.cGamesLimit ?? Infinity;
+                const playerLastWeek = lastCGameWeek.get(p.id) ?? 0;
+                if (playerLastWeek > 0 && weekNumber - playerLastWeek < playerInterval) return false;
                 // Already assigned a C-game this week — block (at most 1 per week for any player)
                 if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
                 // Check interval-based limit using recent history
