@@ -12,8 +12,26 @@ interface Recipient {
   id: number;
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
+  cellNumber: string | null;
+  carrier: string | null;
+  hasEmail: boolean;
+  hasSms: boolean;
 }
+
+const CARRIERS = [
+  { value: "", label: "— Carrier —" },
+  { value: "verizon", label: "Verizon" },
+  { value: "att", label: "AT&T" },
+  { value: "tmobile", label: "T-Mobile" },
+  { value: "sprint", label: "Sprint" },
+  { value: "uscellular", label: "US Cellular" },
+  { value: "boost", label: "Boost Mobile" },
+  { value: "cricket", label: "Cricket" },
+  { value: "metro", label: "Metro by T-Mobile" },
+];
+
+type Channel = "email" | "sms" | "both";
 
 interface Template {
   id: number;
@@ -49,8 +67,13 @@ export default function CommunicationsPage() {
   const [fromName, setFromName] = useState("Tennis Club");
   const [replyTo, setReplyTo] = useState("");
   const [testEmail, setTestEmail] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [testCarrier, setTestCarrier] = useState("");
   const [questionnaireUrl, setQuestionnaireUrl] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
+
+  // Channel selection
+  const [channel, setChannel] = useState<Channel>("both");
 
   // Compose
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("ALL");
@@ -84,10 +107,19 @@ export default function CommunicationsPage() {
   // Load settings
   const loadSettings = useCallback(async (seasonId: number) => {
     const res = await fetch(`/api/communications/settings?seasonId=${seasonId}`);
-    const data = (await res.json()) as { fromName: string; replyTo: string; testEmail: string; questionnaireUrl: string };
+    const data = (await res.json()) as {
+      fromName: string;
+      replyTo: string;
+      testEmail: string;
+      testPhone?: string;
+      testCarrier?: string;
+      questionnaireUrl: string;
+    };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
     setTestEmail(data.testEmail || "");
+    setTestPhone(data.testPhone || "");
+    setTestCarrier(data.testCarrier || "");
     setQuestionnaireUrl(data.questionnaireUrl || "");
   }, []);
 
@@ -133,7 +165,7 @@ export default function CommunicationsPage() {
     const res = await fetch("/api/communications/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, questionnaireUrl }),
+      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, testPhone, testCarrier, questionnaireUrl }),
     });
     if (res.ok) {
       setSettingsMessage("Settings saved.");
@@ -147,9 +179,10 @@ export default function CommunicationsPage() {
   const handleSend = async () => {
     if (!season || !subject.trim() || !messageBody.trim()) return;
 
+    const channelLabel = channel === "email" ? "Email only" : channel === "sms" ? "Text only" : "Email + Text";
     const confirmMsg = recipientGroup === "Test"
-      ? `Send test email to ${testEmail}?`
-      : `Send email to ${recipientCount} recipient${recipientCount !== 1 ? "s" : ""} (${recipientGroup})?\n\nSubject: ${subject}`;
+      ? `Send test (${channelLabel})?`
+      : `Send "${channelLabel}" to ${recipientCount} recipient${recipientCount !== 1 ? "s" : ""} (${recipientGroup})?\n\nSubject: ${subject}`;
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -168,27 +201,40 @@ export default function CommunicationsPage() {
           body: messageBody,
           fromName,
           replyTo,
+          channel,
         }),
       });
-      const data = (await res.json()) as { success?: boolean; recipientCount?: number; error?: string; warnings?: string[] };
+      const data = (await res.json()) as {
+        success?: boolean;
+        recipientCount?: number;
+        emailsSent?: number;
+        smsSent?: number;
+        error?: string;
+        warnings?: string[];
+      };
 
       if (data.success) {
+        const emailsSent = data.emailsSent ?? 0;
+        const smsSent = data.smsSent ?? 0;
+        const parts: string[] = [];
+        if (emailsSent > 0) parts.push(`${emailsSent} email${emailsSent !== 1 ? "s" : ""}`);
+        if (smsSent > 0) parts.push(`${smsSent} text${smsSent !== 1 ? "s" : ""}`);
+        const summary = parts.length > 0 ? parts.join(", ") : `${data.recipientCount ?? 0} recipients`;
+
         if (data.warnings && data.warnings.length > 0) {
-          if (data.recipientCount === 0) {
-            // All failed — show as error
-            setSendError(`All emails failed to send.\n${data.warnings.join("\n")}`);
+          if ((data.recipientCount ?? 0) === 0) {
+            setSendError(`All messages failed to send.\n${data.warnings.join("\n")}`);
           } else {
-            // Partial success
-            setSendMessage(`Email sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? "s" : ""}.`);
-            setSendError(`Some emails failed:\n${data.warnings.join("\n")}`);
+            setSendMessage(`Sent: ${summary}.`);
+            setSendError(`Some messages failed:\n${data.warnings.join("\n")}`);
           }
         } else {
-          setSendMessage(`Email sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? "s" : ""}.`);
+          setSendMessage(`Sent: ${summary}.`);
         }
         // Refresh history
         loadHistory(season.id);
       } else {
-        setSendError(data.error || "Failed to send email.");
+        setSendError(data.error || "Failed to send message.");
       }
     } catch {
       setSendError("Network error. Please try again.");
@@ -338,6 +384,33 @@ export default function CommunicationsPage() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-4 mt-3">
+              <div>
+                <label className="block text-xs font-medium mb-1">Test Phone</label>
+                <input
+                  type="tel"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  placeholder="10 digits"
+                  title="Phone number for SMS testing"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">Test Carrier</label>
+                <select
+                  value={testCarrier}
+                  onChange={(e) => setTestCarrier(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  title="Mobile carrier for SMS gateway"
+                >
+                  {CARRIERS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div />
+            </div>
             <div className="mt-3">
               <label className="block text-xs font-medium mb-1">Questionnaire URL (Google Forms)</label>
               <input
@@ -360,7 +433,7 @@ export default function CommunicationsPage() {
               )}
             </div>
             <p className="mt-2 text-xs text-muted">
-              Note: Emails are sent from <strong>onboarding@resend.dev</strong> (Resend free tier). The From Name is displayed as the sender, and replies go to the Reply-To address.
+              Note: Emails are sent from your configured Gmail account. The From Name is displayed as the sender, and replies go to the Reply-To address. SMS uses carrier email gateways (e.g. <code>@vtext.com</code>) — players need a phone + carrier configured.
             </p>
           </div>
 
@@ -407,12 +480,15 @@ export default function CommunicationsPage() {
                 {recipients.map((r, idx) => (
                   <div
                     key={r.id}
-                    className={`px-3 py-1.5 text-sm flex justify-between ${
+                    className={`px-3 py-1.5 text-sm flex justify-between items-center ${
                       idx % 2 === 0 ? "bg-white" : "bg-[#fdf8f0]"
                     }`}
                   >
                     <span>{r.lastName}, {r.firstName}</span>
-                    <span className="text-muted">{r.email}</span>
+                    <span className="text-muted text-xs">
+                      {r.hasEmail && <span title={r.email || ""}>📧</span>}
+                      {r.hasSms && <span className="ml-1" title={`${r.cellNumber} (${r.carrier})`}>📱</span>}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -482,19 +558,43 @@ export default function CommunicationsPage() {
             />
           </div>
 
+          {/* Channel selection */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Send Via</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Send to both email AND text (players with both get both)">
+                <input type="radio" name="channel" value="both" checked={channel === "both"} onChange={() => setChannel("both")} />
+                Email + Text
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Email only to all players with an email address">
+                <input type="radio" name="channel" value="email" checked={channel === "email"} onChange={() => setChannel("email")} />
+                Email only
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Prefer text; players without phone+carrier get email instead">
+                <input type="radio" name="channel" value="sms" checked={channel === "sms"} onChange={() => setChannel("sms")} />
+                Text only
+              </label>
+            </div>
+            <p className="text-xs text-muted mt-1">
+              {channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
+              {channel === "email" && "All players with email receive an email."}
+              {channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
+            </p>
+          </div>
+
           {/* Send */}
           <div className="flex items-center gap-4">
             <button
               onClick={handleSend}
-              disabled={sending || !subject.trim() || !messageBody.trim() || (recipientGroup === "Test" && !testEmail)}
+              disabled={sending || !subject.trim() || !messageBody.trim() || (recipientGroup === "Test" && !testEmail && !(testPhone && testCarrier))}
               className="px-6 py-2 bg-primary text-white rounded font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {sending ? "Sending..." : "Send Email"}
+              {sending ? "Sending..." : "Send"}
             </button>
 
             {recipientCount > 100 && recipientGroup !== "Test" && (
               <span className="text-sm text-amber-600">
-                ⚠ {recipientCount} recipients. Resend free tier allows 100 emails/day.
+                ⚠ {recipientCount} recipients. Gmail SMTP free tier allows 500 emails/day.
               </span>
             )}
           </div>

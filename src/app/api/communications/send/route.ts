@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { db } from "@/db/getDb";
 import { players, emailSettings, emailLog } from "@/db/schema";
 import { eq, and, ne, isNotNull } from "drizzle-orm";
-
-interface Recipient {
-  id: number;
-  firstName: string;
-  lastName: string;
-  email: string | null;
-}
+import {
+  sendBulkEmails,
+  sendBulkSms,
+  validateEmailConfig,
+  type Recipient,
+  type SmsRecipient,
+} from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +19,17 @@ export async function POST(request: NextRequest) {
       body: string;
       fromName: string;
       replyTo: string;
+      channel?: "email" | "sms" | "both";
     };
-    const { seasonId, recipientGroup, subject, body: messageBody, fromName, replyTo } = body;
+    const {
+      seasonId,
+      recipientGroup,
+      subject,
+      body: messageBody,
+      fromName,
+      replyTo,
+      channel = "both",
+    } = body;
 
     if (!seasonId || !subject || !messageBody) {
       return NextResponse.json(
@@ -30,143 +38,153 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey || apiKey === "re_your_resend_api_key") {
-      return NextResponse.json(
-        { error: "RESEND_API_KEY is not configured. Please set it in your environment variables." },
-        { status: 500 }
-      );
+    const configError = validateEmailConfig();
+    if (configError) {
+      return NextResponse.json({ error: configError }, { status: 500 });
     }
 
     const database = await db();
-    let recipients: Recipient[] = [];
+
+    // Load settings for test phone/carrier
+    const settingsRows = await database
+      .select()
+      .from(emailSettings)
+      .where(eq(emailSettings.seasonId, seasonId));
+    const settings = settingsRows[0];
+
+    let emailRecipients: Recipient[] = [];
+    let smsRecipients: SmsRecipient[] = [];
+    const recipientNamesForLog: string[] = [];
 
     if (recipientGroup === "Test") {
-      // Get test email from settings
-      const settings = await database
-        .select()
-        .from(emailSettings)
-        .where(eq(emailSettings.seasonId, seasonId));
+      const testEmail = settings?.testEmail || "";
+      const testPhone = settings?.testPhone || "";
+      const testCarrier = settings?.testCarrier || "";
+      const hasTestEmail = !!testEmail;
+      const hasTestSms = !!(testPhone && testCarrier);
 
-      const testEmail = settings.length > 0 ? settings[0].testEmail : "";
-      if (!testEmail) {
+      if (!hasTestEmail && !hasTestSms) {
         return NextResponse.json(
-          { error: "No test email configured. Set one in Settings." },
+          { error: "No test email or phone configured. Set one in Settings." },
           { status: 400 }
         );
       }
 
-      recipients = [{ id: 0, firstName: "Test", lastName: "Recipient", email: testEmail }];
+      if (channel === "email") {
+        if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail });
+      } else if (channel === "sms") {
+        if (hasTestSms) {
+          smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier });
+        } else if (hasTestEmail) {
+          emailRecipients.push({ name: "Test (SMS fallback)", email: testEmail });
+        }
+      } else {
+        // "both" — send via both channels
+        if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail });
+        if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier });
+      }
+
+      recipientNamesForLog.push("Test");
     } else {
-      // Query active players with email
+      // Query active players (include phone + carrier)
       const allPlayers = await database
         .select({
           id: players.id,
           firstName: players.firstName,
           lastName: players.lastName,
           email: players.email,
+          cellNumber: players.cellNumber,
+          carrier: players.carrier,
           contractedFrequency: players.contractedFrequency,
         })
         .from(players)
         .where(
           and(
             eq(players.seasonId, seasonId),
-            eq(players.isActive, true),
-            isNotNull(players.email),
-            ne(players.email, "")
+            eq(players.isActive, true)
           )
         );
 
+      // Filter by group
+      let filtered = allPlayers;
       if (recipientGroup === "Contract Players") {
-        recipients = allPlayers.filter((p) => p.contractedFrequency !== "0");
+        filtered = allPlayers.filter((p) => p.contractedFrequency !== "0");
       } else if (recipientGroup === "Subs") {
-        recipients = allPlayers.filter((p) => p.contractedFrequency === "0");
-      } else {
-        // ALL
-        recipients = allPlayers;
+        filtered = allPlayers.filter((p) => p.contractedFrequency === "0");
+      }
+
+      // Build email / SMS recipient lists based on channel
+      for (const p of filtered) {
+        const name = `${p.firstName} ${p.lastName}`;
+        const hasEmail = !!(p.email && p.email.trim());
+        const hasSms = !!(p.cellNumber && p.carrier);
+
+        if (channel === "email") {
+          if (hasEmail) emailRecipients.push({ name, email: p.email! });
+        } else if (channel === "sms") {
+          if (hasSms) {
+            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
+          } else if (hasEmail) {
+            // Fallback to email when no SMS configured
+            emailRecipients.push({ name, email: p.email! });
+          }
+        } else {
+          // "both" — send to both channels where available (may overlap)
+          if (hasEmail) emailRecipients.push({ name, email: p.email! });
+          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
+        }
+        if (hasEmail || hasSms) recipientNamesForLog.push(name);
       }
     }
 
-    if (recipients.length === 0) {
+    if (emailRecipients.length === 0 && smsRecipients.length === 0) {
       return NextResponse.json(
-        { error: "No recipients with email addresses found in this group." },
+        { error: "No recipients with valid email or SMS setup found in this group." },
         { status: 400 }
       );
     }
 
-    // Send via Resend
-    const resend = new Resend(apiKey);
-    const fromAddress = `${fromName} <onboarding@resend.dev>`;
-
-    // Validate and clean email addresses
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const validRecipients: typeof recipients = [];
-    const skipped: string[] = [];
-
-    for (const r of recipients) {
-      if (!r.email) continue;
-      const cleaned = r.email.replace(/\s/g, ""); // remove spaces
-      if (emailRegex.test(cleaned)) {
-        validRecipients.push({ ...r, email: cleaned });
-      } else {
-        skipped.push(`${r.firstName} ${r.lastName} (${r.email}): invalid email format`);
-      }
+    // Send
+    const emailResult = await sendBulkEmails(emailRecipients, subject, messageBody, fromName, replyTo);
+    let smsResult = { sent: 0, smsSent: 0, errors: [] as string[], skipped: [] as string[], recipients: [] as string[] };
+    if (smsRecipients.length > 0) {
+      smsResult = await sendBulkSms(smsRecipients, messageBody, fromName);
     }
 
-    // Build email list
-    const emails = validRecipients.map((r) => ({
-      from: fromAddress,
-      to: r.email!,
-      reply_to: replyTo || undefined,
-      subject,
-      text: messageBody,
-    }));
-
-    // Send individually so one bad email doesn't fail the whole batch
-    let totalSent = 0;
-    const errors: string[] = [...skipped];
-
-    for (const email of emails) {
-      const result = await resend.emails.send(email);
-      if (result.error) {
-        errors.push(`${email.to}: ${result.error.message}`);
-      } else {
-        totalSent += 1;
-      }
-    }
+    const totalSent = emailResult.sent + smsResult.smsSent;
+    const channelLabel =
+      channel === "email" ? "Email" : channel === "sms" ? "Text" : "Email+Text";
 
     // Log the send
-    const recipientNames = recipients
-      .map((r) => `${r.firstName} ${r.lastName}`)
-      .join(", ");
-
     await database.insert(emailLog).values({
       seasonId,
       subject,
       body: messageBody,
-      recipientGroup,
+      recipientGroup: `${recipientGroup} (${channelLabel})`,
       recipientCount: totalSent,
-      recipientList: recipientNames,
+      recipientList: recipientNamesForLog.join(", "),
       fromName,
       replyTo: replyTo || "",
     });
 
-    if (errors.length > 0) {
-      return NextResponse.json({
-        success: true,
-        recipientCount: totalSent,
-        warnings: errors,
-      });
-    }
+    const warnings = [
+      ...emailResult.skipped,
+      ...emailResult.errors,
+      ...smsResult.skipped,
+      ...smsResult.errors,
+    ];
 
     return NextResponse.json({
       success: true,
       recipientCount: totalSent,
+      emailsSent: emailResult.sent,
+      smsSent: smsResult.smsSent,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
   } catch (err) {
     console.error("[communications/send POST] error:", err);
     return NextResponse.json(
-      { error: "Failed to send emails" },
+      { error: "Failed to send messages" },
       { status: 500 }
     );
   }
