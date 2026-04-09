@@ -515,7 +515,7 @@ export default function CommunicationsPage() {
                     name="recipientGroup"
                     value={group}
                     checked={recipientGroup === group}
-                    onChange={() => setRecipientGroup(group)}
+                    onChange={() => { clearSendBanners(); setRecipientGroup(group); }}
                   />
                   {group}
                 </label>
@@ -527,7 +527,7 @@ export default function CommunicationsPage() {
               <div className="mt-2">
                 <select
                   value={selectedPlayerId ?? ""}
-                  onChange={(e) => setSelectedPlayerId(e.target.value ? parseInt(e.target.value) : null)}
+                  onChange={(e) => { clearSendBanners(); setSelectedPlayerId(e.target.value ? parseInt(e.target.value) : null); }}
                   className="border border-border rounded px-3 py-1.5 text-sm w-64 bg-white"
                 >
                   <option value="">— Select a player —</option>
