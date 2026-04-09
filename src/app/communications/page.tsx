@@ -56,7 +56,7 @@ interface HistoryEntry {
   sentAt: string;
 }
 
-type RecipientGroup = "ALL" | "Contract Players" | "Subs" | "Test";
+type RecipientGroup = "ALL" | "Contract Players" | "Subs" | "Player" | "Test";
 type TabView = "compose" | "templates" | "history";
 
 export default function CommunicationsPage() {
@@ -100,6 +100,9 @@ export default function CommunicationsPage() {
   const [testFirstEventOnly, setTestFirstEventOnly] = useState(true);
   const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null }[]>([]);
 
+  // Single-player recipient (used when recipientGroup === "Player")
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
@@ -139,6 +142,11 @@ export default function CommunicationsPage() {
 
   // Load recipients for selected group
   const loadRecipients = useCallback(async (seasonId: number, group: RecipientGroup) => {
+    if (group === "Player") {
+      // Single-player mode — count is driven by selectedPlayerId, not the API
+      setRecipients([]);
+      return;
+    }
     const res = await fetch(`/api/communications/recipients?seasonId=${seasonId}&group=${group}`);
     const data = (await res.json()) as { recipients: Recipient[]; count: number; message?: string };
     setRecipients(data.recipients);
@@ -196,6 +204,13 @@ export default function CommunicationsPage() {
     setTestAsPlayerId((byEmail ?? activePlayers[0]).id);
   }, [activePlayers, testEmail, testAsPlayerId]);
 
+  // Keep recipientCount in sync when in single-Player mode
+  useEffect(() => {
+    if (recipientGroup === "Player") {
+      setRecipientCount(selectedPlayerId != null ? 1 : 0);
+    }
+  }, [recipientGroup, selectedPlayerId]);
+
   // Save settings
   const handleSaveSettings = async () => {
     if (!season) return;
@@ -218,9 +233,20 @@ export default function CommunicationsPage() {
     if (!season || !subject.trim() || !messageBody.trim()) return;
 
     const channelLabel = channel === "email" ? "Email only" : channel === "sms" ? "Text only" : "Email + Text";
-    const confirmMsg = recipientGroup === "Test"
-      ? `Send test (${channelLabel})?`
-      : `Send "${channelLabel}" to ${recipientCount} recipient${recipientCount !== 1 ? "s" : ""} (${recipientGroup})?\n\nSubject: ${subject}`;
+    let confirmMsg: string;
+    if (recipientGroup === "Test") {
+      confirmMsg = `Send test (${channelLabel})?`;
+    } else if (recipientGroup === "Player") {
+      if (selectedPlayerId == null) {
+        setSendError("Please select a player from the dropdown.");
+        return;
+      }
+      const p = activePlayers.find((x) => x.id === selectedPlayerId);
+      const name = p ? `${p.firstName} ${p.lastName}` : "selected player";
+      confirmMsg = `Send "${channelLabel}" to ${name}?\n\nSubject: ${subject}`;
+    } else {
+      confirmMsg = `Send "${channelLabel}" to ${recipientCount} recipient${recipientCount !== 1 ? "s" : ""} (${recipientGroup})?\n\nSubject: ${subject}`;
+    }
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -242,6 +268,7 @@ export default function CommunicationsPage() {
           replyTo,
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
+          selectedPlayerId: recipientGroup === "Player" ? selectedPlayerId : undefined,
           testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
           icsFirstEventOnly: recipientGroup === "Test" && attachPersonalSchedule && testFirstEventOnly,
         }),
@@ -481,7 +508,7 @@ export default function CommunicationsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Recipient Group</label>
             <div className="flex gap-4">
-              {(["ALL", "Contract Players", "Subs", "Test"] as RecipientGroup[]).map((group) => (
+              {(["ALL", "Contract Players", "Subs", "Player", "Test"] as RecipientGroup[]).map((group) => (
                 <label key={group} className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="radio"
@@ -495,6 +522,25 @@ export default function CommunicationsPage() {
               ))}
             </div>
 
+            {/* Single-player dropdown */}
+            {recipientGroup === "Player" && (
+              <div className="mt-2">
+                <select
+                  value={selectedPlayerId ?? ""}
+                  onChange={(e) => setSelectedPlayerId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="border border-border rounded px-3 py-1.5 text-sm w-64 bg-white"
+                >
+                  <option value="">— Select a player —</option>
+                  {activePlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.lastName}, {p.firstName}
+                      {p.email ? ` (${p.email})` : " (no email)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Recipient count + preview */}
             <div className="mt-2 flex items-center gap-3">
               <span className="text-sm text-muted">
@@ -502,9 +548,16 @@ export default function CommunicationsPage() {
                   ? testEmail
                     ? `Test email: ${testEmail}`
                     : "No test email configured"
+                  : recipientGroup === "Player"
+                  ? (() => {
+                      if (selectedPlayerId == null) return "No player selected";
+                      const p = activePlayers.find((x) => x.id === selectedPlayerId);
+                      if (!p) return "No player selected";
+                      return p.email ? `Sending to: ${p.email}` : "Selected player has no email";
+                    })()
                   : `${recipientCount} recipient${recipientCount !== 1 ? "s" : ""}`}
               </span>
-              {recipientCount > 0 && recipientGroup !== "Test" && (
+              {recipientCount > 0 && recipientGroup !== "Test" && recipientGroup !== "Player" && (
                 <button
                   onClick={() => setShowRecipients(!showRecipients)}
                   className="text-sm text-primary hover:underline"

@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       channel?: "email" | "sms" | "both";
       attachPersonalSchedule?: boolean; // kept for UI compat; means "append calendar link"
       testAsPlayerId?: number | null;
+      selectedPlayerId?: number | null;
       icsFirstEventOnly?: boolean;
     };
     const {
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       channel = "both",
       attachPersonalSchedule = false,
       testAsPlayerId = null,
+      selectedPlayerId = null,
       icsFirstEventOnly = false,
     } = body;
 
@@ -199,6 +201,20 @@ export async function POST(request: NextRequest) {
         filtered = allPlayers.filter((p) => p.contractedFrequency !== "0");
       } else if (recipientGroup === "Subs") {
         filtered = allPlayers.filter((p) => p.contractedFrequency === "0");
+      } else if (recipientGroup === "Player") {
+        if (selectedPlayerId == null) {
+          return NextResponse.json(
+            { error: "No player selected. Pick a player from the dropdown." },
+            { status: 400 }
+          );
+        }
+        filtered = allPlayers.filter((p) => p.id === selectedPlayerId);
+        if (filtered.length === 0) {
+          return NextResponse.json(
+            { error: "Selected player not found or not active." },
+            { status: 400 }
+          );
+        }
       }
 
       // Build email / SMS recipient lists based on channel
