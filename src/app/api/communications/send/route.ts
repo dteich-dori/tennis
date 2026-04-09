@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       channel?: "email" | "sms" | "both";
       attachPersonalSchedule?: boolean;
       testAsPlayerId?: number | null;
+      icsFirstEventOnly?: boolean;
     };
     const {
       seasonId,
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
       channel = "both",
       attachPersonalSchedule = false,
       testAsPlayerId = null,
+      icsFirstEventOnly = false,
     } = body;
 
     if (!seasonId || !subject || !messageBody) {
@@ -270,7 +272,12 @@ export async function POST(request: NextRequest) {
 
         let attachments: { filename: string; content: string; contentType: string }[] | undefined;
         if (playerForIcs) {
-          const theirGames = playerGamesMap.get(playerForIcs.id) ?? [];
+          const allTheirGames = playerGamesMap.get(playerForIcs.id) ?? [];
+          // When previewing as Test, optionally limit to the first game to avoid
+          // flooding the tester's calendar with a full season of events.
+          const theirGames = icsFirstEventOnly && allTheirGames.length > 0
+            ? [allTheirGames[0]]
+            : allTheirGames;
           if (theirGames.length > 0) {
             try {
               const icsString = generatePlayerIcs(playerForIcs, theirGames, playerLookup);

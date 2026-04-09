@@ -90,6 +90,7 @@ export default function CommunicationsPage() {
 
   // Test-as-player (only used in Test + attach-ics mode)
   const [testAsPlayerId, setTestAsPlayerId] = useState<number | null>(null);
+  const [testFirstEventOnly, setTestFirstEventOnly] = useState(true);
   const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null }[]>([]);
 
   // Templates
@@ -235,6 +236,7 @@ export default function CommunicationsPage() {
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
           testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
+          icsFirstEventOnly: recipientGroup === "Test" && attachPersonalSchedule && testFirstEventOnly,
         }),
       });
       const data = (await res.json()) as {
@@ -659,6 +661,14 @@ export default function CommunicationsPage() {
                 <p className="text-xs text-blue-700 mt-1">
                   This player&apos;s personal .ics will be generated and sent to your test email ({testEmail || "not set"}).
                 </p>
+                <label className="mt-2 flex items-center gap-2 text-xs text-blue-900 cursor-pointer" title="Safer preview — only one event is added to your calendar on import">
+                  <input
+                    type="checkbox"
+                    checked={testFirstEventOnly}
+                    onChange={(e) => setTestFirstEventOnly(e.target.checked)}
+                  />
+                  Include only the first game (preview — safer for testing)
+                </label>
               </div>
             )}
           </div>
