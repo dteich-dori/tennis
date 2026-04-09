@@ -20,28 +20,28 @@ interface EmailRecipientWithPlayer {
 
 /**
  * Build the per-recipient calendar-link block appended to the plain-text body.
+ * Uses the landing page URL (https) — calendar apps will open it and the page
+ * auto-redirects to webcal:// to initiate a subscription.
  */
-function buildLinkBlockText(webcalUrl: string, httpsUrl: string): string {
+function buildLinkBlockText(landingUrl: string): string {
   return [
     "",
     "",
     "--",
-    "Your personal Brooklake Tennis calendar:",
-    webcalUrl,
+    "Add your personal Brooklake Tennis calendar to your phone or computer:",
+    landingUrl,
     "",
-    'Click the link above to subscribe. The calendar will appear in your calendar app as "Brooklake Tennis" and can be turned on/off independently from your other calendars. It auto-updates if the schedule changes.',
-    "",
-    "If that link isn't clickable in your email client, copy and paste this address into your calendar app's \"Subscribe to Calendar\" option:",
-    httpsUrl,
+    'Click the link above. A separate "Brooklake Tennis" calendar will be added to your calendar app, which you can turn on or off without affecting your other calendars. It updates automatically if the schedule changes.',
   ].join("\n");
 }
 
 /**
- * Build the HTML email body with clickable webcal:// link.
- * Simple structure: the admin-composed body (with newlines converted to <br>)
- * followed by a divider and a prominent "Subscribe" button-style link.
+ * Build the HTML email body with a clickable "Subscribe" button that points to
+ * the landing page (https). The landing page then redirects to webcal:// to
+ * trigger the calendar subscription dialog. We use an https link in the email
+ * because Gmail and some other clients strip or sanitize webcal:// hrefs.
  */
-function buildHtmlBody(bodyText: string, webcalUrl: string, httpsUrl: string): string {
+function buildHtmlBody(bodyText: string, landingUrl: string): string {
   const escapedBody = bodyText
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -53,19 +53,13 @@ function buildHtmlBody(bodyText: string, webcalUrl: string, httpsUrl: string): s
   <div>
     <p style="margin:0 0 12px 0;font-weight:600;">Your personal Brooklake Tennis calendar</p>
     <p style="margin:0 0 16px 0;">
-      <a href="${webcalUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;">
+      <a href="${landingUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">
         Subscribe in Calendar
       </a>
     </p>
-    <p style="margin:0 0 8px 0;color:#475569;">
-      Clicking the button above will add a new <strong>Brooklake Tennis</strong> calendar to your calendar app.
-      You can toggle it on and off independently from your personal calendar, and it will auto-update if the schedule changes.
-    </p>
-    <p style="margin:16px 0 4px 0;color:#64748b;font-size:12px;">
-      If the button doesn't work in your email client, copy and paste this address into your calendar app's "Subscribe to Calendar" option:
-    </p>
-    <p style="margin:0;color:#64748b;font-size:12px;word-break:break-all;font-family:Menlo,Consolas,monospace;">
-      ${httpsUrl}
+    <p style="margin:0;color:#475569;">
+      Click the button to add a separate <strong>Brooklake Tennis</strong> calendar to your phone or computer.
+      It can be turned on or off without affecting your other calendars, and it updates automatically if the schedule changes.
     </p>
   </div>
 </div>`;
@@ -269,10 +263,11 @@ export async function POST(request: NextRequest) {
           }
 
           const suffix = icsFirstEventOnly ? "?preview=1" : "";
-          const webcalUrl = `${webcalBase}/api/ics/${token}${suffix}`;
-          const httpsUrl = `${origin}/api/ics/${token}${suffix}`;
-          perRecipientText = messageBody + buildLinkBlockText(webcalUrl, httpsUrl);
-          perRecipientHtml = buildHtmlBody(messageBody, webcalUrl, httpsUrl);
+          // Landing page (https) that redirects to webcal:// — works even in
+          // email clients that strip webcal:// hrefs.
+          const landingUrl = `${origin}/calendar/subscribe/${token}${suffix}`;
+          perRecipientText = messageBody + buildLinkBlockText(landingUrl);
+          perRecipientHtml = buildHtmlBody(messageBody, landingUrl);
         } else {
           linkWarnings.push(`${r.name}: no matching player — sent without calendar link`);
         }

@@ -24,7 +24,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/api/auth" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
-    pathname.startsWith("/api/ics/") // public calendar subscriptions — protected by per-player token
+    pathname.startsWith("/api/ics/") || // public calendar subscriptions — protected by per-player token
+    pathname.startsWith("/calendar/subscribe/") // public landing page that redirects to webcal://
   ) {
     return NextResponse.next();
   }
