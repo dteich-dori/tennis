@@ -136,5 +136,16 @@ export function generatePlayerIcs(
     ics = ics.replace(/PRODID:[^\r\n]+/, (match) => `${match}\r\nX-WR-CALNAME:${CALENDAR_NAME}`);
   }
 
+  // Suggest a 1-hour refresh rate to calendar clients. macOS Calendar honors
+  // X-PUBLISHED-TTL as the default refresh rate for new subscriptions.
+  // REFRESH-INTERVAL is the RFC 7986 equivalent. iOS and Google Calendar
+  // largely ignore both and refresh on their own schedule.
+  if (!/X-PUBLISHED-TTL/i.test(ics)) {
+    ics = ics.replace(
+      /PRODID:[^\r\n]+/,
+      (match) => `${match}\r\nX-PUBLISHED-TTL:PT1H\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H`
+    );
+  }
+
   return ics;
 }
