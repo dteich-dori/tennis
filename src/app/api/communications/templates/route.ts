@@ -1,25 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { emailTemplates } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
-export async function GET(request: NextRequest) {
+/**
+ * Email templates are GLOBAL — not scoped to a season. This way they survive
+ * season deletions. The `seasonId` column is kept nullable for legacy rows but
+ * is never set by this API.
+ */
+
+export async function GET() {
   try {
-    const seasonId = request.nextUrl.searchParams.get("seasonId");
-    if (!seasonId) {
-      return NextResponse.json({ error: "seasonId required" }, { status: 400 });
-    }
-
     const database = await db();
-    const result = await database
-      .select()
-      .from(emailTemplates)
-      .where(eq(emailTemplates.seasonId, parseInt(seasonId)));
-
-    // Sort by name
+    const result = await database.select().from(emailTemplates);
     result.sort((a, b) => a.name.localeCompare(b.name));
-
     return NextResponse.json(result);
   } catch (err) {
     console.error("[communications/templates GET] error:", err);
@@ -33,16 +27,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
-      seasonId: number;
       name: string;
       subject: string;
       body: string;
     };
-    const { seasonId, name, subject, body: templateBody } = body;
+    const { name, subject, body: templateBody } = body;
 
-    if (!seasonId || !name || !subject) {
+    if (!name || !subject) {
       return NextResponse.json(
-        { error: "seasonId, name, and subject are required" },
+        { error: "name and subject are required" },
         { status: 400 }
       );
     }
@@ -50,7 +43,7 @@ export async function POST(request: NextRequest) {
     const database = await db();
     const result = await database
       .insert(emailTemplates)
-      .values({ seasonId, name, subject, body: templateBody })
+      .values({ name, subject, body: templateBody })
       .returning();
 
     return NextResponse.json(result[0], { status: 201 });

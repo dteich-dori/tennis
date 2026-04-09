@@ -139,8 +139,8 @@ export default function CommunicationsPage() {
   }, []);
 
   // Load templates
-  const loadTemplates = useCallback(async (seasonId: number) => {
-    const res = await fetch(`/api/communications/templates?seasonId=${seasonId}`);
+  const loadTemplates = useCallback(async (_seasonId?: number) => {
+    const res = await fetch(`/api/communications/templates`);
     const data = (await res.json()) as Template[];
     setTemplates(data);
   }, []);
@@ -279,7 +279,6 @@ export default function CommunicationsPage() {
 
   // Template CRUD
   const handleSaveTemplate = async () => {
-    if (!season) return;
     if (!templateForm.name.trim() || !templateForm.subject.trim()) {
       setTemplateMessage("Name and subject are required.");
       return;
@@ -298,30 +297,29 @@ export default function CommunicationsPage() {
         setShowTemplateForm(false);
         setEditingTemplateId(null);
         setTemplateForm({ name: "", subject: "", body: "" });
-        loadTemplates(season.id);
+        loadTemplates();
       }
     } else {
-      // Create
+      // Create (global — no seasonId)
       const res = await fetch("/api/communications/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: season.id, ...templateForm }),
+        body: JSON.stringify(templateForm),
       });
       if (res.ok) {
         setTemplateMessage("Template created.");
         setShowTemplateForm(false);
         setTemplateForm({ name: "", subject: "", body: "" });
-        loadTemplates(season.id);
+        loadTemplates();
       }
     }
     setTimeout(() => setTemplateMessage(""), 3000);
   };
 
   const handleDeleteTemplate = async (id: number, name: string) => {
-    if (!season) return;
     if (!window.confirm(`Delete template "${name}"?`)) return;
     await fetch(`/api/communications/templates?id=${id}`, { method: "DELETE" });
-    loadTemplates(season.id);
+    loadTemplates();
   };
 
   const handleLoadTemplate = (template: Template) => {
