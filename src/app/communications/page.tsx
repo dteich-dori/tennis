@@ -74,6 +74,7 @@ export default function CommunicationsPage() {
 
   // Channel selection
   const [channel, setChannel] = useState<Channel>("both");
+  const [attachPersonalSchedule, setAttachPersonalSchedule] = useState(false);
 
   // Compose
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("ALL");
@@ -202,6 +203,7 @@ export default function CommunicationsPage() {
           fromName,
           replyTo,
           channel,
+          attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
         }),
       });
       const data = (await res.json()) as {
@@ -579,6 +581,26 @@ export default function CommunicationsPage() {
               {channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
               {channel === "email" && "All players with email receive an email."}
               {channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
+            </p>
+          </div>
+
+          {/* Attach personal schedule (.ics) */}
+          <div>
+            <label
+              className={`flex items-center gap-2 text-sm ${channel === "sms" ? "text-muted cursor-not-allowed" : "cursor-pointer"}`}
+              title="Attach each player's personalized game schedule as a .ics file they can import into their calendar"
+            >
+              <input
+                type="checkbox"
+                checked={channel !== "sms" && attachPersonalSchedule}
+                disabled={channel === "sms"}
+                onChange={(e) => setAttachPersonalSchedule(e.target.checked)}
+              />
+              Attach personal schedule (.ics)
+            </label>
+            <p className="text-xs text-muted mt-1">
+              Each email recipient gets their own Brooklake Tennis calendar file with all season games.
+              Games where they bring balls are marked with an asterisk. {channel === "sms" && "(Not available for text-only.)"}
             </p>
           </div>
 

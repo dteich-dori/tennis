@@ -41,18 +41,26 @@ function createTransport() {
   });
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string | Buffer;
+  contentType?: string;
+}
+
 export async function sendEmail({
   to,
   subject,
   text,
   fromName,
   replyTo,
+  attachments,
 }: {
   to: string;
   subject: string;
   text: string;
   fromName: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }): Promise<{ success: boolean; error?: string }> {
   const configError = validateEmailConfig();
   if (configError) return { success: false, error: configError };
@@ -65,6 +73,7 @@ export async function sendEmail({
       replyTo: replyTo || undefined,
       subject,
       text,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
     });
     return { success: true };
   } catch (err) {
