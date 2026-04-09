@@ -114,7 +114,14 @@ export async function POST(request: NextRequest) {
 
     // Compute the base URL for webcal links from the incoming request.
     // Replace the scheme with `webcal://` so calendar apps auto-subscribe.
-    const origin = new URL(request.url).origin; // e.g. https://tennis.vercel.app
+    // Prefer the stable public site URL (e.g. https://scheduler.teich.net) over the
+    // per-deployment vercel.app URL. Calendar subscribers keep using the same URL even
+    // after redeploys, and the custom domain is the one configured for public access.
+    const origin =
+      process.env.PUBLIC_SITE_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : new URL(request.url).origin);
     const webcalBase = origin.replace(/^https?:\/\//, "webcal://");
 
     const database = await db();
