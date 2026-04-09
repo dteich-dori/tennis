@@ -19,9 +19,9 @@ interface EmailRecipientWithPlayer {
 }
 
 /**
- * Build the per-recipient calendar-link block appended to the email body.
+ * Build the per-recipient calendar-link block appended to the plain-text body.
  */
-function buildLinkBlock(webcalUrl: string): string {
+function buildLinkBlockText(webcalUrl: string, httpsUrl: string): string {
   return [
     "",
     "",
@@ -29,8 +29,46 @@ function buildLinkBlock(webcalUrl: string): string {
     "Your personal Brooklake Tennis calendar:",
     webcalUrl,
     "",
-    'Click the link to subscribe. The calendar will appear in your calendar app as "Brooklake Tennis" and can be turned on/off independently from your other calendars. It auto-updates if the schedule changes.',
+    'Click the link above to subscribe. The calendar will appear in your calendar app as "Brooklake Tennis" and can be turned on/off independently from your other calendars. It auto-updates if the schedule changes.',
+    "",
+    "If that link isn't clickable in your email client, copy and paste this address into your calendar app's \"Subscribe to Calendar\" option:",
+    httpsUrl,
   ].join("\n");
+}
+
+/**
+ * Build the HTML email body with clickable webcal:// link.
+ * Simple structure: the admin-composed body (with newlines converted to <br>)
+ * followed by a divider and a prominent "Subscribe" button-style link.
+ */
+function buildHtmlBody(bodyText: string, webcalUrl: string, httpsUrl: string): string {
+  const escapedBody = bodyText
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1e293b;max-width:600px;">
+  <div>${escapedBody}</div>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+  <div>
+    <p style="margin:0 0 12px 0;font-weight:600;">Your personal Brooklake Tennis calendar</p>
+    <p style="margin:0 0 16px 0;">
+      <a href="${webcalUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;">
+        Subscribe in Calendar
+      </a>
+    </p>
+    <p style="margin:0 0 8px 0;color:#475569;">
+      Clicking the button above will add a new <strong>Brooklake Tennis</strong> calendar to your calendar app.
+      You can toggle it on and off independently from your personal calendar, and it will auto-update if the schedule changes.
+    </p>
+    <p style="margin:16px 0 4px 0;color:#64748b;font-size:12px;">
+      If the button doesn't work in your email client, copy and paste this address into your calendar app's "Subscribe to Calendar" option:
+    </p>
+    <p style="margin:0;color:#64748b;font-size:12px;word-break:break-all;font-family:Menlo,Consolas,monospace;">
+      ${httpsUrl}
+    </p>
+  </div>
+</div>`;
 }
 
 export async function POST(request: NextRequest) {
@@ -199,9 +237,12 @@ export async function POST(request: NextRequest) {
 
     if (includeCalendarLink && emailRecipients.length > 0) {
       // Per-recipient: ensure each target player has an ics_token, then append
-      // a per-player webcal link to the body.
+      // a per-player webcal link to the body AND build an HTML version so the
+      // link is actually clickable in email clients like Gmail that don't
+      // auto-linkify webcal:// URLs in plain text.
       for (const r of emailRecipients) {
-        let perRecipientBody = messageBody;
+        let perRecipientText = messageBody;
+        let perRecipientHtml: string | undefined;
 
         if (r.playerId != null) {
           // Ensure this player has an ics_token
@@ -220,8 +261,11 @@ export async function POST(request: NextRequest) {
               .where(eq(players.id, r.playerId));
           }
 
-          const webcalUrl = `${webcalBase}/api/ics/${token}${icsFirstEventOnly ? "?preview=1" : ""}`;
-          perRecipientBody = messageBody + buildLinkBlock(webcalUrl);
+          const suffix = icsFirstEventOnly ? "?preview=1" : "";
+          const webcalUrl = `${webcalBase}/api/ics/${token}${suffix}`;
+          const httpsUrl = `${origin}/api/ics/${token}${suffix}`;
+          perRecipientText = messageBody + buildLinkBlockText(webcalUrl, httpsUrl);
+          perRecipientHtml = buildHtmlBody(messageBody, webcalUrl, httpsUrl);
         } else {
           linkWarnings.push(`${r.name}: no matching player — sent without calendar link`);
         }
@@ -229,7 +273,8 @@ export async function POST(request: NextRequest) {
         const result = await sendEmail({
           to: r.email,
           subject,
-          text: perRecipientBody,
+          text: perRecipientText,
+          html: perRecipientHtml,
           fromName,
           replyTo,
         });

@@ -51,6 +51,7 @@ export async function sendEmail({
   to,
   subject,
   text,
+  html,
   fromName,
   replyTo,
   attachments,
@@ -58,6 +59,7 @@ export async function sendEmail({
   to: string;
   subject: string;
   text: string;
+  html?: string;
   fromName: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
@@ -73,6 +75,7 @@ export async function sendEmail({
       replyTo: replyTo || undefined,
       subject,
       text,
+      html: html || undefined,
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
     });
     return { success: true };
