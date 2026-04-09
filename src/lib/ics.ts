@@ -114,6 +114,7 @@ export function generatePlayerIcs(
       uid: `game-${game.id}@tennis-scheduler.local`,
       start: [y, mo, d, h, mi],
       startInputType: "local",
+      startOutputType: "local", // emit floating local time — no Z suffix, no TZ conversion
       duration: { hours: Math.floor(GAME_DURATION_MINUTES / 60), minutes: GAME_DURATION_MINUTES % 60 },
       title: isBallProvider ? "Brooklake*" : "Brooklake",
       location: `Brooklake — Court ${game.courtNumber}`,
