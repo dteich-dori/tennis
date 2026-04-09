@@ -88,6 +88,13 @@ export default function CommunicationsPage() {
   const [sendError, setSendError] = useState("");
   const [sendWarnings, setSendWarnings] = useState<string[]>([]);
 
+  // Clear post-send banners whenever the user starts composing a new message
+  const clearSendBanners = () => {
+    if (sendMessage) setSendMessage("");
+    if (sendError) setSendError("");
+    if (sendWarnings.length > 0) setSendWarnings([]);
+  };
+
   // Test-as-player (only used in Test + attach-ics mode)
   const [testAsPlayerId, setTestAsPlayerId] = useState<number | null>(null);
   const [testFirstEventOnly, setTestFirstEventOnly] = useState(true);
@@ -323,6 +330,7 @@ export default function CommunicationsPage() {
   };
 
   const handleLoadTemplate = (template: Template) => {
+    clearSendBanners();
     setSubject(template.subject);
     setMessageBody(template.body);
     setActiveTab("compose");
@@ -555,6 +563,7 @@ export default function CommunicationsPage() {
                   alert("Please set a Questionnaire URL in Email Settings first.");
                   return;
                 }
+                clearSendBanners();
                 setSubject("Brooklake Tennis \u2014 Player Questionnaire");
                 setMessageBody(
                   `Please take a moment to fill out the following questionnaire:\n\n${questionnaireUrl}\n\nThank you!`
@@ -572,7 +581,7 @@ export default function CommunicationsPage() {
             <input
               type="text"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => { clearSendBanners(); setSubject(e.target.value); }}
               className="w-full border border-border rounded px-3 py-2 text-sm"
               placeholder="Enter email subject..."
             />
@@ -583,7 +592,7 @@ export default function CommunicationsPage() {
             <label className="block text-sm font-medium mb-1">Message</label>
             <textarea
               value={messageBody}
-              onChange={(e) => setMessageBody(e.target.value)}
+              onChange={(e) => { clearSendBanners(); setMessageBody(e.target.value); }}
               className="w-full border border-border rounded px-3 py-2 text-sm font-mono"
               rows={12}
               placeholder="Enter your message..."
