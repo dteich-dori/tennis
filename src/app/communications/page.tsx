@@ -615,11 +615,11 @@ export default function CommunicationsPage() {
             </p>
           </div>
 
-          {/* Attach personal schedule (.ics) */}
+          {/* Include personal calendar link */}
           <div>
             <label
               className="flex items-center gap-2 text-sm cursor-pointer"
-              title="Attach each player's personalized game schedule as a .ics file they can import into their calendar"
+              title="Append a per-player webcal:// subscription link. The recipient clicks it and their calendar app creates a separate, toggleable 'Brooklake Tennis' calendar that auto-updates."
             >
               <input
                 type="checkbox"
@@ -627,18 +627,20 @@ export default function CommunicationsPage() {
                 onChange={(e) => {
                   const checked = e.target.checked;
                   setAttachPersonalSchedule(checked);
-                  if (checked) setChannel("email"); // force email-only — calendar files are useless on SMS
+                  if (checked) setChannel("email"); // force email-only — calendar links only make sense in email clients
                 }}
               />
-              Attach personal schedule (.ics)
+              Include personal calendar link
             </label>
             <p className="text-xs text-muted mt-1">
-              Each recipient gets their own Brooklake Tennis calendar file with all season games.
-              Games where they bring balls are marked with an asterisk.
-              Calendar files require an email client, so SMS is disabled when this is on.
+              Appends a <code>webcal://</code> link at the bottom of each email. When clicked, the
+              recipient&apos;s calendar app subscribes and creates a separate <strong>Brooklake
+              Tennis</strong> calendar that can be toggled on/off independently from their personal
+              calendar — and auto-updates if the schedule changes. Games where they bring balls are
+              marked with an asterisk.
             </p>
 
-            {/* Test-as-player dropdown: only visible when Test + attach-ics */}
+            {/* Test-as-player dropdown: only visible when Test + link */}
             {attachPersonalSchedule && recipientGroup === "Test" && activePlayers.length > 0 && (
               <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
                 <label className="block text-xs font-medium mb-1 text-blue-900">
@@ -648,7 +650,7 @@ export default function CommunicationsPage() {
                   value={testAsPlayerId ?? ""}
                   onChange={(e) => setTestAsPlayerId(e.target.value ? parseInt(e.target.value) : null)}
                   className="w-full border border-blue-300 rounded px-3 py-1.5 text-sm bg-white"
-                  title="Which player's personal schedule should be generated and sent to the test email"
+                  title="Which player's calendar link to generate and send to the test email"
                 >
                   {activePlayers.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -657,15 +659,15 @@ export default function CommunicationsPage() {
                   ))}
                 </select>
                 <p className="text-xs text-blue-700 mt-1">
-                  This player&apos;s personal .ics will be generated and sent to your test email ({testEmail || "not set"}).
+                  A link to this player&apos;s calendar will be sent to {testEmail || "(test email not set)"}.
                 </p>
-                <label className="mt-2 flex items-center gap-2 text-xs text-blue-900 cursor-pointer" title="Safer preview — only one event is added to your calendar on import">
+                <label className="mt-2 flex items-center gap-2 text-xs text-blue-900 cursor-pointer" title="Preview mode — subscribing only adds one event instead of the full season">
                   <input
                     type="checkbox"
                     checked={testFirstEventOnly}
                     onChange={(e) => setTestFirstEventOnly(e.target.checked)}
                   />
-                  Include only the first game (preview — safer for testing)
+                  Preview mode: subscription shows only the first game
                 </label>
               </div>
             )}

@@ -12,6 +12,7 @@ export const players = sqliteTable("players", {
   homeNumber: text("home_number"),
   email: text("email"),
   carrier: text("carrier"), // verizon, att, tmobile, sprint, etc. — for SMS gateway
+  icsToken: text("ics_token"), // unguessable per-player token for webcal:// subscription
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   contractedFrequency: text("contracted_frequency").notNull().default("1"), // "1", "2", or "2+"
   skillLevel: text("skill_level").notNull().default("C"), // "A", "B", "C", "D"

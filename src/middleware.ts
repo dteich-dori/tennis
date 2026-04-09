@@ -23,7 +23,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/api/auth" ||
     pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico"
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/api/ics/") // public calendar subscriptions — protected by per-player token
   ) {
     return NextResponse.next();
   }

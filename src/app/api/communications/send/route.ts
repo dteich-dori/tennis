@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, emailSettings, emailLog, games, gameAssignments } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { players, emailSettings, emailLog } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import {
   sendBulkEmails,
   sendBulkSms,
@@ -10,12 +11,26 @@ import {
   type Recipient,
   type SmsRecipient,
 } from "@/lib/email";
-import { generatePlayerIcs } from "@/lib/ics";
 
 interface EmailRecipientWithPlayer {
   name: string;
   email: string;
-  playerId: number | null; // null for Test recipient
+  playerId: number | null; // null for Test recipient when no match
+}
+
+/**
+ * Build the per-recipient calendar-link block appended to the email body.
+ */
+function buildLinkBlock(webcalUrl: string): string {
+  return [
+    "",
+    "",
+    "--",
+    "Your personal Brooklake Tennis calendar:",
+    webcalUrl,
+    "",
+    'Click the link to subscribe. The calendar will appear in your calendar app as "Brooklake Tennis" and can be turned on/off independently from your other calendars. It auto-updates if the schedule changes.',
+  ].join("\n");
 }
 
 export async function POST(request: NextRequest) {
@@ -28,7 +43,7 @@ export async function POST(request: NextRequest) {
       fromName: string;
       replyTo: string;
       channel?: "email" | "sms" | "both";
-      attachPersonalSchedule?: boolean;
+      attachPersonalSchedule?: boolean; // kept for UI compat; means "append calendar link"
       testAsPlayerId?: number | null;
       icsFirstEventOnly?: boolean;
     };
@@ -57,6 +72,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: configError }, { status: 500 });
     }
 
+    const includeCalendarLink = attachPersonalSchedule && channel !== "sms";
+
+    // Compute the base URL for webcal links from the incoming request.
+    // Replace the scheme with `webcal://` so calendar apps auto-subscribe.
+    const origin = new URL(request.url).origin; // e.g. https://tennis.vercel.app
+    const webcalBase = origin.replace(/^https?:\/\//, "webcal://");
+
     const database = await db();
 
     // Load settings for test phone/carrier
@@ -84,10 +106,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // For test + attachPersonalSchedule, resolve which player's schedule to generate.
-      // Priority: explicit testAsPlayerId from the client → email match → null (no attachment).
+      // For test + calendar link, resolve which player's schedule to reference.
+      // Priority: explicit testAsPlayerId from the client → email match → null.
       let testPlayerId: number | null = null;
-      if (attachPersonalSchedule) {
+      if (includeCalendarLink) {
         if (testAsPlayerId != null) {
           testPlayerId = testAsPlayerId;
         } else if (hasTestEmail) {
@@ -109,14 +131,14 @@ export async function POST(request: NextRequest) {
           emailRecipients.push({ name: "Test (SMS fallback)", email: testEmail, playerId: testPlayerId });
         }
       } else {
-        // "both" — send via both channels
+        // "both"
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
         if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier });
       }
 
       recipientNamesForLog.push("Test");
     } else {
-      // Query active players (include phone + carrier)
+      // Query active players
       const allPlayers = await database
         .select({
           id: players.id,
@@ -129,10 +151,7 @@ export async function POST(request: NextRequest) {
         })
         .from(players)
         .where(
-          and(
-            eq(players.seasonId, seasonId),
-            eq(players.isActive, true)
-          )
+          and(eq(players.seasonId, seasonId), eq(players.isActive, true))
         );
 
       // Filter by group
@@ -155,11 +174,9 @@ export async function POST(request: NextRequest) {
           if (hasSms) {
             smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
           } else if (hasEmail) {
-            // Fallback to email when no SMS configured
             emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
         } else {
-          // "both" — send to both channels where available (may overlap)
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
           if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
         }
@@ -174,137 +191,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --- Prepare ICS data if the personal schedule attachment was requested ---
-    // Build a map playerId -> Game[] (normal games only), plus a Player lookup map.
-    let playerGamesMap: Map<number, {
-      id: number;
-      gameNumber: number;
-      seasonId: number;
-      weekNumber: number;
-      date: string;
-      dayOfWeek: number;
-      startTime: string;
-      courtNumber: number;
-      group: string;
-      status: string;
-      holidayName?: string | null;
-      assignments: { id: number; gameId: number; playerId: number; slotPosition: number; isPrefill: boolean }[];
-    }[]> | null = null;
-    let playerLookup: Map<number, { id: number; firstName: string; lastName: string }> | null = null;
-
-    if (attachPersonalSchedule && emailRecipients.length > 0) {
-      // 1. Fetch all season games
-      const allGames = await database
-        .select()
-        .from(games)
-        .where(eq(games.seasonId, seasonId));
-
-      // 2. Fetch assignments in batches of 50 (mirroring /api/games route)
-      const gameIds = allGames.map((g) => g.id);
-      const allAssignments: { id: number; gameId: number; playerId: number; slotPosition: number; isPrefill: boolean }[] = [];
-      const BATCH_SIZE = 50;
-      for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-        const batch = gameIds.slice(i, i + BATCH_SIZE);
-        const batchResults = await database
-          .select()
-          .from(gameAssignments)
-          .where(inArray(gameAssignments.gameId, batch));
-        allAssignments.push(...batchResults);
-      }
-
-      // 3. Group assignments by gameId
-      const assignmentsByGame = new Map<number, typeof allAssignments>();
-      for (const a of allAssignments) {
-        const existing = assignmentsByGame.get(a.gameId) ?? [];
-        existing.push(a);
-        assignmentsByGame.set(a.gameId, existing);
-      }
-
-      // 4. Build enriched games array (each game with its assignments)
-      const enrichedGames = allGames.map((game) => ({
-        ...game,
-        assignments: (assignmentsByGame.get(game.id) ?? []).sort(
-          (a, b) => a.slotPosition - b.slotPosition
-        ),
-      }));
-
-      // 5. Build playerGamesMap (mirrors gamesByPlayerPdf.ts lines 104-120)
-      playerGamesMap = new Map();
-      for (const game of enrichedGames) {
-        if (game.status !== "normal") continue;
-        for (const a of game.assignments) {
-          const arr = playerGamesMap.get(a.playerId) ?? [];
-          arr.push(game);
-          playerGamesMap.set(a.playerId, arr);
-        }
-      }
-      // Sort games within each player by date → time → court
-      for (const [, list] of playerGamesMap) {
-        list.sort((a, b) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date);
-          if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
-          return a.courtNumber - b.courtNumber;
-        });
-      }
-
-      // 6. Player lookup map (all active players)
-      const allActivePlayers = await database
-        .select({ id: players.id, firstName: players.firstName, lastName: players.lastName })
-        .from(players)
-        .where(and(eq(players.seasonId, seasonId), eq(players.isActive, true)));
-      playerLookup = new Map(allActivePlayers.map((p) => [p.id, p]));
-    }
-
     // --- Send emails ---
     let emailsSent = 0;
     const emailErrors: string[] = [];
     const emailSkipped: string[] = [];
-    const icsWarnings: string[] = [];
+    const linkWarnings: string[] = [];
 
-    if (attachPersonalSchedule && playerGamesMap && playerLookup) {
-      // Per-recipient attachment path: iterate manually so each gets their own ICS.
+    if (includeCalendarLink && emailRecipients.length > 0) {
+      // Per-recipient: ensure each target player has an ics_token, then append
+      // a per-player webcal link to the body.
       for (const r of emailRecipients) {
-        // Resolve the player to generate against
-        let playerForIcs: { id: number; firstName: string; lastName: string } | undefined;
-        if (r.playerId != null) {
-          playerForIcs = playerLookup.get(r.playerId);
-        }
+        let perRecipientBody = messageBody;
 
-        let attachments: { filename: string; content: string; contentType: string }[] | undefined;
-        if (playerForIcs) {
-          const allTheirGames = playerGamesMap.get(playerForIcs.id) ?? [];
-          // When previewing as Test, optionally limit to the first game to avoid
-          // flooding the tester's calendar with a full season of events.
-          const theirGames = icsFirstEventOnly && allTheirGames.length > 0
-            ? [allTheirGames[0]]
-            : allTheirGames;
-          if (theirGames.length > 0) {
-            try {
-              const icsString = generatePlayerIcs(playerForIcs, theirGames, playerLookup);
-              if (icsString) {
-                attachments = [{
-                  filename: "brooklake-schedule.ics",
-                  content: icsString,
-                  contentType: "text/calendar; charset=utf-8; method=PUBLISH",
-                }];
-              }
-            } catch (err) {
-              icsWarnings.push(`${r.name}: ICS generation failed — ${String(err)}`);
-            }
-          } else {
-            icsWarnings.push(`${r.name}: no games in season — sent without attachment`);
+        if (r.playerId != null) {
+          // Ensure this player has an ics_token
+          const [row] = await database
+            .select({ token: players.icsToken })
+            .from(players)
+            .where(eq(players.id, r.playerId))
+            .limit(1);
+
+          let token = row?.token ?? null;
+          if (!token) {
+            token = randomBytes(16).toString("hex"); // 32 hex chars, unguessable
+            await database
+              .update(players)
+              .set({ icsToken: token })
+              .where(eq(players.id, r.playerId));
           }
+
+          const webcalUrl = `${webcalBase}/api/ics/${token}${icsFirstEventOnly ? "?preview=1" : ""}`;
+          perRecipientBody = messageBody + buildLinkBlock(webcalUrl);
         } else {
-          icsWarnings.push(`${r.name}: no matching player record — sent without attachment`);
+          linkWarnings.push(`${r.name}: no matching player — sent without calendar link`);
         }
 
         const result = await sendEmail({
           to: r.email,
           subject,
-          text: messageBody,
+          text: perRecipientBody,
           fromName,
           replyTo,
-          attachments,
         });
         if (result.success) {
           emailsSent++;
@@ -313,16 +240,31 @@ export async function POST(request: NextRequest) {
         }
       }
     } else if (emailRecipients.length > 0) {
-      // Standard bulk-send path (no attachments).
-      const plainRecipients: Recipient[] = emailRecipients.map((r) => ({ name: r.name, email: r.email }));
-      const bulkResult = await sendBulkEmails(plainRecipients, subject, messageBody, fromName, replyTo);
+      // Standard bulk path: identical body for everyone.
+      const plainRecipients: Recipient[] = emailRecipients.map((r) => ({
+        name: r.name,
+        email: r.email,
+      }));
+      const bulkResult = await sendBulkEmails(
+        plainRecipients,
+        subject,
+        messageBody,
+        fromName,
+        replyTo
+      );
       emailsSent = bulkResult.sent;
       emailErrors.push(...bulkResult.errors);
       emailSkipped.push(...bulkResult.skipped);
     }
 
-    // --- Send SMS (unchanged — no attachment possible) ---
-    let smsResult = { sent: 0, smsSent: 0, errors: [] as string[], skipped: [] as string[], recipients: [] as string[] };
+    // --- Send SMS (no calendar link — SMS can't usefully receive one anyway) ---
+    let smsResult = {
+      sent: 0,
+      smsSent: 0,
+      errors: [] as string[],
+      skipped: [] as string[],
+      recipients: [] as string[],
+    };
     if (smsRecipients.length > 0) {
       smsResult = await sendBulkSms(smsRecipients, messageBody, fromName);
     }
@@ -330,11 +272,10 @@ export async function POST(request: NextRequest) {
     const totalSent = emailsSent + smsResult.smsSent;
     const channelLabel =
       channel === "email" ? "Email" : channel === "sms" ? "Text" : "Email+Text";
-    const logGroupLabel = attachPersonalSchedule
-      ? `${recipientGroup} (${channelLabel}+ICS)`
+    const logGroupLabel = includeCalendarLink
+      ? `${recipientGroup} (${channelLabel}+Cal)`
       : `${recipientGroup} (${channelLabel})`;
 
-    // Log the send
     await database.insert(emailLog).values({
       seasonId,
       subject,
@@ -349,7 +290,7 @@ export async function POST(request: NextRequest) {
     const warnings = [
       ...emailSkipped,
       ...emailErrors,
-      ...icsWarnings,
+      ...linkWarnings,
       ...smsResult.skipped,
       ...smsResult.errors,
     ];
