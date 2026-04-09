@@ -564,43 +564,48 @@ export default function CommunicationsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Send Via</label>
             <div className="flex gap-4">
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Send to both email AND text (players with both get both)">
-                <input type="radio" name="channel" value="both" checked={channel === "both"} onChange={() => setChannel("both")} />
+              <label className={`flex items-center gap-1.5 text-sm ${attachPersonalSchedule ? "text-muted cursor-not-allowed" : "cursor-pointer"}`} title="Send to both email AND text (players with both get both)">
+                <input type="radio" name="channel" value="both" checked={channel === "both"} disabled={attachPersonalSchedule} onChange={() => setChannel("both")} />
                 Email + Text
               </label>
               <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Email only to all players with an email address">
                 <input type="radio" name="channel" value="email" checked={channel === "email"} onChange={() => setChannel("email")} />
                 Email only
               </label>
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Prefer text; players without phone+carrier get email instead">
-                <input type="radio" name="channel" value="sms" checked={channel === "sms"} onChange={() => setChannel("sms")} />
+              <label className={`flex items-center gap-1.5 text-sm ${attachPersonalSchedule ? "text-muted cursor-not-allowed" : "cursor-pointer"}`} title="Prefer text; players without phone+carrier get email instead">
+                <input type="radio" name="channel" value="sms" checked={channel === "sms"} disabled={attachPersonalSchedule} onChange={() => setChannel("sms")} />
                 Text only
               </label>
             </div>
             <p className="text-xs text-muted mt-1">
-              {channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
-              {channel === "email" && "All players with email receive an email."}
-              {channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
+              {attachPersonalSchedule && "Calendar attachments require an email client — channel is locked to Email only."}
+              {!attachPersonalSchedule && channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
+              {!attachPersonalSchedule && channel === "email" && "All players with email receive an email."}
+              {!attachPersonalSchedule && channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
             </p>
           </div>
 
           {/* Attach personal schedule (.ics) */}
           <div>
             <label
-              className={`flex items-center gap-2 text-sm ${channel === "sms" ? "text-muted cursor-not-allowed" : "cursor-pointer"}`}
+              className="flex items-center gap-2 text-sm cursor-pointer"
               title="Attach each player's personalized game schedule as a .ics file they can import into their calendar"
             >
               <input
                 type="checkbox"
-                checked={channel !== "sms" && attachPersonalSchedule}
-                disabled={channel === "sms"}
-                onChange={(e) => setAttachPersonalSchedule(e.target.checked)}
+                checked={attachPersonalSchedule}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setAttachPersonalSchedule(checked);
+                  if (checked) setChannel("email"); // force email-only — calendar files are useless on SMS
+                }}
               />
               Attach personal schedule (.ics)
             </label>
             <p className="text-xs text-muted mt-1">
-              Each email recipient gets their own Brooklake Tennis calendar file with all season games.
-              Games where they bring balls are marked with an asterisk. {channel === "sms" && "(Not available for text-only.)"}
+              Each recipient gets their own Brooklake Tennis calendar file with all season games.
+              Games where they bring balls are marked with an asterisk.
+              Calendar files require an email client, so SMS is disabled when this is on.
             </p>
           </div>
 
