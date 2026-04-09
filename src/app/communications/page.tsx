@@ -86,6 +86,7 @@ export default function CommunicationsPage() {
   const [sending, setSending] = useState(false);
   const [sendMessage, setSendMessage] = useState("");
   const [sendError, setSendError] = useState("");
+  const [sendWarnings, setSendWarnings] = useState<string[]>([]);
 
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -190,6 +191,7 @@ export default function CommunicationsPage() {
     setSending(true);
     setSendMessage("");
     setSendError("");
+    setSendWarnings([]);
 
     try {
       const res = await fetch("/api/communications/send", {
@@ -223,23 +225,22 @@ export default function CommunicationsPage() {
         if (smsSent > 0) parts.push(`${smsSent} text${smsSent !== 1 ? "s" : ""}`);
         const summary = parts.length > 0 ? parts.join(", ") : `${data.recipientCount ?? 0} recipients`;
 
-        if (data.warnings && data.warnings.length > 0) {
-          if ((data.recipientCount ?? 0) === 0) {
-            setSendError(`All messages failed to send.\n${data.warnings.join("\n")}`);
-          } else {
-            setSendMessage(`Sent: ${summary}.`);
-            setSendError(`Some messages failed:\n${data.warnings.join("\n")}`);
-          }
+        if ((data.recipientCount ?? 0) === 0) {
+          // Total failure
+          setSendError("No messages were sent — see issues below.");
         } else {
-          setSendMessage(`Sent: ${summary}.`);
+          setSendMessage(`✓ Sent: ${summary}.`);
+        }
+        if (data.warnings && data.warnings.length > 0) {
+          setSendWarnings(data.warnings);
         }
         // Refresh history
         loadHistory(season.id);
       } else {
         setSendError(data.error || "Failed to send message.");
       }
-    } catch {
-      setSendError("Network error. Please try again.");
+    } catch (err) {
+      setSendError(`Network error: ${err instanceof Error ? err.message : "Please try again."}`);
     } finally {
       setSending(false);
     }
@@ -626,15 +627,62 @@ export default function CommunicationsPage() {
             )}
           </div>
 
-          {sendMessage && (
-            <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded px-3 py-2">
-              {sendMessage}
-            </p>
+          {/* Sending indicator */}
+          {sending && (
+            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded px-4 py-3">
+              <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <div className="text-sm text-blue-800">
+                <div className="font-medium">Sending messages… please don&apos;t close this tab.</div>
+                <div className="text-xs text-blue-600 mt-0.5">
+                  {attachPersonalSchedule
+                    ? "Generating a personalized calendar for each recipient. This can take up to a minute for a full roster."
+                    : "This usually takes just a few seconds."}
+                </div>
+              </div>
+            </div>
           )}
-          {sendError && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 whitespace-pre-line">
-              {sendError}
-            </p>
+
+          {/* Success banner */}
+          {sendMessage && !sending && (
+            <div className="bg-green-50 border border-green-300 rounded px-4 py-3">
+              <div className="text-green-800 font-medium">{sendMessage}</div>
+              {sendWarnings.length === 0 && (
+                <div className="text-xs text-green-700 mt-1">All messages delivered without errors.</div>
+              )}
+            </div>
+          )}
+
+          {/* Error banner (network/total failure) */}
+          {sendError && !sending && (
+            <div className="bg-red-50 border border-red-300 rounded px-4 py-3">
+              <div className="text-red-800 font-medium">{sendError}</div>
+            </div>
+          )}
+
+          {/* Warnings / per-recipient issue log */}
+          {sendWarnings.length > 0 && !sending && (
+            <div className="bg-amber-50 border border-amber-300 rounded px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-amber-900 font-medium text-sm">
+                  ⚠ {sendWarnings.length} issue{sendWarnings.length !== 1 ? "s" : ""} encountered
+                </div>
+                <button
+                  onClick={() => setSendWarnings([])}
+                  className="text-xs text-amber-700 hover:underline"
+                  title="Dismiss this error log"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto text-xs text-amber-900 space-y-1 font-mono">
+                {sendWarnings.map((w, i) => (
+                  <div key={i} className="pl-2 border-l-2 border-amber-300">{w}</div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
