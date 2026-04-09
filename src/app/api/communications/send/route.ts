@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       replyTo: string;
       channel?: "email" | "sms" | "both";
       attachPersonalSchedule?: boolean;
+      testAsPlayerId?: number | null;
     };
     const {
       seasonId,
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       replyTo,
       channel = "both",
       attachPersonalSchedule = false,
+      testAsPlayerId = null,
     } = body;
 
     if (!seasonId || !subject || !messageBody) {
@@ -80,16 +82,20 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // For test + attachPersonalSchedule, we need a real player to generate against.
-      // Try to match the test email to an existing player.
+      // For test + attachPersonalSchedule, resolve which player's schedule to generate.
+      // Priority: explicit testAsPlayerId from the client → email match → null (no attachment).
       let testPlayerId: number | null = null;
-      if (attachPersonalSchedule && hasTestEmail) {
-        const testPlayerRow = await database
-          .select({ id: players.id })
-          .from(players)
-          .where(and(eq(players.seasonId, seasonId), eq(players.email, testEmail)))
-          .limit(1);
-        if (testPlayerRow[0]) testPlayerId = testPlayerRow[0].id;
+      if (attachPersonalSchedule) {
+        if (testAsPlayerId != null) {
+          testPlayerId = testAsPlayerId;
+        } else if (hasTestEmail) {
+          const testPlayerRow = await database
+            .select({ id: players.id })
+            .from(players)
+            .where(and(eq(players.seasonId, seasonId), eq(players.email, testEmail)))
+            .limit(1);
+          if (testPlayerRow[0]) testPlayerId = testPlayerRow[0].id;
+        }
       }
 
       if (channel === "email") {

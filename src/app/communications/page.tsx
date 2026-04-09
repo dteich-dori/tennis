@@ -88,6 +88,10 @@ export default function CommunicationsPage() {
   const [sendError, setSendError] = useState("");
   const [sendWarnings, setSendWarnings] = useState<string[]>([]);
 
+  // Test-as-player (only used in Test + attach-ics mode)
+  const [testAsPlayerId, setTestAsPlayerId] = useState<number | null>(null);
+  const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null }[]>([]);
+
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
@@ -147,6 +151,19 @@ export default function CommunicationsPage() {
     setHistory(data);
   }, []);
 
+  // Load all active players in the season (for "Test as player" dropdown)
+  const loadActivePlayers = useCallback(async (seasonId: number) => {
+    const res = await fetch(`/api/players?seasonId=${seasonId}`);
+    const data = (await res.json()) as { id: number; firstName: string; lastName: string; email: string | null; isActive: boolean }[];
+    const active = data
+      .filter((p) => p.isActive)
+      .sort((a, b) => {
+        const cmp = a.lastName.localeCompare(b.lastName);
+        return cmp !== 0 ? cmp : a.firstName.localeCompare(b.firstName);
+      });
+    setActivePlayers(active);
+  }, []);
+
   useEffect(() => {
     loadSeason();
   }, [loadSeason]);
@@ -157,8 +174,19 @@ export default function CommunicationsPage() {
       loadRecipients(season.id, recipientGroup);
       loadTemplates(season.id);
       loadHistory(season.id);
+      loadActivePlayers(season.id);
     }
-  }, [season, loadSettings, loadRecipients, loadTemplates, loadHistory, recipientGroup]);
+  }, [season, loadSettings, loadRecipients, loadTemplates, loadHistory, loadActivePlayers, recipientGroup]);
+
+  // Auto-pick a default test player: first match by email, else first player alphabetically
+  useEffect(() => {
+    if (testAsPlayerId !== null) return; // user already picked one
+    if (activePlayers.length === 0) return;
+    const byEmail = testEmail
+      ? activePlayers.find((p) => (p.email ?? "").toLowerCase() === testEmail.toLowerCase())
+      : undefined;
+    setTestAsPlayerId((byEmail ?? activePlayers[0]).id);
+  }, [activePlayers, testEmail, testAsPlayerId]);
 
   // Save settings
   const handleSaveSettings = async () => {
@@ -206,6 +234,7 @@ export default function CommunicationsPage() {
           replyTo,
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
+          testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -608,6 +637,30 @@ export default function CommunicationsPage() {
               Games where they bring balls are marked with an asterisk.
               Calendar files require an email client, so SMS is disabled when this is on.
             </p>
+
+            {/* Test-as-player dropdown: only visible when Test + attach-ics */}
+            {attachPersonalSchedule && recipientGroup === "Test" && activePlayers.length > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                <label className="block text-xs font-medium mb-1 text-blue-900">
+                  Test as player
+                </label>
+                <select
+                  value={testAsPlayerId ?? ""}
+                  onChange={(e) => setTestAsPlayerId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full border border-blue-300 rounded px-3 py-1.5 text-sm bg-white"
+                  title="Which player's personal schedule should be generated and sent to the test email"
+                >
+                  {activePlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.lastName}, {p.firstName}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-blue-700 mt-1">
+                  This player&apos;s personal .ics will be generated and sent to your test email ({testEmail || "not set"}).
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Send */}
