@@ -24,6 +24,11 @@ export async function middleware(request: NextRequest) {
     pathname === "/api/auth" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
+    pathname === "/manifest.json" ||
+    pathname === "/icon.svg" ||
+    pathname === "/icon-192.png" ||
+    pathname === "/icon-512.png" ||
+    pathname === "/apple-touch-icon.png" ||
     pathname.startsWith("/api/ics/") || // public calendar subscriptions — protected by per-player token
     pathname.startsWith("/calendar/subscribe/") || // public landing page that redirects to webcal://
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
