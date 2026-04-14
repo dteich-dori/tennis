@@ -30,16 +30,26 @@ export async function GET(request: NextRequest) {
         )
       );
 
-    if (allSeasons.length === 0) {
-      return NextResponse.json({
-        games: [],
-        seasonStart: null,
-        seasonEnd: null,
-        week: 0,
-        totalWeeks: 0,
-      });
+    // Fallback: if no season contains the reference date, use the latest season
+    let season;
+    if (allSeasons.length > 0) {
+      season = allSeasons[0];
+    } else {
+      const latest = await database
+        .select()
+        .from(seasons)
+        .orderBy(seasons.id)
+      if (latest.length === 0) {
+        return NextResponse.json({
+          games: [],
+          seasonStart: null,
+          seasonEnd: null,
+          week: 0,
+          totalWeeks: 0,
+        });
+      }
+      season = latest[latest.length - 1];
     }
-    const season = allSeasons[0];
 
     // Determine which week to show
     let week: number;
@@ -51,6 +61,7 @@ export async function GET(request: NextRequest) {
       const diffDays = Math.floor(
         (ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
       );
+      // Clamp to season range: if before season → week 1, if after → last week
       week = Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, season.totalWeeks));
     }
 
