@@ -132,6 +132,7 @@ export async function GET(request: NextRequest) {
         (a, b) => a.slotPosition - b.slotPosition
       );
       return {
+        gameNumber: game.gameNumber,
         date: game.date,
         weekNumber: game.weekNumber,
         dayOfWeek: game.dayOfWeek,
