@@ -1,36 +1,48 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { seasons, games, gameAssignments, players } from "@/db/schema";
 import { eq, and, inArray, lte, gte } from "drizzle-orm";
 
 /**
- * GET /api/public/schedule
- * Public (no auth) — returns games for the current week and next week
- * with assigned player names.
+ * GET /api/public/schedule?from=2026-09-14
+ * Public (no auth) — returns games for 2 weeks starting from the given date.
+ * If `from` is omitted, defaults to today.
+ * The date is snapped to the Monday of its week for consistent week boundaries.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const database = await db();
-    const today = new Date().toISOString().split("T")[0];
+    const fromParam = request.nextUrl.searchParams.get("from");
+    const referenceDate = fromParam || new Date().toISOString().split("T")[0];
 
-    // Find the current season (startDate ≤ today ≤ endDate)
+    // Find the current season (startDate ≤ referenceDate ≤ endDate)
     const allSeasons = await database
       .select()
       .from(seasons)
-      .where(and(lte(seasons.startDate, today), gte(seasons.endDate, today)));
+      .where(
+        and(
+          lte(seasons.startDate, referenceDate),
+          gte(seasons.endDate, referenceDate)
+        )
+      );
 
     if (allSeasons.length === 0) {
-      return NextResponse.json({ games: [], seasonStart: null });
+      return NextResponse.json({
+        games: [],
+        seasonStart: null,
+        seasonEnd: null,
+        currentWeek: 0,
+      });
     }
     const season = allSeasons[0];
 
-    // Compute current week number (1-based)
+    // Compute week number for the reference date (1-based)
     const start = new Date(season.startDate + "T00:00:00");
-    const now = new Date(today + "T00:00:00");
+    const ref = new Date(referenceDate + "T00:00:00");
     const diffDays = Math.floor(
-      (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
     );
-    const currentWeek = Math.floor(diffDays / 7) + 1;
+    const currentWeek = Math.max(1, Math.floor(diffDays / 7) + 1);
     const nextWeek = currentWeek + 1;
 
     // Fetch games for both weeks
@@ -46,7 +58,12 @@ export async function GET() {
       );
 
     if (weekGames.length === 0) {
-      return NextResponse.json({ games: [], seasonStart: season.startDate });
+      return NextResponse.json({
+        games: [],
+        seasonStart: season.startDate,
+        seasonEnd: season.endDate,
+        currentWeek,
+      });
     }
 
     // Fetch assignments
@@ -134,6 +151,7 @@ export async function GET() {
 
     return NextResponse.json({
       seasonStart: season.startDate,
+      seasonEnd: season.endDate,
       currentWeek,
       games: result,
     });

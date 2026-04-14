@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface PlayerSlot {
   slotPosition: number;
@@ -20,6 +20,7 @@ interface Game {
 
 interface ScheduleData {
   seasonStart: string | null;
+  seasonEnd: string | null;
   currentWeek: number;
   games: Game[];
 }
@@ -51,13 +52,23 @@ function formatTime(time: string): string {
   return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
+function toIso(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
 export default function PlayerSchedule() {
   const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState<string>("");
 
-  useEffect(() => {
-    fetch("/api/public/schedule")
+  const fetchSchedule = useCallback((from?: string) => {
+    setLoading(true);
+    setError(null);
+    const url = from
+      ? `/api/public/schedule?from=${from}`
+      : "/api/public/schedule";
+    fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load schedule");
         return res.json();
@@ -67,53 +78,88 @@ export default function PlayerSchedule() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading schedule...</p>
-      </div>
-    );
-  }
+  // Initial load (defaults to today)
+  useEffect(() => {
+    fetchSchedule();
+  }, [fetchSchedule]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-red-600">{error}</p>
-      </div>
-    );
-  }
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value; // yyyy-mm-dd
+    setFromDate(val);
+    if (val) {
+      fetchSchedule(val);
+    }
+  };
 
-  if (!data || data.games.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">No games scheduled for this period.</p>
-      </div>
-    );
-  }
+  const handleReset = () => {
+    setFromDate("");
+    fetchSchedule();
+  };
 
-  // Split games into this week and next week
-  const thisWeekGames = data.games.filter(
-    (g) => g.weekNumber === data.currentWeek
-  );
-  const nextWeekGames = data.games.filter(
-    (g) => g.weekNumber === data.currentWeek + 1
-  );
+  const isCustomDate = fromDate !== "";
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-4 py-4 sm:px-6">
-        <h1 className="text-xl font-bold text-gray-900">
-          Tennis Schedule
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Week {data.currentWeek} &amp; {data.currentWeek + 1}
-        </p>
+        <h1 className="text-xl font-bold text-gray-900">Tennis Schedule</h1>
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          <label className="text-sm text-gray-600">
+            Starting from:
+            <input
+              type="date"
+              value={fromDate}
+              onChange={handleDateChange}
+              min={data?.seasonStart ?? undefined}
+              max={data?.seasonEnd ?? undefined}
+              className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm"
+            />
+          </label>
+          {isCustomDate && (
+            <button
+              onClick={handleReset}
+              className="text-sm text-primary hover:underline"
+            >
+              Reset to today
+            </button>
+          )}
+          {data && data.currentWeek > 0 && (
+            <span className="text-sm text-gray-500">
+              Week {data.currentWeek} &amp; {data.currentWeek + 1}
+            </span>
+          )}
+        </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 sm:px-6 space-y-8">
-        <WeekSection title="This Week" games={thisWeekGames} />
-        <WeekSection title="Next Week" games={nextWeekGames} />
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <p className="text-gray-500">Loading schedule...</p>
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20">
+          <p className="text-red-600">{error}</p>
+        </div>
+      ) : !data || data.games.length === 0 ? (
+        <div className="flex items-center justify-center py-20">
+          <p className="text-gray-500">No games scheduled for this period.</p>
+        </div>
+      ) : (
+        <div className="max-w-3xl mx-auto px-4 py-6 sm:px-6 space-y-8">
+          <WeekSection
+            title={isCustomDate ? `Week ${data.currentWeek}` : "This Week"}
+            games={data.games.filter(
+              (g) => g.weekNumber === data.currentWeek
+            )}
+          />
+          <WeekSection
+            title={
+              isCustomDate ? `Week ${data.currentWeek + 1}` : "Next Week"
+            }
+            games={data.games.filter(
+              (g) => g.weekNumber === data.currentWeek + 1
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 }
