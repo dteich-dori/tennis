@@ -382,7 +382,7 @@ export default function Home() {
 
       <div className="px-4 pt-3">
         <Link
-          href="/player-schedule"
+          href="/online-schedule"
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
         >
           View this week&apos;s schedule &rarr;

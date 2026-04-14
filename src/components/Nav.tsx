@@ -13,7 +13,7 @@ const links = [
   { href: "/reports", label: "Reports" },
   { href: "/budget", label: "Budget" },
   { href: "/communications", label: "Communications" },
-  { href: "/player-schedule", label: "Online Display" },
+  { href: "/online-schedule", label: "Online Display" },
   { href: "/user-manual", label: "User Manual" },
   { href: "/developer-guide", label: "Developer Guide" },
 ];
@@ -22,7 +22,7 @@ export function Nav() {
   const pathname = usePathname();
 
   // Hide nav on login page
-  if (pathname === "/login" || pathname === "/player-schedule") return null;
+  if (pathname === "/login" || pathname === "/online-schedule") return null;
 
   return (
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
