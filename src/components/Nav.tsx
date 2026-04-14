@@ -21,7 +21,7 @@ export function Nav() {
   const pathname = usePathname();
 
   // Hide nav on login page
-  if (pathname === "/login") return null;
+  if (pathname === "/login" || pathname === "/player-schedule") return null;
 
   return (
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
