@@ -130,7 +130,7 @@ export default function OnlineSchedule() {
         </div>
 
         {/* Week nav */}
-        <div className="flex items-center justify-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2">
           <button
             onClick={goPrev}
             disabled={!canPrev}
@@ -172,7 +172,7 @@ export default function OnlineSchedule() {
         </div>
       ) : (
         <div className="px-1 py-2 overflow-x-auto">
-          <table className="border-collapse text-xs w-auto mx-auto">
+          <table className="border-collapse text-xs w-auto">
             <thead>
               <tr className="bg-gray-200 text-gray-700">
                 <th className="border border-gray-300 px-1 py-1 text-center">#</th>
