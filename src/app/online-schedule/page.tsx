@@ -23,35 +23,29 @@ interface Game {
 interface ScheduleData {
   seasonStart: string | null;
   seasonEnd: string | null;
-  currentWeek: number;
+  week: number;
+  totalWeeks: number;
   games: Game[];
 }
 
-const DAY_NAMES = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
+const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function formatDateShort(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return `${m.toString().padStart(2, "0")}/${d.toString().padStart(2, "0")}/${y}`;
+function formatDateCompact(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${m}/${d}`;
 }
 
 function formatTime(time: string): string {
   const [h, m] = time.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
+  const ampm = h >= 12 ? "p" : "a";
   const hour = h % 12 || 12;
-  return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`;
+  return m === 0 ? `${hour}${ampm}` : `${hour}:${m.toString().padStart(2, "0")}${ampm}`;
 }
 
 function playerName(game: Game, pos: number): string {
   const p = game.players.find((pl) => pl.slotPosition === pos);
-  return p ? `${p.lastName}, ${p.firstName.charAt(0)}.` : "\u2014";
+  if (!p) return "\u2014";
+  return p.lastName;
 }
 
 export default function OnlineSchedule() {
@@ -59,20 +53,22 @@ export default function OnlineSchedule() {
   const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fromDate, setFromDate] = useState<string>("");
+  const [week, setWeek] = useState<number | null>(null);
 
-  const fetchSchedule = useCallback((from?: string) => {
+  const fetchSchedule = useCallback((w?: number) => {
     setLoading(true);
     setError(null);
-    const url = from
-      ? `/api/public/schedule?from=${from}`
-      : "/api/public/schedule";
+    const url =
+      w != null ? `/api/public/schedule?week=${w}` : "/api/public/schedule";
     fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load schedule");
         return res.json();
       })
-      .then((d) => setData(d))
+      .then((d: ScheduleData) => {
+        setData(d);
+        setWeek(d.week);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -81,170 +77,124 @@ export default function OnlineSchedule() {
     fetchSchedule();
   }, [fetchSchedule]);
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setFromDate(val);
-    if (val) fetchSchedule(val);
+  const goPrev = () => {
+    if (week != null && week > 1) {
+      const w = week - 1;
+      setWeek(w);
+      fetchSchedule(w);
+    }
   };
 
-  const handleReset = () => {
-    setFromDate("");
-    fetchSchedule();
+  const goNext = () => {
+    if (week != null && data && week < data.totalWeeks) {
+      const w = week + 1;
+      setWeek(w);
+      fetchSchedule(w);
+    }
   };
 
-  const isCustomDate = fromDate !== "";
+  // Compute the Monday date for the displayed week
+  let weekMonday = "";
+  if (data?.seasonStart && week) {
+    const start = new Date(data.seasonStart + "T00:00:00");
+    const mon = new Date(start.getTime() + (week - 1) * 7 * 86400000);
+    const m = mon.getMonth() + 1;
+    const d = mon.getDate();
+    weekMonday = `${m}/${d}`;
+  }
 
-  // Group games by week then by date
-  const weekGroups = new Map<number, Map<string, Game[]>>();
+  // Group games by date
+  const byDate = new Map<string, Game[]>();
   if (data?.games) {
     for (const g of data.games) {
-      if (!weekGroups.has(g.weekNumber)) weekGroups.set(g.weekNumber, new Map());
-      const dateMap = weekGroups.get(g.weekNumber)!;
-      if (!dateMap.has(g.date)) dateMap.set(g.date, []);
-      dateMap.get(g.date)!.push(g);
+      if (!byDate.has(g.date)) byDate.set(g.date, []);
+      byDate.get(g.date)!.push(g);
     }
   }
 
-  const weeks = data
-    ? [data.currentWeek, data.currentWeek + 1].filter((w) => weekGroups.has(w))
-    : [];
+  const canPrev = week != null && week > 1;
+  const canNext = week != null && data != null && week < data.totalWeeks;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 sm:px-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 px-3 py-2">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">Tennis Schedule</h1>
+          <span className="text-base font-bold text-gray-900">Schedule</span>
           <button
             onClick={() => router.push("/")}
-            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors"
+            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-300"
           >
             Exit
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-3 mt-2">
-          <label className="text-sm text-gray-600">
-            Starting from:
-            <input
-              type="date"
-              value={fromDate}
-              onChange={handleDateChange}
-              min={data?.seasonStart ?? undefined}
-              max={data?.seasonEnd ?? undefined}
-              className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm"
-            />
-          </label>
-          {isCustomDate && (
-            <button
-              onClick={handleReset}
-              className="text-sm text-primary hover:underline"
-            >
-              Reset to today
-            </button>
-          )}
-          {data && data.currentWeek > 0 && (
-            <span className="text-sm text-gray-500">
-              Week {data.currentWeek} &amp; {data.currentWeek + 1}
-            </span>
-          )}
+
+        {/* Week nav */}
+        <div className="flex items-center justify-center gap-2 mt-2">
+          <button
+            onClick={goPrev}
+            disabled={!canPrev}
+            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-default"
+            aria-label="Previous week"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 15l-5-5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <span className="text-sm font-medium text-gray-700 min-w-[120px] text-center">
+            Week {week ?? "..."}{weekMonday ? ` (${weekMonday})` : ""}
+          </span>
+          <button
+            onClick={goNext}
+            disabled={!canNext}
+            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-default"
+            aria-label="Next week"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 5l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       </header>
 
+      {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <p className="text-gray-500">Loading schedule...</p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-400 text-sm">Loading...</p>
         </div>
       ) : error ? (
-        <div className="flex items-center justify-center py-20">
-          <p className="text-red-600">{error}</p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-red-600 text-sm">{error}</p>
         </div>
       ) : !data || data.games.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <p className="text-gray-500">No games scheduled for this period.</p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-400 text-sm">No games this week.</p>
         </div>
       ) : (
-        <div className="px-2 sm:px-4 py-4 overflow-x-auto">
-          {weeks.map((weekNum) => {
-            const dateMap = weekGroups.get(weekNum)!;
-            const weekLabel =
-              weekNum === data.currentWeek
-                ? isCustomDate
-                  ? `Week ${weekNum}`
-                  : "This Week"
-                : isCustomDate
-                  ? `Week ${weekNum}`
-                  : "Next Week";
-
-            return (
-              <div key={weekNum} className="mb-6">
-                <h2 className="text-base font-semibold text-gray-800 mb-2 px-1">
-                  {weekLabel}
-                </h2>
-                <table className="w-full border-collapse text-sm min-w-[640px]">
-                  <thead>
-                    <tr className="bg-gray-200 text-gray-700">
-                      <th className="border border-gray-300 px-2 py-1.5 text-center w-[40px]">
-                        #
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-center w-[72px]">
-                        Time
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-center w-[32px]">
-                        Ct
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-center w-[52px]">
-                        Group
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-left">
-                        Player 1
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-left">
-                        Player 2
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-left">
-                        Player 3
-                      </th>
-                      <th className="border border-gray-300 px-2 py-1.5 text-left">
-                        Player 4
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...dateMap.entries()].map(([date, dayGames]) => {
-                      const dayName = DAY_NAMES[dayGames[0].dayOfWeek];
-                      return (
-                        <DateGroup
-                          key={date}
-                          date={date}
-                          dayName={dayName}
-                          games={dayGames}
-                        />
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-
-          {weeks.length > 0 &&
-            [data.currentWeek, data.currentWeek + 1]
-              .filter((w) => !weekGroups.has(w))
-              .map((w) => (
-                <div key={w} className="mb-6">
-                  <h2 className="text-base font-semibold text-gray-800 mb-2 px-1">
-                    {w === data.currentWeek
-                      ? isCustomDate
-                        ? `Week ${w}`
-                        : "This Week"
-                      : isCustomDate
-                        ? `Week ${w}`
-                        : "Next Week"}
-                  </h2>
-                  <p className="text-sm text-gray-400 italic px-1">
-                    No games scheduled.
-                  </p>
-                </div>
+        <div className="px-1 py-2 overflow-x-auto">
+          <table className="border-collapse text-xs w-auto mx-auto">
+            <thead>
+              <tr className="bg-gray-200 text-gray-700">
+                <th className="border border-gray-300 px-1 py-1 text-center">#</th>
+                <th className="border border-gray-300 px-1 py-1 text-center">Time</th>
+                <th className="border border-gray-300 px-1 py-1 text-center">Ct</th>
+                <th className="border border-gray-300 px-1.5 py-1 text-left">Player 1</th>
+                <th className="border border-gray-300 px-1.5 py-1 text-left">Player 2</th>
+                <th className="border border-gray-300 px-1.5 py-1 text-left">Player 3</th>
+                <th className="border border-gray-300 px-1.5 py-1 text-left">Player 4</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...byDate.entries()].map(([date, dayGames]) => (
+                <DateGroup
+                  key={date}
+                  date={date}
+                  dayAbbr={DAY_ABBR[dayGames[0].dayOfWeek]}
+                  games={dayGames}
+                />
               ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -253,21 +203,21 @@ export default function OnlineSchedule() {
 
 function DateGroup({
   date,
-  dayName,
+  dayAbbr,
   games,
 }: {
   date: string;
-  dayName: string;
+  dayAbbr: string;
   games: Game[];
 }) {
   return (
     <>
       <tr>
         <td
-          colSpan={8}
-          className="bg-gray-100 border border-gray-300 px-2 py-1.5 font-semibold text-gray-700 text-sm"
+          colSpan={7}
+          className="bg-gray-100 border border-gray-300 px-1.5 py-1 font-semibold text-gray-700 text-xs"
         >
-          {dayName} &mdash; {formatDateShort(date)}
+          {dayAbbr} {formatDateCompact(date)}
         </td>
       </tr>
       {games.map((game, idx) => (
@@ -275,28 +225,25 @@ function DateGroup({
           key={game.gameNumber}
           className={idx % 2 === 1 ? "bg-amber-50/40" : "bg-white"}
         >
-          <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
+          <td className="border border-gray-300 px-1 py-0.5 text-center text-gray-400">
             {game.gameNumber}
           </td>
-          <td className="border border-gray-300 px-2 py-1 text-center whitespace-nowrap">
+          <td className="border border-gray-300 px-1 py-0.5 text-center whitespace-nowrap">
             {formatTime(game.startTime)}
           </td>
-          <td className="border border-gray-300 px-2 py-1 text-center">
+          <td className="border border-gray-300 px-1 py-0.5 text-center">
             {game.courtNumber}
           </td>
-          <td className="border border-gray-300 px-2 py-1 text-center capitalize text-xs">
-            {game.group === "dons" ? "Don's" : game.group}
-          </td>
-          <td className="border border-gray-300 px-2 py-1">
+          <td className="border border-gray-300 px-1.5 py-0.5 whitespace-nowrap">
             {playerName(game, 1)}
           </td>
-          <td className="border border-gray-300 px-2 py-1">
+          <td className="border border-gray-300 px-1.5 py-0.5 whitespace-nowrap">
             {playerName(game, 2)}
           </td>
-          <td className="border border-gray-300 px-2 py-1">
+          <td className="border border-gray-300 px-1.5 py-0.5 whitespace-nowrap">
             {playerName(game, 3)}
           </td>
-          <td className="border border-gray-300 px-2 py-1">
+          <td className="border border-gray-300 px-1.5 py-0.5 whitespace-nowrap">
             {playerName(game, 4)}
           </td>
         </tr>

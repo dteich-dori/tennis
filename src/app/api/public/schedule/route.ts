@@ -4,16 +4,20 @@ import { seasons, games, gameAssignments, players } from "@/db/schema";
 import { eq, and, inArray, lte, gte } from "drizzle-orm";
 
 /**
+ * GET /api/public/schedule?week=5
  * GET /api/public/schedule?from=2026-09-14
- * Public (no auth) — returns games for 2 weeks starting from the given date.
- * If `from` is omitted, defaults to today.
- * The date is snapped to the Monday of its week for consistent week boundaries.
+ * GET /api/public/schedule  (defaults to current week)
+ *
+ * Public (no auth) — returns games for a single week.
+ * `week` takes priority over `from`. If neither is given, uses today's date.
  */
 export async function GET(request: NextRequest) {
   try {
     const database = await db();
+    const weekParam = request.nextUrl.searchParams.get("week");
     const fromParam = request.nextUrl.searchParams.get("from");
-    const referenceDate = fromParam || new Date().toISOString().split("T")[0];
+    const referenceDate =
+      fromParam || new Date().toISOString().split("T")[0];
 
     // Find the current season (startDate ≤ referenceDate ≤ endDate)
     const allSeasons = await database
@@ -31,21 +35,26 @@ export async function GET(request: NextRequest) {
         games: [],
         seasonStart: null,
         seasonEnd: null,
-        currentWeek: 0,
+        week: 0,
+        totalWeeks: 0,
       });
     }
     const season = allSeasons[0];
 
-    // Compute week number for the reference date (1-based)
-    const start = new Date(season.startDate + "T00:00:00");
-    const ref = new Date(referenceDate + "T00:00:00");
-    const diffDays = Math.floor(
-      (ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    const currentWeek = Math.max(1, Math.floor(diffDays / 7) + 1);
-    const nextWeek = currentWeek + 1;
+    // Determine which week to show
+    let week: number;
+    if (weekParam) {
+      week = Math.max(1, Math.min(parseInt(weekParam), season.totalWeeks));
+    } else {
+      const start = new Date(season.startDate + "T00:00:00");
+      const ref = new Date(referenceDate + "T00:00:00");
+      const diffDays = Math.floor(
+        (ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      week = Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, season.totalWeeks));
+    }
 
-    // Fetch games for both weeks
+    // Fetch games for this week
     const weekGames = await database
       .select()
       .from(games)
@@ -53,7 +62,7 @@ export async function GET(request: NextRequest) {
         and(
           eq(games.seasonId, season.id),
           eq(games.status, "normal"),
-          inArray(games.weekNumber, [currentWeek, nextWeek])
+          eq(games.weekNumber, week)
         )
       );
 
@@ -62,7 +71,8 @@ export async function GET(request: NextRequest) {
         games: [],
         seasonStart: season.startDate,
         seasonEnd: season.endDate,
-        currentWeek,
+        week,
+        totalWeeks: season.totalWeeks,
       });
     }
 
@@ -86,7 +96,7 @@ export async function GET(request: NextRequest) {
       assignments.push(...batchResults);
     }
 
-    // Fetch player names for all assigned players
+    // Fetch player names
     const playerIds = [...new Set(assignments.map((a) => a.playerId))];
     let playerMap = new Map<number, { firstName: string; lastName: string }>();
 
@@ -118,9 +128,8 @@ export async function GET(request: NextRequest) {
       assignmentsByGame.set(a.gameId, existing);
     }
 
-    // Sort games by week → day → time → court
+    // Sort games by day → time → court
     const sorted = [...weekGames].sort((a, b) => {
-      if (a.weekNumber !== b.weekNumber) return a.weekNumber - b.weekNumber;
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       if (a.startTime !== b.startTime)
         return a.startTime.localeCompare(b.startTime);
@@ -153,7 +162,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       seasonStart: season.startDate,
       seasonEnd: season.endDate,
-      currentWeek,
+      week,
+      totalWeeks: season.totalWeeks,
       games: result,
     });
   } catch (err) {
