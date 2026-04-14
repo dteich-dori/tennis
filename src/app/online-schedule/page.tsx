@@ -100,7 +100,8 @@ export default function OnlineSchedule() {
     const mon = new Date(start.getTime() + (week - 1) * 7 * 86400000);
     const m = mon.getMonth() + 1;
     const d = mon.getDate();
-    weekMonday = `${m}/${d}`;
+    const y = mon.getFullYear();
+    weekMonday = `${m}/${d}/${y}`;
   }
 
   // Group games by date
@@ -144,7 +145,7 @@ export default function OnlineSchedule() {
             </svg>
           </button>
           <span className="text-sm font-medium text-gray-700 min-w-[120px] text-center">
-            Week {week ?? "..."}{weekMonday ? ` (${weekMonday})` : ""}
+            Week {week ?? "..."}{weekMonday ? `  (${weekMonday})` : ""}
           </span>
           <button
             onClick={goNext}
