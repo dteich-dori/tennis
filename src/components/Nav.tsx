@@ -28,7 +28,7 @@ export function Nav() {
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
       <div className="mb-6 px-3">
         <div className="text-lg font-bold">Tennis Scheduler</div>
-        <div className="text-[10px] text-muted">v{APP_VERSION}</div>
+        <div className="text-sm text-muted">v{APP_VERSION}</div>
       </div>
       {links.map((link) => {
         const isActive =
