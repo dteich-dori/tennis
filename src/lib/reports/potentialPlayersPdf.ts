@@ -192,6 +192,27 @@ export function generatePotentialPlayersPdf(
 
   drawSection(`Contract Players (${contractPlayers.length})`, contractPlayers);
 
+  // --- Weekly slots under contract subtotal ---
+  {
+    const weeklySlots = contractPlayers.reduce((sum, p) => {
+      const freq = p.contractedFrequency === "2+" ? 2 : parseInt(p.contractedFrequency) || 0;
+      return sum + freq;
+    }, 0);
+
+    if (currentY + 20 > pageHeight - 40) {
+      doc.addPage();
+      drawPageHeader();
+      currentY = 90;
+    }
+
+    currentY -= 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Weekly slots under contract: ${weeklySlots}`, marginLeft, currentY);
+    currentY += 20;
+  }
+
   if (substitutes.length > 0) {
     drawSection(`Substitutes (${substitutes.length})`, substitutes);
   }

@@ -13,7 +13,6 @@ interface Player {
 interface Season {
   startDate: string;
   endDate: string;
-  totalWeeks: number;
 }
 
 export function generatePlayersListPdf(
@@ -167,27 +166,6 @@ export function generatePlayersListPdf(
   const substitutes = players.filter((p) => p.contractedFrequency === "0");
 
   drawSection(`Contract Players (${contractPlayers.length})`, contractPlayers);
-
-  // --- Games under contract subtotal ---
-  {
-    const totalGames = contractPlayers.reduce((sum, p) => {
-      const freq = p.contractedFrequency === "2+" ? 2 : parseInt(p.contractedFrequency) || 0;
-      return sum + freq * season.totalWeeks;
-    }, 0);
-
-    // Check for page break
-    if (currentY + 20 > pageHeight - 40) {
-      doc.addPage();
-      drawPageHeader();
-      currentY = 90;
-    }
-
-    currentY -= 10; // Tighten gap after section
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Games under contract: ${totalGames}`, marginLeft, currentY);
-    currentY += 20;
-  }
 
   if (substitutes.length > 0) {
     drawSection(`Substitutes (${substitutes.length})`, substitutes);
