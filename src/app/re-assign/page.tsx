@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Season {
   id: number;
@@ -96,6 +97,7 @@ function playerLabel(p: Player): string {
 }
 
 export default function ReAssignPage() {
+  const router = useRouter();
   // Data
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -664,14 +666,23 @@ export default function ReAssignPage() {
                       {conflicts.map((r, i) => {
                         const k = rowKey(r);
                         const checked = checkedKeys.has(k);
+                        const jumpToSchedule = () =>
+                          router.push(
+                            `/schedule?week=${r.weekNumber}&gameId=${r.gameId}`
+                          );
                         return (
                           <tr
                             key={k + ":" + i}
-                            className={`border-t border-border ${
+                            className={`border-t border-border cursor-pointer hover:bg-yellow-50 ${
                               r.severity === "warning" ? "bg-amber-50/40" : ""
                             }`}
+                            onClick={jumpToSchedule}
+                            title="Click any cell to open this game in the Schedule"
                           >
-                            <td className="p-2 text-center">
+                            <td
+                              className="p-2 text-center"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <input
                                 type="checkbox"
                                 checked={checked}
