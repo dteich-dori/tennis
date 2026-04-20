@@ -56,7 +56,7 @@ interface HistoryEntry {
   sentAt: string;
 }
 
-type RecipientGroup = "ALL" | "Contract Players" | "Subs" | "Player" | "Test";
+type RecipientGroup = "ALL" | "Contract Players" | "Subs" | "Players" | "Test";
 type TabView = "compose" | "templates" | "history";
 
 export default function CommunicationsPage() {
@@ -103,8 +103,9 @@ export default function CommunicationsPage() {
   const [testFirstEventOnly, setTestFirstEventOnly] = useState(true);
   const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null }[]>([]);
 
-  // Single-player recipient (used when recipientGroup === "Player")
-  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  // Multi-player recipient selection (used when recipientGroup === "Players")
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
+  const [playerSearch, setPlayerSearch] = useState("");
 
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -145,7 +146,7 @@ export default function CommunicationsPage() {
 
   // Load recipients for selected group
   const loadRecipients = useCallback(async (seasonId: number, group: RecipientGroup) => {
-    if (group === "Player") {
+    if (group === "Players") {
       // Single-player mode — count is driven by selectedPlayerId, not the API
       setRecipients([]);
       return;
@@ -207,12 +208,12 @@ export default function CommunicationsPage() {
     setTestAsPlayerId((byEmail ?? activePlayers[0]).id);
   }, [activePlayers, testEmail, testAsPlayerId]);
 
-  // Keep recipientCount in sync when in single-Player mode
+  // Keep recipientCount in sync when in Player (multi-select) mode
   useEffect(() => {
-    if (recipientGroup === "Player") {
-      setRecipientCount(selectedPlayerId != null ? 1 : 0);
+    if (recipientGroup === "Players") {
+      setRecipientCount(selectedPlayerIds.length);
     }
-  }, [recipientGroup, selectedPlayerId]);
+  }, [recipientGroup, selectedPlayerIds]);
 
   // Save settings
   const handleSaveSettings = async () => {
@@ -269,14 +270,18 @@ export default function CommunicationsPage() {
     let confirmMsg: string;
     if (recipientGroup === "Test") {
       confirmMsg = `Send test (${channelLabel})?`;
-    } else if (recipientGroup === "Player") {
-      if (selectedPlayerId == null) {
-        setSendError("Please select a player from the dropdown.");
+    } else if (recipientGroup === "Players") {
+      if (selectedPlayerIds.length === 0) {
+        setSendError("Please select at least one player.");
         return;
       }
-      const p = activePlayers.find((x) => x.id === selectedPlayerId);
-      const name = p ? `${p.firstName} ${p.lastName}` : "selected player";
-      confirmMsg = `Send "${channelLabel}" to ${name}?\n\nSubject: ${subject}`;
+      if (selectedPlayerIds.length === 1) {
+        const p = activePlayers.find((x) => x.id === selectedPlayerIds[0]);
+        const name = p ? `${p.firstName} ${p.lastName}` : "selected player";
+        confirmMsg = `Send "${channelLabel}" to ${name}?\n\nSubject: ${subject}`;
+      } else {
+        confirmMsg = `Send "${channelLabel}" to ${selectedPlayerIds.length} selected player${selectedPlayerIds.length !== 1 ? "s" : ""}?\n\nSubject: ${subject}`;
+      }
     } else {
       confirmMsg = `Send "${channelLabel}" to ${recipientCount} recipient${recipientCount !== 1 ? "s" : ""} (${recipientGroup})?\n\nSubject: ${subject}`;
     }
@@ -317,7 +322,7 @@ export default function CommunicationsPage() {
           replyTo,
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
-          selectedPlayerId: recipientGroup === "Player" ? selectedPlayerId : undefined,
+          selectedPlayerIds: recipientGroup === "Players" ? selectedPlayerIds : undefined,
           testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
           icsFirstEventOnly: recipientGroup === "Test" && attachPersonalSchedule && testFirstEventOnly,
           attachments: attachmentsPayload,
@@ -560,7 +565,7 @@ export default function CommunicationsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Recipient Group</label>
             <div className="flex gap-4">
-              {(["ALL", "Contract Players", "Subs", "Player", "Test"] as RecipientGroup[]).map((group) => (
+              {(["ALL", "Contract Players", "Subs", "Players", "Test"] as RecipientGroup[]).map((group) => (
                 <label key={group} className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="radio"
@@ -574,22 +579,91 @@ export default function CommunicationsPage() {
               ))}
             </div>
 
-            {/* Single-player dropdown */}
-            {recipientGroup === "Player" && (
-              <div className="mt-2">
-                <select
-                  value={selectedPlayerId ?? ""}
-                  onChange={(e) => { clearSendBanners(); setSelectedPlayerId(e.target.value ? parseInt(e.target.value) : null); }}
-                  className="border border-border rounded px-3 py-1.5 text-sm w-64 bg-white"
-                >
-                  <option value="">— Select a player —</option>
-                  {activePlayers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.lastName}, {p.firstName}
-                      {p.email ? ` (${p.email})` : " (no email)"}
-                    </option>
-                  ))}
-                </select>
+            {/* Multi-player selection (check one or more) */}
+            {recipientGroup === "Players" && (
+              <div className="mt-2 border border-border rounded bg-white">
+                <div className="flex flex-wrap items-center gap-3 p-2 border-b border-border bg-muted-bg">
+                  <input
+                    type="text"
+                    value={playerSearch}
+                    onChange={(e) => setPlayerSearch(e.target.value)}
+                    placeholder="Search players..."
+                    className="border border-border rounded px-2 py-1 text-sm flex-1 min-w-[140px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSendBanners();
+                      const visible = activePlayers.filter((p) =>
+                        `${p.lastName} ${p.firstName}`
+                          .toLowerCase()
+                          .includes(playerSearch.toLowerCase())
+                      );
+                      setSelectedPlayerIds(visible.map((p) => p.id));
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSendBanners();
+                      setSelectedPlayerIds([]);
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Clear
+                  </button>
+                  <span className="text-xs text-muted">
+                    {selectedPlayerIds.length} selected
+                  </span>
+                </div>
+                <div className="max-h-60 overflow-y-auto p-1">
+                  {activePlayers
+                    .filter((p) =>
+                      `${p.lastName} ${p.firstName}`
+                        .toLowerCase()
+                        .includes(playerSearch.toLowerCase())
+                    )
+                    .map((p) => {
+                      const checked = selectedPlayerIds.includes(p.id);
+                      return (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-muted-bg cursor-pointer rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              clearSendBanners();
+                              setSelectedPlayerIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, p.id]
+                                  : prev.filter((id) => id !== p.id)
+                              );
+                            }}
+                          />
+                          <span className="flex-1">
+                            {p.lastName}, {p.firstName}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {p.email ? p.email : "no email"}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  {activePlayers.filter((p) =>
+                    `${p.lastName} ${p.firstName}`
+                      .toLowerCase()
+                      .includes(playerSearch.toLowerCase())
+                  ).length === 0 && (
+                    <div className="text-sm text-muted px-2 py-1">
+                      No players match &ldquo;{playerSearch}&rdquo;
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -600,16 +674,19 @@ export default function CommunicationsPage() {
                   ? testEmail
                     ? `Test email: ${testEmail}`
                     : "No test email configured"
-                  : recipientGroup === "Player"
+                  : recipientGroup === "Players"
                   ? (() => {
-                      if (selectedPlayerId == null) return "No player selected";
-                      const p = activePlayers.find((x) => x.id === selectedPlayerId);
-                      if (!p) return "No player selected";
-                      return p.email ? `Sending to: ${p.email}` : "Selected player has no email";
+                      if (selectedPlayerIds.length === 0) return "No players selected";
+                      if (selectedPlayerIds.length === 1) {
+                        const p = activePlayers.find((x) => x.id === selectedPlayerIds[0]);
+                        if (!p) return "No players selected";
+                        return p.email ? `Sending to: ${p.email}` : "Selected player has no email";
+                      }
+                      return `${selectedPlayerIds.length} player${selectedPlayerIds.length !== 1 ? "s" : ""} selected`;
                     })()
                   : `${recipientCount} recipient${recipientCount !== 1 ? "s" : ""}`}
               </span>
-              {recipientCount > 0 && recipientGroup !== "Test" && recipientGroup !== "Player" && (
+              {recipientCount > 0 && recipientGroup !== "Test" && recipientGroup !== "Players" && (
                 <button
                   onClick={() => setShowRecipients(!showRecipients)}
                   className="text-sm text-primary hover:underline"

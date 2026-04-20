@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
       channel?: "email" | "sms" | "both";
       attachPersonalSchedule?: boolean; // kept for UI compat; means "append calendar link"
       testAsPlayerId?: number | null;
-      selectedPlayerId?: number | null;
+      selectedPlayerId?: number | null; // deprecated — use selectedPlayerIds
+      selectedPlayerIds?: number[];
       icsFirstEventOnly?: boolean;
       attachments?: Array<{
         filename: string;
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
       attachPersonalSchedule = false,
       testAsPlayerId = null,
       selectedPlayerId = null,
+      selectedPlayerIds = [],
       icsFirstEventOnly = false,
       attachments: rawAttachments = [],
     } = body;
@@ -233,17 +235,25 @@ export async function POST(request: NextRequest) {
         filtered = allPlayers.filter((p) => p.contractedFrequency !== "0");
       } else if (recipientGroup === "Subs") {
         filtered = allPlayers.filter((p) => p.contractedFrequency === "0");
-      } else if (recipientGroup === "Player") {
-        if (selectedPlayerId == null) {
+      } else if (recipientGroup === "Player" || recipientGroup === "Players") {
+        // Prefer the new array param; fall back to the legacy single-id param
+        const ids: number[] =
+          selectedPlayerIds && selectedPlayerIds.length > 0
+            ? selectedPlayerIds
+            : selectedPlayerId != null
+              ? [selectedPlayerId]
+              : [];
+        if (ids.length === 0) {
           return NextResponse.json(
-            { error: "No player selected. Pick a player from the dropdown." },
+            { error: "No players selected." },
             { status: 400 }
           );
         }
-        filtered = allPlayers.filter((p) => p.id === selectedPlayerId);
+        const idSet = new Set(ids);
+        filtered = allPlayers.filter((p) => idSet.has(p.id));
         if (filtered.length === 0) {
           return NextResponse.json(
-            { error: "Selected player not found or not active." },
+            { error: "Selected players not found or not active." },
             { status: 400 }
           );
         }
