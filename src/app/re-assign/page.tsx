@@ -754,6 +754,13 @@ export default function ReAssignPage() {
                       <span className="text-xs text-muted">
                         Week {c.game.weekNumber}
                       </span>
+                      <Link
+                        href={`/schedule?week=${c.game.weekNumber}&gameId=${c.game.id}`}
+                        className="ml-auto text-xs text-primary hover:underline"
+                        title="Open this game in the Schedule page"
+                      >
+                        View in Schedule →
+                      </Link>
                     </div>
 
                     {c.removed.length > 0 && (

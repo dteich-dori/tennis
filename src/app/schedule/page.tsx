@@ -188,6 +188,54 @@ export default function SchedulePage() {
     localStorage.setItem("schedule_currentWeek", String(currentWeek));
   }, [currentWeek]);
 
+  // Deep-link: apply ?week=N from URL on mount (overrides localStorage)
+  // Remember ?gameId=M for after games load, then scroll+highlight it.
+  const [jumpToGameId, setJumpToGameId] = useState<number | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const wk = sp.get("week");
+    if (wk) {
+      const n = parseInt(wk);
+      if (!isNaN(n) && n >= 1 && n <= 52) setCurrentWeek(n);
+    }
+    const gid = sp.get("gameId");
+    if (gid) {
+      const n = parseInt(gid);
+      if (!isNaN(n)) setJumpToGameId(n);
+    }
+  }, []);
+
+  // Once games are loaded and we have a pending jump target, scroll + highlight
+  useEffect(() => {
+    if (jumpToGameId == null) return;
+    if (!games.some((g) => g.id === jumpToGameId)) return;
+    // Small delay to let the DOM render the rows
+    const t = setTimeout(() => {
+      const el = document.getElementById(`game-${jumpToGameId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("bg-yellow-200");
+        setTimeout(() => {
+          el.classList.remove("bg-yellow-200");
+          el.classList.add("transition-colors", "duration-1000");
+          setTimeout(
+            () => el.classList.remove("transition-colors", "duration-1000"),
+            1000
+          );
+        }, 1500);
+      }
+      setJumpToGameId(null);
+      // Clean the URL so a reload doesn't keep jumping
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("gameId");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }, 100);
+    return () => clearTimeout(t);
+  }, [games, jumpToGameId]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
