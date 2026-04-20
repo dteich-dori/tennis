@@ -36,6 +36,7 @@ interface Player {
   cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
+  preassignedGamesWanted: number | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -70,6 +71,7 @@ const emptyPlayer = {
   cGamesLimit: 1 as number | null,
   soloGames: null as number | null,
   groupPct: 0,
+  preassignedGamesWanted: null as number | null,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -161,6 +163,7 @@ export default function PlayersPage() {
       cGamesLimit: player.cGamesLimit ?? 1,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
+      preassignedGamesWanted: player.preassignedGamesWanted ?? null,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
@@ -213,6 +216,7 @@ export default function PlayersPage() {
       email: form.email || null,
       carrier: form.carrier || null,
       soloGames: form.soloGames || null,
+      preassignedGamesWanted: form.preassignedGamesWanted || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
       doNotPair: form.doNotPair,
     };
@@ -804,6 +808,35 @@ export default function PlayersPage() {
                 )}
               </div>
             </div>
+            {form.contractedFrequency === "0" && (
+              <div>
+                <label className="block text-sm text-muted mb-1">
+                  Pre-assigned Games Wanted
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.preassignedGamesWanted ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "") {
+                      setForm({ ...form, preassignedGamesWanted: null });
+                      return;
+                    }
+                    const n = parseInt(v);
+                    if (!isNaN(n) && n >= 1 && n <= 50) {
+                      setForm({ ...form, preassignedGamesWanted: n });
+                    }
+                  }}
+                  placeholder="blank"
+                  className="border border-border rounded px-3 py-2 text-sm w-24"
+                />
+                <p className="text-xs text-muted mt-1">
+                  1–50 games this sub is willing to be pre-assigned. Blank = not set.
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-4 pt-6">
               <label className="flex items-center gap-2 text-sm">
                 <input

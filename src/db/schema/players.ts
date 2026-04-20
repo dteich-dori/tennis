@@ -23,6 +23,7 @@ export const players = sqliteTable("players", {
   cGamesLimit: integer("c_games_limit").default(1), // max A+C games per season for this cGamesOk player; null = use season default
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
   groupPct: integer("group_pct").notNull().default(0), // 0, 25, 50, 100 — percentage of games filled from preferred group
+  preassignedGamesWanted: integer("preassigned_games_wanted"), // null = not set; 1–50 = target pre-assigned games for subs
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {

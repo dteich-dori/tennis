@@ -23,6 +23,10 @@ function validatePlayerFields(body: PlayerBody): string | null {
     const n = Number(body.soloGames);
     if (!Number.isInteger(n) || n < 1 || n > 36) return "soloGames must be an integer between 1 and 36";
   }
+  if (body.preassignedGamesWanted !== undefined && body.preassignedGamesWanted !== null) {
+    const n = Number(body.preassignedGamesWanted);
+    if (!Number.isInteger(n) || n < 1 || n > 50) return "preassignedGamesWanted must be an integer between 1 and 50";
+  }
   if (body.blockedDays) {
     for (const day of body.blockedDays) {
       if (typeof day !== "number" || day < 0 || day > 6) return "blockedDays must contain values 0-6";
@@ -146,6 +150,7 @@ export async function POST(request: NextRequest) {
       doNotPair,
       groupPct,
       groupMembers,
+      preassignedGamesWanted,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -212,6 +217,7 @@ export async function POST(request: NextRequest) {
         cGamesLimit: cGamesLimit ?? 1,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
+        preassignedGamesWanted: preassignedGamesWanted || null,
       })
       .returning();
 
@@ -293,6 +299,7 @@ export async function PUT(request: NextRequest) {
       doNotPair,
       groupPct,
       groupMembers,
+      preassignedGamesWanted,
     } = body;
 
     if (!id) {
@@ -329,6 +336,10 @@ export async function PUT(request: NextRequest) {
       cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
       groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,
+      preassignedGamesWanted:
+        preassignedGamesWanted !== undefined
+          ? (preassignedGamesWanted || null)
+          : currentPlayer.preassignedGamesWanted,
     };
 
     // Check for duplicate name (excluding this player, scoped to season)
