@@ -59,15 +59,32 @@ export function generatePlayersListPdf(
 
   // --- Column layout ---
   const columns = [
-    { header: "Last Name", width: tableWidth * 0.2 },
-    { header: "First Name", width: tableWidth * 0.18 },
-    { header: "Cell", width: tableWidth * 0.18 },
-    { header: "Home Number", width: tableWidth * 0.18 },
+    { header: "Last Name", width: tableWidth * 0.18 },
+    { header: "First Name", width: tableWidth * 0.16 },
+    { header: "Contract", width: tableWidth * 0.08 },
+    { header: "Cell", width: tableWidth * 0.16 },
+    { header: "Home Number", width: tableWidth * 0.16 },
     { header: "Email", width: tableWidth * 0.26 },
   ];
 
   const rowHeight = 18;
   const headerHeight = 22;
+
+  // Format contracted frequency for display
+  function formatContract(freq: string): string {
+    switch (freq) {
+      case "0":
+        return "Sub";
+      case "1":
+        return "1/wk";
+      case "2":
+        return "2/wk";
+      case "2+":
+        return "2+/wk";
+      default:
+        return freq;
+    }
+  }
 
   // --- Helper: draw section header row ---
   function drawTableHeader() {
@@ -142,6 +159,7 @@ export function generatePlayersListPdf(
       const values = [
         player.lastName,
         player.firstName,
+        formatContract(player.contractedFrequency),
         formatPhone(player.cellNumber),
         formatPhone(player.homeNumber),
         player.email ?? "",
