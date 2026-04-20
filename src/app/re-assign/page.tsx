@@ -69,6 +69,7 @@ interface ConflictRow {
   dayOfWeek: number;
   startTime: string;
   courtNumber: number;
+  group: string; // "dons" | "solo"
   playerName: string;
   conflict: string;
   severity: "error" | "warning";
@@ -203,6 +204,7 @@ export default function ReAssignPage() {
             dayOfWeek: g.dayOfWeek,
             startTime: g.startTime,
             courtNumber: g.courtNumber,
+            group: g.group,
             playerName: playerLabel(p),
             conflict: "Inactive player",
             severity: "error",
@@ -240,6 +242,7 @@ export default function ReAssignPage() {
             dayOfWeek: g.dayOfWeek,
             startTime: g.startTime,
             courtNumber: g.courtNumber,
+            group: g.group,
             playerName: playerLabel(p),
             conflict: `Blocked on ${DAYS_SHORT[g.dayOfWeek]}`,
             severity: "error",
@@ -281,6 +284,7 @@ export default function ReAssignPage() {
           dayOfWeek: g.dayOfWeek,
           startTime: g.startTime,
           courtNumber: g.courtNumber,
+          group: g.group,
           playerName: "—",
           conflict: `Incomplete (${assignments.length}/4)`,
           severity: "warning",
@@ -322,19 +326,34 @@ export default function ReAssignPage() {
   };
 
   // --- Apply re-assignment ---
-  const runApply = async () => {
+  // `targetGroup` is "dons" or "solo" — only selected rows of that group are processed.
+  // Don's uses auto-refill; Solo only clears slots (Solo share-logic needs manual pick).
+  const runApply = async (targetGroup: "dons" | "solo") => {
     if (!season || !conflicts) return;
-    const selected = conflicts.filter((r) => checkedKeys.has(rowKey(r)));
+    const selected = conflicts.filter(
+      (r) => checkedKeys.has(rowKey(r)) && r.group === targetGroup
+    );
     if (selected.length === 0) {
-      setApplyError("No rows selected.");
+      setApplyError(
+        `No ${targetGroup === "dons" ? "Don's" : "Solo"} rows selected.`
+      );
       return;
     }
-    if (!window.confirm(
-      `Re-assign ${selected.length} row${selected.length !== 1 ? "s" : ""}?\n\n` +
-      "Affected slots will be cleared and auto-filled. This cannot be undone without a backup."
-    )) {
+    const groupLabel = targetGroup === "dons" ? "Don's" : "Solo";
+    const refillNote =
+      targetGroup === "dons"
+        ? "Affected slots will be cleared and auto-filled."
+        : "Affected Solo slots will be cleared only. You'll need to fill them manually on the Schedule page (Solo uses share-based assignment that's not auto-recoverable per-slot).";
+    if (
+      !window.confirm(
+        `Re-assign ${selected.length} ${groupLabel} row${selected.length !== 1 ? "s" : ""}?\n\n` +
+          refillNote +
+          "\n\nThis cannot be undone without a backup."
+      )
+    ) {
       return;
     }
+    const runAutoAssign = targetGroup === "dons";
     setApplying(true);
     setApplyResult("");
     setApplyError("");
@@ -394,7 +413,7 @@ export default function ReAssignPage() {
           seasonId: season.id,
           effectiveDate,
           targets,
-          runAutoAssign: true,
+          runAutoAssign,
           assignExtra,
           assignCSubs,
         }),
@@ -478,10 +497,14 @@ export default function ReAssignPage() {
 
       // --- SUMMARY BANNER ---
       const parts: string[] = [];
-      parts.push(`Cleared ${data.cleared ?? 0} assignment${(data.cleared ?? 0) !== 1 ? "s" : ""}`);
-      parts.push(`Filled ${data.filled ?? 0}`);
-      if ((data.stillEmpty ?? 0) > 0) {
-        parts.push(`${data.stillEmpty} still empty`);
+      parts.push(`[${groupLabel}] Cleared ${data.cleared ?? 0} assignment${(data.cleared ?? 0) !== 1 ? "s" : ""}`);
+      if (runAutoAssign) {
+        parts.push(`Filled ${data.filled ?? 0}`);
+        if ((data.stillEmpty ?? 0) > 0) {
+          parts.push(`${data.stillEmpty} still empty`);
+        }
+      } else {
+        parts.push("manual fill needed on Schedule page");
       }
       if (data.rejected && data.rejected.length > 0) {
         parts.push(`${data.rejected.length} rejected (before effective date)`);
@@ -612,19 +635,23 @@ export default function ReAssignPage() {
             <p className="text-xs text-muted mt-2">
               V1 detects: vacation, blocked day, inactive player, do-not-pair, incomplete game. Composition / consecutive-days / STD-deficit conflicts should be reviewed on the Schedule page directly.
             </p>
+            <p className="text-xs text-muted mt-1">
+              <strong>Don&apos;s</strong> re-assign clears the affected slots and auto-fills via auto-assign.{" "}
+              <strong>Solo</strong> re-assign clears the affected slots only — Solo uses share-based assignment that can&apos;t be auto-recovered per-slot, so replacements are picked manually on the Schedule page.
+            </p>
           </div>
 
           {/* Results */}
           {conflicts !== null && (
             <div className="border border-border rounded mb-4 bg-white">
-              <div className="px-3 py-2 bg-muted-bg border-b border-border flex items-center justify-between">
+              <div className="px-3 py-2 bg-muted-bg border-b border-border flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium">
                   {conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""} found
                   {conflicts.length > 0 && (
                     <span className="text-muted ml-2">({checkedKeys.size} selected)</span>
                   )}
                 </span>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   {conflicts.length > 0 && (
                     <button
                       onClick={toggleAll}
@@ -633,13 +660,34 @@ export default function ReAssignPage() {
                       {checkedKeys.size === conflicts.length ? "Clear all" : "Select all"}
                     </button>
                   )}
-                  <button
-                    onClick={runApply}
-                    disabled={applying || checkedKeys.size === 0}
-                    className="px-3 py-1.5 bg-primary text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                  >
-                    {applying ? "Applying..." : "Apply Re-Assignment"}
-                  </button>
+                  {(() => {
+                    const donsSelected = conflicts.filter(
+                      (r) => r.group === "dons" && checkedKeys.has(rowKey(r))
+                    ).length;
+                    const soloSelected = conflicts.filter(
+                      (r) => r.group === "solo" && checkedKeys.has(rowKey(r))
+                    ).length;
+                    return (
+                      <>
+                        <button
+                          onClick={() => runApply("dons")}
+                          disabled={applying || donsSelected === 0}
+                          className="px-3 py-1.5 bg-primary text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+                          title="Clear affected Don's slots and re-run auto-assign for the week(s)"
+                        >
+                          {applying ? "Applying..." : `Re-Assign Don's (${donsSelected})`}
+                        </button>
+                        <button
+                          onClick={() => runApply("solo")}
+                          disabled={applying || soloSelected === 0}
+                          className="px-3 py-1.5 bg-orange-600 text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+                          title="Clear affected Solo slots only — Solo uses share-based assignment; fill manually on Schedule page"
+                        >
+                          {applying ? "Applying..." : `Re-Assign Solo (${soloSelected})`}
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -658,6 +706,7 @@ export default function ReAssignPage() {
                         <th className="text-left p-2">Game#</th>
                         <th className="text-center p-2">Ct</th>
                         <th className="text-left p-2">Time</th>
+                        <th className="text-left p-2">Group</th>
                         <th className="text-left p-2">Player</th>
                         <th className="text-left p-2">Conflict</th>
                       </tr>
@@ -696,6 +745,17 @@ export default function ReAssignPage() {
                             <td className="p-2">{r.gameNumber}</td>
                             <td className="p-2 text-center">{r.courtNumber}</td>
                             <td className="p-2">{fmtTime(r.startTime)}</td>
+                            <td className="p-2">
+                              {r.group === "solo" ? (
+                                <span className="inline-flex items-center rounded bg-orange-100 text-orange-800 px-2 py-0.5 text-xs font-medium">
+                                  Solo
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded bg-blue-100 text-blue-800 px-2 py-0.5 text-xs font-medium">
+                                  Don&apos;s
+                                </span>
+                              )}
+                            </td>
                             <td className="p-2">{r.playerName}</td>
                             <td className="p-2">
                               <span
