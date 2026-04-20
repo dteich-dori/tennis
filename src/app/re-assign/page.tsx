@@ -45,6 +45,20 @@ interface Game {
   assignments: Assignment[];
 }
 
+interface SlotDisplay {
+  playerId: number | null;
+  label: string; // "Lastname, F." or "— Open —"
+  isNew: boolean; // true if added by the re-assignment
+  isRemoved: boolean; // true if removed by the re-assignment (shown only in "before" view)
+}
+
+interface ChangeRecord {
+  game: Game;
+  removed: Array<{ playerId: number; playerName: string; reason: string }>;
+  before: SlotDisplay[]; // 4 slots, indices 0..3 representing slotPosition 1..4
+  after: SlotDisplay[];
+}
+
 interface ConflictRow {
   gameId: number;
   playerId: number | null; // null for Incomplete rows
@@ -108,6 +122,7 @@ export default function ReAssignPage() {
   const [applying, setApplying] = useState(false);
   const [applyResult, setApplyResult] = useState<string>("");
   const [applyError, setApplyError] = useState<string>("");
+  const [changes, setChanges] = useState<ChangeRecord[] | null>(null);
 
   // --- Load season + games + players ---
   const loadBase = useCallback(async () => {
@@ -321,6 +336,7 @@ export default function ReAssignPage() {
     setApplying(true);
     setApplyResult("");
     setApplyError("");
+    setChanges(null);
     try {
       // De-dup targets by gameId+playerId (one player can appear for multiple rules on same game)
       const seen = new Set<string>();
@@ -333,6 +349,42 @@ export default function ReAssignPage() {
           return true;
         });
 
+      // --- SNAPSHOT: record "before" state for each affected game ---
+      const affectedGameIds = [...new Set(targets.map((t) => t.gameId))];
+      const gameById = new Map(games.map((g) => [g.id, g]));
+      const playerById = new Map(players.map((p) => [p.id, p]));
+      const beforeSnapshot = new Map<number, Game>();
+      for (const gid of affectedGameIds) {
+        const g = gameById.get(gid);
+        if (g) {
+          // Deep-ish clone of assignments so later state updates don't mutate it
+          beforeSnapshot.set(gid, {
+            ...g,
+            assignments: [...(g.assignments ?? [])],
+          });
+        }
+      }
+
+      // Build removal info per game (playerId + reason) for the report
+      const removalsByGame = new Map<
+        number,
+        Array<{ playerId: number; playerName: string; reason: string }>
+      >();
+      for (const r of selected) {
+        if (r.playerId == null) continue;
+        const list = removalsByGame.get(r.gameId) ?? [];
+        // Dedup — same {gameId, playerId} with multiple reasons → keep first
+        if (!list.some((x) => x.playerId === r.playerId)) {
+          list.push({
+            playerId: r.playerId,
+            playerName: r.playerName,
+            reason: r.conflict,
+          });
+        }
+        removalsByGame.set(r.gameId, list);
+      }
+
+      // --- CALL API ---
       const res = await fetch("/api/games/re-assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,6 +413,68 @@ export default function ReAssignPage() {
         return;
       }
 
+      // --- FETCH "after" state ---
+      const afterGamesRes = await fetch(`/api/games?seasonId=${season.id}`);
+      if (!afterGamesRes.ok) {
+        setApplyError("Apply succeeded but failed to fetch updated games for report.");
+        await loadBase();
+        setConflicts(null);
+        setCheckedKeys(new Set());
+        setApplying(false);
+        return;
+      }
+      const afterGames = (await afterGamesRes.json()) as Game[];
+      const afterById = new Map(afterGames.map((g) => [g.id, g]));
+
+      // --- BUILD CHANGE RECORDS ---
+      const records: ChangeRecord[] = [];
+      for (const gid of affectedGameIds) {
+        const beforeGame = beforeSnapshot.get(gid);
+        const afterGame = afterById.get(gid);
+        if (!beforeGame || !afterGame) continue;
+
+        const beforeIds = new Set(beforeGame.assignments.map((a) => a.playerId));
+        const afterIds = new Set(afterGame.assignments.map((a) => a.playerId));
+        const removedIds = [...beforeIds].filter((id) => !afterIds.has(id));
+        const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
+
+        const slotLabel = (
+          assignments: Assignment[],
+          kind: "before" | "after"
+        ): SlotDisplay[] => {
+          const out: SlotDisplay[] = [];
+          for (let slot = 1; slot <= 4; slot++) {
+            const a = assignments.find((x) => x.slotPosition === slot);
+            if (!a) {
+              out.push({ playerId: null, label: "— Open —", isNew: false, isRemoved: false });
+              continue;
+            }
+            const p = playerById.get(a.playerId);
+            const label = p
+              ? `${p.lastName}, ${p.firstName.charAt(0)}.`
+              : `#${a.playerId}`;
+            const isNew = kind === "after" && newIds.includes(a.playerId);
+            const isRemoved = kind === "before" && removedIds.includes(a.playerId);
+            out.push({ playerId: a.playerId, label, isNew, isRemoved });
+          }
+          return out;
+        };
+
+        records.push({
+          game: afterGame,
+          removed: removalsByGame.get(gid) ?? [],
+          before: slotLabel(beforeGame.assignments, "before"),
+          after: slotLabel(afterGame.assignments, "after"),
+        });
+      }
+
+      // Sort records by date then game number
+      records.sort((a, b) => {
+        if (a.game.date !== b.game.date) return a.game.date.localeCompare(b.game.date);
+        return a.game.gameNumber - b.game.gameNumber;
+      });
+
+      // --- SUMMARY BANNER ---
       const parts: string[] = [];
       parts.push(`Cleared ${data.cleared ?? 0} assignment${(data.cleared ?? 0) !== 1 ? "s" : ""}`);
       parts.push(`Filled ${data.filled ?? 0}`);
@@ -371,9 +485,10 @@ export default function ReAssignPage() {
         parts.push(`${data.rejected.length} rejected (before effective date)`);
       }
       setApplyResult(parts.join(" • "));
+      setChanges(records);
 
-      // Reload base data so next scan reflects the new assignments
-      await loadBase();
+      // Update in-memory games so the next scan reflects new state, but don't wipe changes/banner
+      setGames(afterGames);
       setConflicts(null);
       setCheckedKeys(new Set());
     } catch (err) {
@@ -601,6 +716,107 @@ export default function ReAssignPage() {
           {applyError && (
             <div className="border border-red-200 bg-red-50 text-red-800 rounded p-3 mb-4 text-sm">
               {applyError}
+            </div>
+          )}
+
+          {/* Change report */}
+          {changes && changes.length > 0 && (
+            <div className="border border-border rounded mb-4 bg-white">
+              <div className="px-3 py-2 bg-muted-bg border-b border-border flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  Change report — {changes.length} game
+                  {changes.length !== 1 ? "s" : ""} affected
+                </span>
+                <button
+                  onClick={() => setChanges(null)}
+                  className="text-xs text-muted hover:text-foreground"
+                  title="Hide the report"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="p-3 space-y-3">
+                {changes.map((c) => (
+                  <div
+                    key={c.game.id}
+                    className="border border-border rounded p-3"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
+                      <span className="font-semibold text-sm">
+                        Game #{c.game.gameNumber}
+                      </span>
+                      <span className="text-sm">
+                        {DAYS_SHORT[c.game.dayOfWeek]} {fmtDate(c.game.date)}
+                      </span>
+                      <span className="text-sm">
+                        {fmtTime(c.game.startTime)} · Court {c.game.courtNumber}
+                      </span>
+                      <span className="text-xs text-muted">
+                        Week {c.game.weekNumber}
+                      </span>
+                    </div>
+
+                    {c.removed.length > 0 && (
+                      <p className="text-xs text-red-700 mb-2">
+                        Removed:{" "}
+                        {c.removed
+                          .map((r) => `${r.playerName} (${r.reason})`)
+                          .join(", ")}
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-muted mb-1">
+                          Before
+                        </div>
+                        <ol className="text-sm space-y-0.5">
+                          {c.before.map((s, i) => (
+                            <li
+                              key={i}
+                              className={
+                                s.isRemoved
+                                  ? "text-red-700 line-through"
+                                  : s.playerId == null
+                                    ? "text-muted italic"
+                                    : ""
+                              }
+                            >
+                              {i + 1}. {s.label}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-muted mb-1">
+                          After
+                        </div>
+                        <ol className="text-sm space-y-0.5">
+                          {c.after.map((s, i) => (
+                            <li
+                              key={i}
+                              className={
+                                s.isNew
+                                  ? "bg-green-100 text-green-900 font-semibold px-1 rounded"
+                                  : s.playerId == null
+                                    ? "text-muted italic"
+                                    : ""
+                              }
+                            >
+                              {i + 1}. {s.label}
+                              {s.isNew && (
+                                <span className="ml-2 text-xs text-green-700">
+                                  ← new
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>
