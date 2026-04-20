@@ -10,6 +10,7 @@ const links = [
   { href: "/courts", label: "Court Schedule" },
   { href: "/players", label: "Players" },
   { href: "/schedule", label: "Schedule" },
+  { href: "/re-assign", label: "Re-Assign" },
   { href: "/reports", label: "Reports" },
   { href: "/budget", label: "Budget" },
   { href: "/communications", label: "Communications" },

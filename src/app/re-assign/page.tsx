@@ -1,0 +1,610 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+
+interface Season {
+  id: number;
+  startDate: string;
+  endDate: string;
+  totalWeeks: number;
+}
+
+interface Vacation {
+  startDate: string;
+  endDate: string;
+}
+
+interface Player {
+  id: number;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+  contractedFrequency: string;
+  blockedDays: number[];
+  vacations: Vacation[];
+  doNotPair: number[];
+}
+
+interface Assignment {
+  playerId: number;
+  slotPosition: number;
+  isPrefill: boolean;
+}
+
+interface Game {
+  id: number;
+  gameNumber: number;
+  weekNumber: number;
+  date: string;
+  dayOfWeek: number;
+  startTime: string;
+  courtNumber: number;
+  group: string;
+  status: string;
+  assignments: Assignment[];
+}
+
+interface ConflictRow {
+  gameId: number;
+  playerId: number | null; // null for Incomplete rows
+  gameNumber: number;
+  weekNumber: number;
+  date: string;
+  dayOfWeek: number;
+  startTime: string;
+  courtNumber: number;
+  playerName: string;
+  conflict: string;
+  severity: "error" | "warning";
+}
+
+const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function fmtDate(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${m}/${d}/${y}`;
+}
+
+function fmtTime(t: string): string {
+  if (!t) return "";
+  const [hStr, mStr] = t.split(":");
+  let h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? "pm" : "am";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return mStr === "00" ? `${h}${ampm}` : `${h}:${mStr}${ampm}`;
+}
+
+function playerLabel(p: Player): string {
+  return `${p.lastName}, ${p.firstName.charAt(0)}.`;
+}
+
+export default function ReAssignPage() {
+  // Data
+  const [season, setSeason] = useState<Season | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [loadingBase, setLoadingBase] = useState(true);
+  const [baseError, setBaseError] = useState("");
+
+  // Controls
+  const [effectiveDate, setEffectiveDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [weekStart, setWeekStart] = useState<number>(1);
+  const [weekEnd, setWeekEnd] = useState<number>(36);
+  const [assignExtra, setAssignExtra] = useState(false);
+  const [assignCSubs, setAssignCSubs] = useState(false);
+
+  // Scan results
+  const [conflicts, setConflicts] = useState<ConflictRow[] | null>(null);
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+
+  // Apply results
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<string>("");
+  const [applyError, setApplyError] = useState<string>("");
+
+  // --- Load season + games + players ---
+  const loadBase = useCallback(async () => {
+    setLoadingBase(true);
+    setBaseError("");
+    try {
+      const seasonsRes = await fetch("/api/seasons");
+      if (!seasonsRes.ok) throw new Error("Failed to load season");
+      const allSeasons = (await seasonsRes.json()) as Season[];
+      if (allSeasons.length === 0) throw new Error("No seasons found");
+      const current = allSeasons[allSeasons.length - 1];
+      setSeason(current);
+
+      // Compute default week range once season is known: current week → last week
+      const start = new Date(current.startDate + "T00:00:00");
+      const today = new Date();
+      const diffDays = Math.floor(
+        (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const curWk = Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, current.totalWeeks));
+      setWeekStart(curWk);
+      setWeekEnd(current.totalWeeks);
+
+      const [gamesRes, playersRes] = await Promise.all([
+        fetch(`/api/games?seasonId=${current.id}`),
+        fetch(`/api/players?seasonId=${current.id}`),
+      ]);
+      if (!gamesRes.ok) throw new Error("Failed to load games");
+      if (!playersRes.ok) throw new Error("Failed to load players");
+      setGames((await gamesRes.json()) as Game[]);
+      setPlayers((await playersRes.json()) as Player[]);
+    } catch (err) {
+      setBaseError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingBase(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBase();
+  }, [loadBase]);
+
+  // --- Scan for conflicts (local computation) ---
+  const runScan = () => {
+    setApplyResult("");
+    setApplyError("");
+    if (!season) return;
+
+    const playerById = new Map(players.map((p) => [p.id, p]));
+    const rows: ConflictRow[] = [];
+
+    const relevantGames = games.filter(
+      (g) =>
+        g.status === "normal" &&
+        g.weekNumber >= weekStart &&
+        g.weekNumber <= weekEnd &&
+        g.date >= effectiveDate
+    );
+
+    for (const g of relevantGames) {
+      const assignments = g.assignments ?? [];
+
+      // Per-player conflicts
+      for (const a of assignments) {
+        const p = playerById.get(a.playerId);
+        if (!p) continue;
+
+        // 1. Inactive
+        if (!p.isActive) {
+          rows.push({
+            gameId: g.id,
+            playerId: p.id,
+            gameNumber: g.gameNumber,
+            weekNumber: g.weekNumber,
+            date: g.date,
+            dayOfWeek: g.dayOfWeek,
+            startTime: g.startTime,
+            courtNumber: g.courtNumber,
+            playerName: playerLabel(p),
+            conflict: "Inactive player",
+            severity: "error",
+          });
+        }
+
+        // 2. Vacation
+        for (const v of p.vacations ?? []) {
+          if (g.date >= v.startDate && g.date <= v.endDate) {
+            rows.push({
+              gameId: g.id,
+              playerId: p.id,
+              gameNumber: g.gameNumber,
+              weekNumber: g.weekNumber,
+              date: g.date,
+              dayOfWeek: g.dayOfWeek,
+              startTime: g.startTime,
+              courtNumber: g.courtNumber,
+              playerName: playerLabel(p),
+              conflict: `Vacation ${v.startDate}—${v.endDate}`,
+              severity: "error",
+            });
+            break;
+          }
+        }
+
+        // 3. Blocked day
+        if ((p.blockedDays ?? []).includes(g.dayOfWeek)) {
+          rows.push({
+            gameId: g.id,
+            playerId: p.id,
+            gameNumber: g.gameNumber,
+            weekNumber: g.weekNumber,
+            date: g.date,
+            dayOfWeek: g.dayOfWeek,
+            startTime: g.startTime,
+            courtNumber: g.courtNumber,
+            playerName: playerLabel(p),
+            conflict: `Blocked on ${DAYS_SHORT[g.dayOfWeek]}`,
+            severity: "error",
+          });
+        }
+
+        // 4. Do-not-pair — check against other players in this game
+        const otherAssigned = assignments.filter((o) => o.playerId !== p.id);
+        for (const other of otherAssigned) {
+          const otherP = playerById.get(other.playerId);
+          if (!otherP) continue;
+          if ((p.doNotPair ?? []).includes(otherP.id)) {
+            rows.push({
+              gameId: g.id,
+              playerId: p.id,
+              gameNumber: g.gameNumber,
+              weekNumber: g.weekNumber,
+              date: g.date,
+              dayOfWeek: g.dayOfWeek,
+              startTime: g.startTime,
+              courtNumber: g.courtNumber,
+              playerName: playerLabel(p),
+              conflict: `Do-not-pair with ${playerLabel(otherP)}`,
+              severity: "error",
+            });
+            break;
+          }
+        }
+      }
+
+      // 5. Incomplete game (< 4)
+      if (assignments.length < 4) {
+        rows.push({
+          gameId: g.id,
+          playerId: null,
+          gameNumber: g.gameNumber,
+          weekNumber: g.weekNumber,
+          date: g.date,
+          dayOfWeek: g.dayOfWeek,
+          startTime: g.startTime,
+          courtNumber: g.courtNumber,
+          playerName: "—",
+          conflict: `Incomplete (${assignments.length}/4)`,
+          severity: "warning",
+        });
+      }
+    }
+
+    // Sort by date, then gameNumber
+    rows.sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      if (a.gameNumber !== b.gameNumber) return a.gameNumber - b.gameNumber;
+      return a.playerName.localeCompare(b.playerName);
+    });
+
+    setConflicts(rows);
+    // All checked by default
+    setCheckedKeys(new Set(rows.map((r) => rowKey(r))));
+  };
+
+  const rowKey = (r: ConflictRow) => `${r.gameId}:${r.playerId ?? "none"}:${r.conflict}`;
+
+  const toggleRow = (r: ConflictRow) => {
+    const k = rowKey(r);
+    setCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (!conflicts) return;
+    if (checkedKeys.size === conflicts.length) {
+      setCheckedKeys(new Set());
+    } else {
+      setCheckedKeys(new Set(conflicts.map((r) => rowKey(r))));
+    }
+  };
+
+  // --- Apply re-assignment ---
+  const runApply = async () => {
+    if (!season || !conflicts) return;
+    const selected = conflicts.filter((r) => checkedKeys.has(rowKey(r)));
+    if (selected.length === 0) {
+      setApplyError("No rows selected.");
+      return;
+    }
+    if (!window.confirm(
+      `Re-assign ${selected.length} row${selected.length !== 1 ? "s" : ""}?\n\n` +
+      "Affected slots will be cleared and auto-filled. This cannot be undone without a backup."
+    )) {
+      return;
+    }
+    setApplying(true);
+    setApplyResult("");
+    setApplyError("");
+    try {
+      // De-dup targets by gameId+playerId (one player can appear for multiple rules on same game)
+      const seen = new Set<string>();
+      const targets = selected
+        .map((r) => ({ gameId: r.gameId, playerId: r.playerId }))
+        .filter((t) => {
+          const k = `${t.gameId}:${t.playerId ?? "none"}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+
+      const res = await fetch("/api/games/re-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonId: season.id,
+          effectiveDate,
+          targets,
+          runAutoAssign: true,
+          assignExtra,
+          assignCSubs,
+        }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        cleared?: number;
+        filled?: number;
+        stillEmpty?: number;
+        rejected?: Array<{ gameId: number; reason: string }>;
+        weeks?: Array<{ weekNumber: number; assignedCount: number; unfilled: number; error?: string }>;
+        error?: string;
+      };
+
+      if (!res.ok || !data.success) {
+        setApplyError(data.error || "Re-assignment failed.");
+        setApplying(false);
+        return;
+      }
+
+      const parts: string[] = [];
+      parts.push(`Cleared ${data.cleared ?? 0} assignment${(data.cleared ?? 0) !== 1 ? "s" : ""}`);
+      parts.push(`Filled ${data.filled ?? 0}`);
+      if ((data.stillEmpty ?? 0) > 0) {
+        parts.push(`${data.stillEmpty} still empty`);
+      }
+      if (data.rejected && data.rejected.length > 0) {
+        parts.push(`${data.rejected.length} rejected (before effective date)`);
+      }
+      setApplyResult(parts.join(" • "));
+
+      // Reload base data so next scan reflects the new assignments
+      await loadBase();
+      setConflicts(null);
+      setCheckedKeys(new Set());
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // --- Render ---
+  return (
+    <div className="max-w-6xl">
+      <div className="flex items-baseline justify-between mb-4">
+        <h1 className="text-2xl font-bold">Re-Assign Games</h1>
+        <div className="flex gap-3 text-sm">
+          <Link href="/schedule" className="text-primary hover:underline">
+            Schedule →
+          </Link>
+          <Link href="/players" className="text-primary hover:underline">
+            Players →
+          </Link>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 text-sm text-blue-900 rounded p-3 mb-4">
+        <p className="font-medium mb-1">How this works</p>
+        <ol className="list-decimal ml-5 space-y-0.5">
+          <li>First, update any changed player data (vacations, blocked days, active status, do-not-pair) on the <Link href="/players" className="underline">Players</Link> page.</li>
+          <li>Set an <strong>Effective Change Date</strong> — games before this date won&apos;t be touched. Default is tomorrow; bump it further out if players need more notice.</li>
+          <li>Click <strong>Scan for conflicts</strong>. Review the list.</li>
+          <li>Uncheck any rows you don&apos;t want to act on, then click <strong>Apply Re-Assignment</strong>.</li>
+          <li>After applying, re-export/re-email the affected weeks via the Reports / Communications pages.</li>
+        </ol>
+      </div>
+
+      {loadingBase ? (
+        <p className="text-muted">Loading...</p>
+      ) : baseError ? (
+        <p className="text-red-600">{baseError}</p>
+      ) : !season ? (
+        <p className="text-muted">No season data.</p>
+      ) : (
+        <>
+          {/* Controls */}
+          <div className="border border-border rounded p-4 mb-4 bg-white">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-muted mb-1">Season</label>
+                <div className="border border-border rounded px-3 py-2 text-sm bg-muted-bg">
+                  {season.startDate} → {season.endDate}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-muted mb-1">Effective Change Date</label>
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  onChange={(e) => setEffectiveDate(e.target.value)}
+                  min={season.startDate}
+                  max={season.endDate}
+                  className="border border-border rounded px-3 py-2 text-sm w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-muted mb-1">Start Week</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={season.totalWeeks}
+                  value={weekStart}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value);
+                    if (!isNaN(n) && n >= 1 && n <= season.totalWeeks) setWeekStart(n);
+                  }}
+                  className="border border-border rounded px-3 py-2 text-sm w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-muted mb-1">End Week</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={season.totalWeeks}
+                  value={weekEnd}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value);
+                    if (!isNaN(n) && n >= 1 && n <= season.totalWeeks) setWeekEnd(n);
+                  }}
+                  className="border border-border rounded px-3 py-2 text-sm w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 mt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={assignExtra}
+                  onChange={(e) => setAssignExtra(e.target.checked)}
+                />
+                Also assign extra games
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={assignCSubs}
+                  onChange={(e) => setAssignCSubs(e.target.checked)}
+                />
+                Also assign subs to fill
+              </label>
+              <button
+                onClick={runScan}
+                className="ml-auto px-4 py-2 bg-primary text-white rounded text-sm font-medium hover:opacity-90"
+              >
+                Scan for conflicts
+              </button>
+            </div>
+
+            <p className="text-xs text-muted mt-2">
+              V1 detects: vacation, blocked day, inactive player, do-not-pair, incomplete game. Composition / consecutive-days / STD-deficit conflicts should be reviewed on the Schedule page directly.
+            </p>
+          </div>
+
+          {/* Results */}
+          {conflicts !== null && (
+            <div className="border border-border rounded mb-4 bg-white">
+              <div className="px-3 py-2 bg-muted-bg border-b border-border flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  {conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""} found
+                  {conflicts.length > 0 && (
+                    <span className="text-muted ml-2">({checkedKeys.size} selected)</span>
+                  )}
+                </span>
+                <div className="flex items-center gap-3">
+                  {conflicts.length > 0 && (
+                    <button
+                      onClick={toggleAll}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {checkedKeys.size === conflicts.length ? "Clear all" : "Select all"}
+                    </button>
+                  )}
+                  <button
+                    onClick={runApply}
+                    disabled={applying || checkedKeys.size === 0}
+                    className="px-3 py-1.5 bg-primary text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+                  >
+                    {applying ? "Applying..." : "Apply Re-Assignment"}
+                  </button>
+                </div>
+              </div>
+
+              {conflicts.length === 0 ? (
+                <p className="p-4 text-sm text-muted">
+                  No conflicts in weeks {weekStart}–{weekEnd} on/after {effectiveDate}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted-bg">
+                      <tr>
+                        <th className="w-8 p-2"></th>
+                        <th className="text-left p-2">Week</th>
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Game#</th>
+                        <th className="text-center p-2">Ct</th>
+                        <th className="text-left p-2">Time</th>
+                        <th className="text-left p-2">Player</th>
+                        <th className="text-left p-2">Conflict</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conflicts.map((r, i) => {
+                        const k = rowKey(r);
+                        const checked = checkedKeys.has(k);
+                        return (
+                          <tr
+                            key={k + ":" + i}
+                            className={`border-t border-border ${
+                              r.severity === "warning" ? "bg-amber-50/40" : ""
+                            }`}
+                          >
+                            <td className="p-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleRow(r)}
+                              />
+                            </td>
+                            <td className="p-2">{r.weekNumber}</td>
+                            <td className="p-2 whitespace-nowrap">
+                              {DAYS_SHORT[r.dayOfWeek]} {fmtDate(r.date)}
+                            </td>
+                            <td className="p-2">{r.gameNumber}</td>
+                            <td className="p-2 text-center">{r.courtNumber}</td>
+                            <td className="p-2">{fmtTime(r.startTime)}</td>
+                            <td className="p-2">{r.playerName}</td>
+                            <td className="p-2">
+                              <span
+                                className={
+                                  r.severity === "error"
+                                    ? "text-red-700"
+                                    : "text-amber-800"
+                                }
+                              >
+                                {r.conflict}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Apply banners */}
+          {applyResult && (
+            <div className="border border-green-200 bg-green-50 text-green-900 rounded p-3 mb-4 text-sm">
+              ✓ {applyResult}
+            </div>
+          )}
+          {applyError && (
+            <div className="border border-red-200 bg-red-50 text-red-800 rounded p-3 mb-4 text-sm">
+              {applyError}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
