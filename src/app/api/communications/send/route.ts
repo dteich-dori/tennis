@@ -10,6 +10,7 @@ import {
   validateEmailConfig,
   type Recipient,
   type SmsRecipient,
+  type EmailAttachment,
 } from "@/lib/email";
 
 interface EmailRecipientWithPlayer {
@@ -79,6 +80,11 @@ export async function POST(request: NextRequest) {
       testAsPlayerId?: number | null;
       selectedPlayerId?: number | null;
       icsFirstEventOnly?: boolean;
+      attachments?: Array<{
+        filename: string;
+        contentBase64: string;
+        contentType?: string;
+      }>;
     };
     const {
       seasonId,
@@ -92,7 +98,33 @@ export async function POST(request: NextRequest) {
       testAsPlayerId = null,
       selectedPlayerId = null,
       icsFirstEventOnly = false,
+      attachments: rawAttachments = [],
     } = body;
+
+    // Convert incoming base64 attachments to Nodemailer EmailAttachment shape
+    // and enforce a total size cap (~20 MB post-decode).
+    const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+    let emailAttachments: EmailAttachment[] | undefined;
+    if (rawAttachments.length > 0) {
+      let totalBytes = 0;
+      emailAttachments = rawAttachments.map((a) => {
+        const buf = Buffer.from(a.contentBase64, "base64");
+        totalBytes += buf.length;
+        return {
+          filename: a.filename,
+          content: buf,
+          contentType: a.contentType || "application/octet-stream",
+        };
+      });
+      if (totalBytes > MAX_TOTAL_BYTES) {
+        return NextResponse.json(
+          {
+            error: `Attachments too large (${(totalBytes / 1024 / 1024).toFixed(1)} MB). Max 20 MB.`,
+          },
+          { status: 413 }
+        );
+      }
+    }
 
     if (!seasonId || !subject || !messageBody) {
       return NextResponse.json(
@@ -295,6 +327,7 @@ export async function POST(request: NextRequest) {
           html: perRecipientHtml,
           fromName,
           replyTo,
+          attachments: emailAttachments,
         });
         if (result.success) {
           emailsSent++;
@@ -313,7 +346,8 @@ export async function POST(request: NextRequest) {
         subject,
         messageBody,
         fromName,
-        replyTo
+        replyTo,
+        emailAttachments
       );
       emailsSent = bulkResult.sent;
       emailErrors.push(...bulkResult.errors);

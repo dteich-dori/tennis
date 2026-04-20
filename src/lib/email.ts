@@ -102,7 +102,8 @@ export async function sendBulkEmails(
   subject: string,
   text: string,
   fromName: string,
-  replyTo?: string
+  replyTo?: string,
+  attachments?: EmailAttachment[]
 ): Promise<BulkResult> {
   const result: BulkResult = { sent: 0, smsSent: 0, errors: [], skipped: [], recipients: [] };
 
@@ -119,7 +120,7 @@ export async function sendBulkEmails(
       continue;
     }
 
-    const sendResult = await sendEmail({ to: email, subject, text, fromName, replyTo });
+    const sendResult = await sendEmail({ to: email, subject, text, fromName, replyTo, attachments });
     if (sendResult.success) {
       result.sent++;
       result.recipients.push(r.name);

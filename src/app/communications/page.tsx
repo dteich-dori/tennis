@@ -76,6 +76,9 @@ export default function CommunicationsPage() {
   const [channel, setChannel] = useState<Channel>("both");
   const [attachPersonalSchedule, setAttachPersonalSchedule] = useState(false);
 
+  // File attachments (email only — transient; cleared after each send)
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+
   // Compose
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("ALL");
   const [subject, setSubject] = useState("");
@@ -229,8 +232,38 @@ export default function CommunicationsPage() {
   };
 
   // Send email
+  // Read a File as base64 (without the `data:...;base64,` prefix)
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        const comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const attachedTotalBytes = attachedFiles.reduce((s, f) => s + f.size, 0);
+  const ATTACH_WARN_BYTES = 4 * 1024 * 1024; // 4 MB — warn
+  const ATTACH_MAX_BYTES = 10 * 1024 * 1024; // 10 MB — block
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  };
+
   const handleSend = async () => {
     if (!season || !subject.trim() || !messageBody.trim()) return;
+
+    if (attachedFiles.length > 0 && attachedTotalBytes > ATTACH_MAX_BYTES) {
+      setSendError(
+        `Attachments total ${formatBytes(attachedTotalBytes)} — max ${formatBytes(ATTACH_MAX_BYTES)}.`
+      );
+      return;
+    }
 
     const channelLabel = channel === "email" ? "Email only" : channel === "sms" ? "Text only" : "Email + Text";
     let confirmMsg: string;
@@ -256,6 +289,22 @@ export default function CommunicationsPage() {
     setSendWarnings([]);
 
     try {
+      // Encode file attachments to base64 (email-only; SMS ignores them)
+      let attachmentsPayload: Array<{
+        filename: string;
+        contentType: string;
+        contentBase64: string;
+      }> | undefined;
+      if (attachedFiles.length > 0 && channel !== "sms") {
+        attachmentsPayload = await Promise.all(
+          attachedFiles.map(async (f) => ({
+            filename: f.name,
+            contentType: f.type || "application/octet-stream",
+            contentBase64: await fileToBase64(f),
+          }))
+        );
+      }
+
       const res = await fetch("/api/communications/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,6 +320,7 @@ export default function CommunicationsPage() {
           selectedPlayerId: recipientGroup === "Player" ? selectedPlayerId : undefined,
           testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
           icsFirstEventOnly: recipientGroup === "Test" && attachPersonalSchedule && testFirstEventOnly,
+          attachments: attachmentsPayload,
         }),
       });
       const data = (await res.json()) as {
@@ -295,6 +345,8 @@ export default function CommunicationsPage() {
           setSendError("No messages were sent — see issues below.");
         } else {
           setSendMessage(`✓ Sent: ${summary}.`);
+          // Clear attachments only on successful send
+          setAttachedFiles([]);
         }
         if (data.warnings && data.warnings.length > 0) {
           setSendWarnings(data.warnings);
@@ -732,6 +784,87 @@ export default function CommunicationsPage() {
                   Preview mode: subscription shows only the first game
                 </label>
               </div>
+            )}
+          </div>
+
+          {/* File attachments */}
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <label
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded cursor-pointer hover:bg-muted-bg"
+                title={
+                  channel === "sms"
+                    ? "Switch channel to Email or Both to attach files"
+                    : "Attach one or more files (PDFs, etc.) to the outgoing email"
+                }
+              >
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  disabled={channel === "sms"}
+                  onChange={(e) => {
+                    clearSendBanners();
+                    const picked = Array.from(e.target.files ?? []);
+                    if (picked.length > 0) {
+                      setAttachedFiles((prev) => [...prev, ...picked]);
+                    }
+                    // Reset the input so picking the same file twice triggers onChange
+                    e.target.value = "";
+                  }}
+                />
+                <span>+ Attach files</span>
+              </label>
+              {attachedFiles.length > 0 && (
+                <span
+                  className={`text-xs ${
+                    attachedTotalBytes > ATTACH_MAX_BYTES
+                      ? "text-red-600 font-medium"
+                      : attachedTotalBytes > ATTACH_WARN_BYTES
+                        ? "text-orange-600"
+                        : "text-muted"
+                  }`}
+                >
+                  {attachedFiles.length} file{attachedFiles.length !== 1 ? "s" : ""} &middot;{" "}
+                  {formatBytes(attachedTotalBytes)}
+                  {attachedTotalBytes > ATTACH_MAX_BYTES &&
+                    ` — exceeds ${formatBytes(ATTACH_MAX_BYTES)} limit`}
+                  {attachedTotalBytes > ATTACH_WARN_BYTES &&
+                    attachedTotalBytes <= ATTACH_MAX_BYTES &&
+                    " — large total, may be rejected by some mail servers"}
+                </span>
+              )}
+            </div>
+
+            {attachedFiles.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {attachedFiles.map((f, idx) => (
+                  <li
+                    key={`${f.name}-${idx}`}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      className="text-muted hover:text-red-600"
+                      title="Remove this attachment"
+                      aria-label={`Remove ${f.name}`}
+                    >
+                      ×
+                    </button>
+                    <span className="flex-1 truncate">{f.name}</span>
+                    <span className="text-xs text-muted">{formatBytes(f.size)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {channel === "sms" && attachedFiles.length > 0 && (
+              <p className="text-xs text-orange-600 mt-1">
+                SMS cannot carry attachments — these files will not be sent.
+              </p>
             )}
           </div>
 
