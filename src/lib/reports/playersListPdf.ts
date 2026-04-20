@@ -209,8 +209,24 @@ export function generatePlayersListPdf(
     doc.setTextColor(0, 0, 0);
   }
 
+  // --- Set PDF metadata so browsers suggest a meaningful filename on Save ---
+  const pdfName = `Players-List-${startYear}-${endYear}`;
+  doc.setProperties({
+    title: pdfName,
+    subject: "Brooklake Don's Group Players List",
+    author: "Tennis Scheduler",
+  });
+
   // --- Open in new tab ---
   const pdfBlob = doc.output("blob");
   const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  // Use an anchor with `download` as a hint for browsers that honor it.
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.download = `${pdfName}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
