@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { formatPhone } from "@/lib/formatPhone";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface Player {
   firstName: string;
@@ -209,24 +210,9 @@ export function generatePlayersListPdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  // --- Set PDF metadata so browsers suggest a meaningful filename on Save ---
-  const pdfName = `Players-List-${startYear}-${endYear}`;
-  doc.setProperties({
-    title: pdfName,
-    subject: "Brooklake Don's Group Players List",
-    author: "Tennis Scheduler",
-  });
-
-  // --- Open in new tab ---
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  // Use an anchor with `download` as a hint for browsers that honor it.
-  const a = document.createElement("a");
-  a.href = url;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  a.download = `${pdfName}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  openPdfWithName(
+    doc,
+    `Players-List-${startYear}-${endYear}`,
+    "Brooklake Don's Group Players List"
+  );
 }

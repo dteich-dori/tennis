@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -460,8 +461,11 @@ export function generatePotentialPlayersPdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  // --- Open in new tab ---
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  const startYear = season.startDate.substring(0, 4);
+  const endYear = season.endDate.substring(0, 4);
+  openPdfWithName(
+    doc,
+    `Player-List-Internal-${startYear}-${endYear}`,
+    "Brooklake Don's Group Player List (Internal)"
+  );
 }

@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface PlayerInfo {
   id: number;
@@ -51,9 +52,11 @@ export function generatePairingMatrixPdf(
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.text("No player data available.", pageWidth / 2, 80, { align: "center" });
-    const pdfBlob = doc.output("blob");
-    const url = URL.createObjectURL(pdfBlob);
-    window.open(url, "_blank");
+    openPdfWithName(
+      doc,
+      `Pairing-Matrix-${startYear}-${endYear}`,
+      "Brooklake Pairing Matrix"
+    );
     return;
   }
 
@@ -216,7 +219,9 @@ export function generatePairingMatrixPdf(
     drawMatrixPage(sortedPlayers, subPlayers, `Substitutes (${subPlayers.length})`, false);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Pairing-Matrix-${startYear}-${endYear}`,
+    "Brooklake Pairing Matrix"
+  );
 }

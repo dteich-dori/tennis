@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface CompositionRow {
   compType: string;
@@ -341,7 +342,10 @@ export function generateCompositionPdf(data: CompositionData): void {
     doc.setTextColor(0, 0, 0);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  const safeLabel = data.seasonLabel.replace(/[^A-Za-z0-9-]/g, "-").replace(/-+/g, "-");
+  openPdfWithName(
+    doc,
+    `Composition-Analysis-${safeLabel}`,
+    "Brooklake Game Composition Analysis"
+  );
 }

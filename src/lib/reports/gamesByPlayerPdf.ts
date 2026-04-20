@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface Assignment {
   id: number;
@@ -300,7 +301,9 @@ export function generateGamesByPlayerPdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Games-By-Player-${startYear}-${endYear}`,
+    "Brooklake Games By Player"
+  );
 }

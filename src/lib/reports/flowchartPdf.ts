@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 /**
  * Generate a 2-page flowchart PDF for the auto-assign algorithm.
@@ -238,8 +239,5 @@ export function generateFlowchartPdf(): void {
     py += 13;
   }
 
-  // Open
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(doc, "Auto-Assign-Flowchart", "Auto-Assign Algorithm Flowchart");
 }

@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface PlayerStat {
   playerId: number;
@@ -595,8 +596,10 @@ export function generatePlayerStatsPdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  // --- Open in new tab ---
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  const groupName = group === "dons" ? "Dons" : "Solo";
+  openPdfWithName(
+    doc,
+    `Player-Stats-${groupName}-${startYear}-${endYear}`,
+    `Brooklake ${groupName} Group Player Statistics`
+  );
 }

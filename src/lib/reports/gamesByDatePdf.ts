@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface Assignment {
   id: number;
@@ -347,9 +348,11 @@ export function generateGamesByDatePdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Games-By-Date-${startYear}-${endYear}-Weeks-${weekStart}-${weekEnd}`,
+    "Brooklake Don's Group Games By Date"
+  );
 }
 
 
@@ -535,9 +538,11 @@ export function generateSoloGamesByDatePdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Solo-Games-By-Date-${startYear}-${endYear}`,
+    "Brooklake Solo Group Games By Date"
+  );
 }
 
 
@@ -821,7 +826,9 @@ export function generateGamesByDateWorksheetPdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Games-By-Date-Worksheet-${startYear}-${endYear}-Weeks-${weekStart}-${weekEnd}`,
+    "Brooklake Don's Group Games By Date (Worksheet)"
+  );
 }

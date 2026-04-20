@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { openPdfWithName } from "./openPdfWithName";
 
 interface CourtSchedule {
   id: number;
@@ -203,8 +204,9 @@ export function generateCourtSchedulePdf(
     doc.setTextColor(0, 0, 0);
   }
 
-  // --- Open in new tab ---
-  const pdfBlob = doc.output("blob");
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
+  openPdfWithName(
+    doc,
+    `Court-Schedule-${startYear}-${endYear}`,
+    "Brooklake Court Schedule"
+  );
 }
