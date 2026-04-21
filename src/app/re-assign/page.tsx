@@ -21,7 +21,9 @@ interface Player {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  skillLevel: string;
   contractedFrequency: string;
+  soloGames: number | null;
   blockedDays: number[];
   vacations: Vacation[];
   doNotPair: number[];
@@ -126,6 +128,19 @@ export default function ReAssignPage() {
   const [applyResult, setApplyResult] = useState<string>("");
   const [applyError, setApplyError] = useState<string>("");
   const [changes, setChanges] = useState<ChangeRecord[] | null>(null);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<"conflicts" | "swap">("conflicts");
+
+  // --- Swap tab state ---
+  const [swapPlayerId, setSwapPlayerId] = useState<number | null>(null);
+  const [swapPlayerSearch, setSwapPlayerSearch] = useState("");
+  const [swapGameAId, setSwapGameAId] = useState<number | null>(null);
+  const [swapWeeksAhead, setSwapWeeksAhead] = useState(1); // 0 = current only, 1 = +1 week, etc.
+  const [swapWeeksBack, setSwapWeeksBack] = useState(0); // 0 = none, 1 = include previous week
+  const [swapping, setSwapping] = useState(false);
+  const [swapBanner, setSwapBanner] = useState<string>("");
+  const [swapError, setSwapError] = useState<string>("");
 
   // --- Load season + games + players ---
   const loadBase = useCallback(async () => {
@@ -540,16 +555,54 @@ export default function ReAssignPage() {
         </div>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 text-sm text-blue-900 rounded p-3 mb-4">
-        <p className="font-medium mb-1">How this works</p>
-        <ol className="list-decimal ml-5 space-y-0.5">
-          <li>First, update any changed player data (vacations, blocked days, active status, do-not-pair) on the <Link href="/players" className="underline">Players</Link> page.</li>
-          <li>Set an <strong>Effective Change Date</strong> — games before this date won&apos;t be touched. Default is tomorrow; bump it further out if players need more notice.</li>
-          <li>Click <strong>Scan for conflicts</strong>. Review the list.</li>
-          <li>Uncheck any rows you don&apos;t want to act on, then click <strong>Apply Re-Assignment</strong>.</li>
-          <li>After applying, re-export/re-email the affected weeks via the Reports / Communications pages.</li>
-        </ol>
+      {/* Tabs */}
+      <div className="border-b border-border mb-4 flex gap-1">
+        <button
+          onClick={() => setActiveTab("conflicts")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-[1px] ${
+            activeTab === "conflicts"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted hover:text-foreground"
+          }`}
+        >
+          Conflicts
+        </button>
+        <button
+          onClick={() => setActiveTab("swap")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-[1px] ${
+            activeTab === "swap"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted hover:text-foreground"
+          }`}
+        >
+          Swap
+        </button>
       </div>
+
+      {activeTab === "conflicts" && (
+        <div className="bg-blue-50 border border-blue-200 text-sm text-blue-900 rounded p-3 mb-4">
+          <p className="font-medium mb-1">How this works</p>
+          <ol className="list-decimal ml-5 space-y-0.5">
+            <li>First, update any changed player data (vacations, blocked days, active status, do-not-pair) on the <Link href="/players" className="underline">Players</Link> page.</li>
+            <li>Set an <strong>Effective Change Date</strong> — games before this date won&apos;t be touched. Default is tomorrow; bump it further out if players need more notice.</li>
+            <li>Click <strong>Scan for conflicts</strong>. Review the list.</li>
+            <li>Uncheck any rows you don&apos;t want to act on, then click <strong>Apply Re-Assignment</strong>.</li>
+            <li>After applying, re-export/re-email the affected weeks via the Reports / Communications pages.</li>
+          </ol>
+        </div>
+      )}
+
+      {activeTab === "swap" && (
+        <div className="bg-purple-50 border border-purple-200 text-sm text-purple-900 rounded p-3 mb-4">
+          <p className="font-medium mb-1">How this works</p>
+          <ol className="list-decimal ml-5 space-y-0.5">
+            <li>Pick the <strong>player</strong> who wants to swap out of a game.</li>
+            <li>Click the <strong>game they want to give up</strong>.</li>
+            <li>The system shows valid swap partners in the selected radius — <strong>same group, same skill level</strong> only.</li>
+            <li>Click <strong>Swap</strong> next to a candidate. Both assignments switch atomically.</li>
+          </ol>
+        </div>
+      )}
 
       {loadingBase ? (
         <p className="text-muted">Loading...</p>
@@ -557,7 +610,7 @@ export default function ReAssignPage() {
         <p className="text-red-600">{baseError}</p>
       ) : !season ? (
         <p className="text-muted">No season data.</p>
-      ) : (
+      ) : activeTab === "conflicts" ? (
         <>
           {/* Controls */}
           <div className="border border-border rounded p-4 mb-4 bg-white">
@@ -900,6 +953,464 @@ export default function ReAssignPage() {
             </div>
           )}
         </>
+      ) : (
+        <SwapTab
+          season={season}
+          games={games}
+          players={players}
+          swapPlayerId={swapPlayerId}
+          setSwapPlayerId={setSwapPlayerId}
+          swapPlayerSearch={swapPlayerSearch}
+          setSwapPlayerSearch={setSwapPlayerSearch}
+          swapGameAId={swapGameAId}
+          setSwapGameAId={setSwapGameAId}
+          swapWeeksAhead={swapWeeksAhead}
+          setSwapWeeksAhead={setSwapWeeksAhead}
+          swapWeeksBack={swapWeeksBack}
+          setSwapWeeksBack={setSwapWeeksBack}
+          swapping={swapping}
+          setSwapping={setSwapping}
+          swapBanner={swapBanner}
+          setSwapBanner={setSwapBanner}
+          swapError={swapError}
+          setSwapError={setSwapError}
+          loadBase={loadBase}
+        />
+      )}
+    </div>
+  );
+}
+
+// ===========================================================================
+// Swap Tab — pick Player A, their game, then choose a same-skill same-group
+// partner from nearby weeks.
+// ===========================================================================
+
+interface SwapTabProps {
+  season: Season;
+  games: Game[];
+  players: Player[];
+  swapPlayerId: number | null;
+  setSwapPlayerId: (n: number | null) => void;
+  swapPlayerSearch: string;
+  setSwapPlayerSearch: (s: string) => void;
+  swapGameAId: number | null;
+  setSwapGameAId: (n: number | null) => void;
+  swapWeeksAhead: number;
+  setSwapWeeksAhead: (n: number) => void;
+  swapWeeksBack: number;
+  setSwapWeeksBack: (n: number) => void;
+  swapping: boolean;
+  setSwapping: (b: boolean) => void;
+  swapBanner: string;
+  setSwapBanner: (s: string) => void;
+  swapError: string;
+  setSwapError: (s: string) => void;
+  loadBase: () => Promise<void>;
+}
+
+function SwapTab(props: SwapTabProps) {
+  const {
+    season, games, players,
+    swapPlayerId, setSwapPlayerId,
+    swapPlayerSearch, setSwapPlayerSearch,
+    swapGameAId, setSwapGameAId,
+    swapWeeksAhead, setSwapWeeksAhead,
+    swapWeeksBack, setSwapWeeksBack,
+    swapping, setSwapping,
+    swapBanner, setSwapBanner,
+    swapError, setSwapError,
+    loadBase,
+  } = props;
+
+  // Compute the current week number from season start
+  const currentWeek = (() => {
+    const start = new Date(season.startDate + "T00:00:00");
+    const today = new Date();
+    const diffDays = Math.floor((today.getTime() - start.getTime()) / 86400000);
+    return Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, season.totalWeeks));
+  })();
+
+  const activePlayers = players.filter((p) => p.isActive);
+  const playerById = new Map(players.map((p) => [p.id, p]));
+
+  const playerA = swapPlayerId != null ? playerById.get(swapPlayerId) ?? null : null;
+  const gameA = swapGameAId != null ? games.find((g) => g.id === swapGameAId) ?? null : null;
+
+  // Player dropdown filtered by search
+  const filteredPlayers = activePlayers
+    .filter((p) =>
+      `${p.lastName} ${p.firstName}`
+        .toLowerCase()
+        .includes(swapPlayerSearch.toLowerCase())
+    )
+    .sort((a, b) => a.lastName.localeCompare(b.lastName));
+
+  // Games Player A is assigned to, within the radius
+  const radiusLow = Math.max(1, currentWeek - swapWeeksBack);
+  const radiusHigh = Math.min(season.totalWeeks, currentWeek + swapWeeksAhead);
+
+  const playerAGames = playerA
+    ? games
+        .filter(
+          (g) =>
+            g.status === "normal" &&
+            g.weekNumber >= radiusLow &&
+            g.weekNumber <= radiusHigh &&
+            (g.assignments ?? []).some((a) => a.playerId === playerA.id)
+        )
+        .sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+
+  // Eligibility check — simplified version used client-side to rank candidates
+  // (server re-validates the final choice before committing)
+  function canPlayerTakeGame(
+    pid: number,
+    game: Game,
+    excludeGameId?: number
+  ): string | null {
+    const p = playerById.get(pid);
+    if (!p) return "Unknown player";
+    if (!p.isActive) return "Inactive";
+    // Vacation
+    for (const v of p.vacations ?? []) {
+      if (game.date >= v.startDate && game.date <= v.endDate) {
+        return `Vacation ${v.startDate}—${v.endDate}`;
+      }
+    }
+    // Blocked day
+    if ((p.blockedDays ?? []).includes(game.dayOfWeek)) {
+      return `Blocked on ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][game.dayOfWeek]}`;
+    }
+    // Solo requires soloGames
+    if (game.group === "solo") {
+      // Note: Player interface here doesn't include soloGames; look up on the full players array
+      const full = players.find((pp) => pp.id === pid) as Player & { soloGames?: number | null } | undefined;
+      if (!full?.soloGames || full.soloGames <= 0) {
+        return "Not a Solo player";
+      }
+    }
+    // Same-day conflict
+    for (const g of games) {
+      if (g.id === game.id) continue;
+      if (excludeGameId !== undefined && g.id === excludeGameId) continue;
+      if (g.date !== game.date) continue;
+      if ((g.assignments ?? []).some((a) => a.playerId === pid)) {
+        return `Already in game #${g.gameNumber} on ${g.date}`;
+      }
+    }
+    // DNP vs other players in the target game
+    for (const a of game.assignments ?? []) {
+      if (a.playerId === pid) continue;
+      if ((p.doNotPair ?? []).includes(a.playerId)) return "Do-not-pair conflict";
+      const other = playerById.get(a.playerId);
+      if (other && (other.doNotPair ?? []).includes(pid)) return "Do-not-pair conflict";
+    }
+    return null;
+  }
+
+  // Candidate list: every (Player B, Game Y) pair where B has a slot in radius
+  interface Candidate {
+    playerB: Player;
+    gameY: Game;
+    weekDistance: number;
+  }
+  const candidates: Candidate[] = [];
+  if (playerA && gameA) {
+    const skill = playerA.skillLevel || "";
+    for (const g of games) {
+      if (g.id === gameA.id) continue;
+      if (g.status !== "normal") continue;
+      if (g.weekNumber < radiusLow || g.weekNumber > radiusHigh) continue;
+      if (g.group !== gameA.group) continue;
+      if (g.date === gameA.date) continue; // would create same-date conflict for whoever comes over
+      for (const a of g.assignments ?? []) {
+        if (a.playerId === playerA.id) continue;
+        const pB = playerById.get(a.playerId);
+        if (!pB) continue;
+        if (!pB.isActive) continue;
+        if ((pB.skillLevel || "") !== skill) continue;
+
+        // A must be able to play gameY (excluding their current slot in gameA)
+        const aBlocker = canPlayerTakeGame(playerA.id, g, gameA.id);
+        if (aBlocker) continue;
+        // B must be able to play gameA (excluding their current slot in gameY)
+        const bBlocker = canPlayerTakeGame(pB.id, gameA, g.id);
+        if (bBlocker) continue;
+
+        candidates.push({
+          playerB: pB,
+          gameY: g,
+          weekDistance: Math.abs(g.weekNumber - gameA.weekNumber),
+        });
+      }
+    }
+  }
+  candidates.sort((a, b) => {
+    if (a.weekDistance !== b.weekDistance) return a.weekDistance - b.weekDistance;
+    return a.playerB.lastName.localeCompare(b.playerB.lastName);
+  });
+
+  const performSwap = async (c: Candidate) => {
+    if (!playerA || !gameA) return;
+    const confirmMsg =
+      `Swap ${playerA.lastName}, ${playerA.firstName} (Game #${gameA.gameNumber}, ${fmtDate(gameA.date)}) ` +
+      `with ${c.playerB.lastName}, ${c.playerB.firstName} (Game #${c.gameY.gameNumber}, ${fmtDate(c.gameY.date)})?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setSwapping(true);
+    setSwapBanner("");
+    setSwapError("");
+    try {
+      const res = await fetch("/api/games/swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameAId: gameA.id,
+          playerAId: playerA.id,
+          gameBId: c.gameY.id,
+          playerBId: c.playerB.id,
+        }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        setSwapError(data.error || "Swap failed.");
+      } else {
+        setSwapBanner(
+          `✓ Swapped: ${playerA.lastName}, ${playerA.firstName} → Game #${c.gameY.gameNumber} (${fmtDate(c.gameY.date)}) ` +
+          `and ${c.playerB.lastName}, ${c.playerB.firstName} → Game #${gameA.gameNumber} (${fmtDate(gameA.date)})`
+        );
+        // Reload games so the lists reflect new state
+        await loadBase();
+        // Clear selections so user starts fresh for next swap
+        setSwapGameAId(null);
+      }
+    } catch (err) {
+      setSwapError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSwapping(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Radius controls */}
+      <div className="border border-border rounded p-4 bg-white">
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-xs text-muted mb-1">Weeks before current</label>
+            <input
+              type="number"
+              min={0}
+              max={season.totalWeeks}
+              value={swapWeeksBack}
+              onChange={(e) => {
+                const n = parseInt(e.target.value);
+                if (!isNaN(n) && n >= 0) setSwapWeeksBack(n);
+              }}
+              className="border border-border rounded px-3 py-1.5 text-sm w-24"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Weeks after current</label>
+            <input
+              type="number"
+              min={0}
+              max={season.totalWeeks}
+              value={swapWeeksAhead}
+              onChange={(e) => {
+                const n = parseInt(e.target.value);
+                if (!isNaN(n) && n >= 0) setSwapWeeksAhead(n);
+              }}
+              className="border border-border rounded px-3 py-1.5 text-sm w-24"
+            />
+          </div>
+          <div className="text-xs text-muted ml-auto">
+            Current week: <strong>{currentWeek}</strong>. Searching weeks{" "}
+            <strong>{radiusLow}</strong>–<strong>{radiusHigh}</strong>.
+          </div>
+        </div>
+      </div>
+
+      {/* Banners */}
+      {swapBanner && (
+        <div className="border border-green-200 bg-green-50 text-green-900 rounded p-3 text-sm">
+          {swapBanner}
+        </div>
+      )}
+      {swapError && (
+        <div className="border border-red-200 bg-red-50 text-red-800 rounded p-3 text-sm">
+          {swapError}
+        </div>
+      )}
+
+      {/* Player picker */}
+      <div className="border border-border rounded bg-white">
+        <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+          1. Choose the player who needs to swap out of a game
+        </div>
+        <div className="p-3">
+          <input
+            type="text"
+            value={swapPlayerSearch}
+            onChange={(e) => setSwapPlayerSearch(e.target.value)}
+            placeholder="Search players..."
+            className="border border-border rounded px-2 py-1 text-sm w-full sm:w-64 mb-2"
+          />
+          <div className="max-h-40 overflow-y-auto border border-border rounded">
+            {filteredPlayers.length === 0 ? (
+              <p className="text-xs text-muted p-2">No players match.</p>
+            ) : (
+              filteredPlayers.map((p) => {
+                const selected = p.id === swapPlayerId;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setSwapPlayerId(selected ? null : p.id);
+                      setSwapGameAId(null);
+                      setSwapBanner("");
+                      setSwapError("");
+                    }}
+                    className={`w-full text-left px-2 py-1 text-sm border-b border-border last:border-b-0 ${
+                      selected ? "bg-primary/10 font-medium" : "hover:bg-muted-bg"
+                    }`}
+                  >
+                    {p.lastName}, {p.firstName}
+                    <span className="text-xs text-muted ml-2">
+                      ({p.skillLevel || "—"})
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Player A's games */}
+      {playerA && (
+        <div className="border border-border rounded bg-white">
+          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+            2. Click the game {playerA.lastName}, {playerA.firstName} wants to give up
+          </div>
+          <div className="p-3">
+            {playerAGames.length === 0 ? (
+              <p className="text-sm text-muted">
+                No assigned games for this player in weeks {radiusLow}–{radiusHigh}.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {playerAGames.map((g) => {
+                  const selected = g.id === swapGameAId;
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setSwapGameAId(selected ? null : g.id);
+                        setSwapBanner("");
+                        setSwapError("");
+                      }}
+                      className={`text-left border rounded p-2 text-sm ${
+                        selected
+                          ? "border-primary bg-primary/5 ring-2 ring-primary"
+                          : "border-border hover:bg-muted-bg"
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        Game #{g.gameNumber}{" "}
+                        <span className="text-xs text-muted font-normal">
+                          (Week {g.weekNumber})
+                        </span>
+                      </div>
+                      <div>
+                        {DAYS_SHORT[g.dayOfWeek]} {fmtDate(g.date)} · {fmtTime(g.startTime)}
+                      </div>
+                      <div className="text-xs text-muted">
+                        Court {g.courtNumber} ·{" "}
+                        {g.group === "solo" ? "Solo" : "Don's"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Candidates */}
+      {playerA && gameA && (
+        <div className="border border-border rounded bg-white">
+          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+            3. Choose a swap partner —{" "}
+            {candidates.length === 0
+              ? "no valid candidates found"
+              : `${candidates.length} candidate${candidates.length !== 1 ? "s" : ""}`}{" "}
+            (same group, same skill level)
+          </div>
+          {candidates.length === 0 ? (
+            <p className="p-3 text-sm text-muted">
+              No players with the same skill level and a valid eligible game in this
+              radius. Try extending the radius above, or re-assign manually on the
+              Schedule page.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted-bg">
+                  <tr>
+                    <th className="text-left p-2">Player</th>
+                    <th className="text-left p-2">Their Game</th>
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-center p-2">Ct</th>
+                    <th className="text-left p-2">Time</th>
+                    <th className="text-center p-2">Wk Δ</th>
+                    <th className="p-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidates.map((c) => (
+                    <tr
+                      key={`${c.playerB.id}-${c.gameY.id}`}
+                      className="border-t border-border"
+                    >
+                      <td className="p-2">
+                        {c.playerB.lastName}, {c.playerB.firstName}{" "}
+                        <span className="text-xs text-muted">
+                          ({c.playerB.skillLevel})
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        #{c.gameY.gameNumber}{" "}
+                        <span className="text-xs text-muted">
+                          (Wk {c.gameY.weekNumber})
+                        </span>
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {DAYS_SHORT[c.gameY.dayOfWeek]} {fmtDate(c.gameY.date)}
+                      </td>
+                      <td className="p-2 text-center">{c.gameY.courtNumber}</td>
+                      <td className="p-2">{fmtTime(c.gameY.startTime)}</td>
+                      <td className="p-2 text-center">
+                        {c.weekDistance === 0 ? "same" : `±${c.weekDistance}`}
+                      </td>
+                      <td className="p-2 text-right">
+                        <button
+                          onClick={() => performSwap(c)}
+                          disabled={swapping}
+                          className="px-3 py-1 bg-primary text-white rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+                        >
+                          {swapping ? "..." : "Swap"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
