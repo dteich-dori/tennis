@@ -1760,13 +1760,13 @@ export default function SchedulePage() {
                                         {(() => {
                                           const allAvailable = getAvailablePlayers(game);
 
-                                          // Base-owed players: owe games at BASE contract frequency, have YTD deficit, or have STD deficit
+                                          // For Solo games: show ALL eligible players (share-based, not weekly-balanced).
+                                          // For Don's games: show only those with BASE-frequency deficit, YTD deficit, or STD deficit.
                                           const baseOwedPlayers = allAvailable.filter((p) => {
+                                            if (game.group === "solo") return true;
                                             const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                                            const baseFreq = game.group === "solo"
-                                              ? (p.soloGames ? p.soloGames / 36 : 0)
-                                              : (parseInt(p.contractedFrequency) || 0);
-                                            const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
+                                            const baseFreq = parseInt(p.contractedFrequency) || 0;
+                                            const groupWtd = counts.wtdDons;
                                             return (baseFreq - groupWtd) > 0 || hasYtdDeficit(p, game.group) || hasStdDeficit(p, game.group);
                                           });
 
@@ -1882,6 +1882,14 @@ export default function SchedulePage() {
                                             const stdOwed = getStdOwed(p, game.group);
                                             const mustPlay = !isBonus && isMustPlay(p, game);
                                             const isFrontLoad = frontLoadIds.has(p.id);
+                                            // Solo-only: player has met their weekly share (no deficit either).
+                                            // Safe to pick as an over-share filler.
+                                            const soloAtQuota =
+                                              game.group === "solo" &&
+                                              !mustPlay &&
+                                              remaining <= 0 &&
+                                              !deficit &&
+                                              stdOwed <= 0;
                                             return (
                                               <button
                                                 key={p.id}
@@ -1897,7 +1905,9 @@ export default function SchedulePage() {
                                                         ? "bg-red-50 border-l-3 border-l-red-500"
                                                         : remaining <= 0 && deficit
                                                           ? "bg-amber-50"
-                                                          : ""
+                                                          : soloAtQuota
+                                                            ? "text-gray-500 italic"
+                                                            : ""
                                                 }`}
                                               >
                                                 <span>
@@ -1917,6 +1927,14 @@ export default function SchedulePage() {
                                                       title="Only playable day this week — must assign today"
                                                     >
                                                       MUST
+                                                    </span>
+                                                  )}
+                                                  {soloAtQuota && (
+                                                    <span
+                                                      className="text-gray-500 font-semibold mr-1"
+                                                      title="Already at their contracted Solo share for this week / season — picking them adds an extra game"
+                                                    >
+                                                      AT QUOTA
                                                     </span>
                                                   )}
                                                   {p.isDerated && (
