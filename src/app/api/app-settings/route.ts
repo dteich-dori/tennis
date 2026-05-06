@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { appSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import fs from "fs";
 import path from "path";
 
 function resolveBackupDir(dir: string | undefined | null): string {
@@ -34,39 +33,25 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = (await request.json()) as { backupDir: string };
-    const { backupDir } = body;
+    const raw = body.backupDir ?? "";
+    // Always trim — guards against leading/trailing whitespace that would
+    // confuse path.isAbsolute() and cause the path to be re-rooted in /var/task
+    // on Vercel.
+    const backupDir = raw.trim();
 
-    if (!backupDir || backupDir.trim() === "") {
+    if (backupDir === "") {
       return NextResponse.json(
         { error: "Backup directory is required" },
         { status: 400 }
       );
     }
 
-    // Resolve the path for validation
-    const resolved = path.isAbsolute(backupDir)
-      ? backupDir
-      : path.join(process.cwd(), backupDir);
-
-    // Validate the directory exists or can be created
-    if (!fs.existsSync(resolved)) {
-      try {
-        fs.mkdirSync(resolved, { recursive: true });
-      } catch {
-        return NextResponse.json(
-          { error: `Directory does not exist and could not be created: ${resolved}` },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Verify it is actually a directory
-    if (!fs.statSync(resolved).isDirectory()) {
-      return NextResponse.json(
-        { error: `Path is not a directory: ${resolved}` },
-        { status: 400 }
-      );
-    }
+    // We DO NOT validate filesystem existence here. This endpoint runs
+    // wherever the request hits the server (Vercel, local dev, etc.) — but
+    // the user's intended backup target may be a local network path that's
+    // only reachable from their workstation. The actual backup run is where
+    // filesystem access matters; that path falls back to ZIP download if the
+    // directory isn't reachable.
 
     const database = await db();
     const existing = await database.select().from(appSettings);
@@ -74,7 +59,7 @@ export async function PUT(request: NextRequest) {
     if (existing.length > 0) {
       const result = await database
         .update(appSettings)
-        .set({ backupDir: backupDir.trim() })
+        .set({ backupDir })
         .where(eq(appSettings.id, existing[0].id))
         .returning();
       return NextResponse.json({
@@ -84,7 +69,7 @@ export async function PUT(request: NextRequest) {
     } else {
       const result = await database
         .insert(appSettings)
-        .values({ backupDir: backupDir.trim() })
+        .values({ backupDir })
         .returning();
       return NextResponse.json(
         {
