@@ -10,6 +10,7 @@ interface AccountRow {
   fee: number;        // total fee (base + extras)
   deposits: number;   // sum of payments
   balance: number;    // fee - deposits (negative = credit)
+  locked?: boolean;   // extras frozen at lockedExtraGames
 }
 
 interface Season {
@@ -163,7 +164,9 @@ export function generateAccountsSummaryPdf(
       {
         value:
           r.contractedFrequency === "2+" || r.contractedFrequency === "0"
-            ? String(r.extraGames)
+            ? r.locked
+              ? `${r.extraGames} (L)`
+              : String(r.extraGames)
             : "—",
         align: "right",
       },

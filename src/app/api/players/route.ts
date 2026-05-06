@@ -27,6 +27,10 @@ function validatePlayerFields(body: PlayerBody): string | null {
     const n = Number(body.preassignedGamesWanted);
     if (!Number.isInteger(n) || n < 1 || n > 50) return "preassignedGamesWanted must be an integer between 1 and 50";
   }
+  if (body.lockedExtraGames !== undefined && body.lockedExtraGames !== null) {
+    const n = Number(body.lockedExtraGames);
+    if (!Number.isInteger(n) || n < 0) return "lockedExtraGames must be a non-negative integer or null";
+  }
   if (body.blockedDays) {
     for (const day of body.blockedDays) {
       if (typeof day !== "number" || day < 0 || day > 6) return "blockedDays must contain values 0-6";
@@ -151,6 +155,7 @@ export async function POST(request: NextRequest) {
       groupPct,
       groupMembers,
       preassignedGamesWanted,
+      lockedExtraGames,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -218,6 +223,7 @@ export async function POST(request: NextRequest) {
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
         preassignedGamesWanted: preassignedGamesWanted || null,
+        lockedExtraGames: lockedExtraGames ?? null,
       })
       .returning();
 
@@ -300,6 +306,7 @@ export async function PUT(request: NextRequest) {
       groupPct,
       groupMembers,
       preassignedGamesWanted,
+      lockedExtraGames,
     } = body;
 
     if (!id) {
@@ -340,6 +347,10 @@ export async function PUT(request: NextRequest) {
         preassignedGamesWanted !== undefined
           ? (preassignedGamesWanted || null)
           : currentPlayer.preassignedGamesWanted,
+      lockedExtraGames:
+        lockedExtraGames !== undefined
+          ? (lockedExtraGames === null ? null : lockedExtraGames)
+          : currentPlayer.lockedExtraGames,
     };
 
     // Check for duplicate name (excluding this player, scoped to season)
