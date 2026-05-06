@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { players, emailSettings } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -69,6 +70,9 @@ export async function GET(request: NextRequest) {
       filtered = filtered.filter((p) => p.contractedFrequency !== "0");
     } else if (group === "Subs") {
       filtered = filtered.filter((p) => p.contractedFrequency === "0");
+    } else if (group === "Owes Deposit") {
+      const owingIds = await getPlayerIdsBelowStandardDeposit(parseInt(seasonId));
+      filtered = filtered.filter((p) => owingIds.has(p.id));
     }
     // "ALL" = no additional filter
 

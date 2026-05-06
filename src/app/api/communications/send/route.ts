@@ -12,6 +12,7 @@ import {
   type SmsRecipient,
   type EmailAttachment,
 } from "@/lib/email";
+import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
 
 interface EmailRecipientWithPlayer {
   name: string;
@@ -235,6 +236,15 @@ export async function POST(request: NextRequest) {
         filtered = allPlayers.filter((p) => p.contractedFrequency !== "0");
       } else if (recipientGroup === "Subs") {
         filtered = allPlayers.filter((p) => p.contractedFrequency === "0");
+      } else if (recipientGroup === "Owes Deposit") {
+        const owingIds = await getPlayerIdsBelowStandardDeposit(seasonId);
+        filtered = allPlayers.filter((p) => owingIds.has(p.id));
+        if (filtered.length === 0) {
+          return NextResponse.json(
+            { error: "No contract players currently owe their standard deposit." },
+            { status: 400 }
+          );
+        }
       } else if (recipientGroup === "Player" || recipientGroup === "Players") {
         // Prefer the new array param; fall back to the legacy single-id param
         const ids: number[] =

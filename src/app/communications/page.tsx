@@ -56,7 +56,13 @@ interface HistoryEntry {
   sentAt: string;
 }
 
-type RecipientGroup = "ALL" | "Contract Players" | "Subs" | "Players" | "Test";
+type RecipientGroup =
+  | "ALL"
+  | "Contract Players"
+  | "Subs"
+  | "Owes Deposit"
+  | "Players"
+  | "Test";
 type TabView = "compose" | "templates" | "history";
 
 export default function CommunicationsPage() {
@@ -565,7 +571,7 @@ export default function CommunicationsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Recipient Group</label>
             <div className="flex gap-4">
-              {(["ALL", "Contract Players", "Subs", "Players", "Test"] as RecipientGroup[]).map((group) => (
+              {(["ALL", "Contract Players", "Subs", "Owes Deposit", "Players", "Test"] as RecipientGroup[]).map((group) => (
                 <label key={group} className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="radio"
