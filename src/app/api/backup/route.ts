@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildBackup } from "@/lib/buildBackup";
-import { getBackupDir } from "@/lib/getBackupDir";
+import { getBackupDirs } from "@/lib/getBackupDir";
 import path from "path";
 import fs from "fs";
 import JSZip from "jszip";
@@ -73,38 +73,53 @@ async function buildZip(bundle: Awaited<ReturnType<typeof buildBackup>>): Promis
   return await zip.generateAsync({ type: "uint8array" });
 }
 
+interface DirResult {
+  baseDir: string;
+  folder: string;
+  fullPath: string;
+  totalBackups: number;
+  oldestFolders: string[];
+}
+
+interface DirError {
+  baseDir: string;
+  error: string;
+}
+
 /**
  * POST /api/backup
- * Tries to write a complete backup to the configured filesystem path.
- * If filesystem is read-only (e.g. Vercel), returns a ZIP download instead.
+ * Writes a complete backup to every configured destination (primary,
+ * optionally secondary). If ALL destinations fail (e.g. Vercel read-only
+ * filesystem), returns a single ZIP download as fallback.
  *
  * Filesystem response shape:
- *   { success, mode: "filesystem", folder, fullPath, baseDir, rowCounts, totalBackups, oldestFolders }
+ *   {
+ *     success: true,
+ *     mode: "filesystem",
+ *     directories: [{ baseDir, folder, fullPath, totalBackups, oldestFolders }],
+ *     errors: [{ baseDir, error }],
+ *     rowCounts
+ *   }
  *
  * ZIP response: application/zip with attachment filename
  */
 export async function POST() {
   try {
     const bundle = await buildBackup();
+    const targets = await getBackupDirs();
 
-    let baseDir: string;
-    try {
-      baseDir = await getBackupDir();
-    } catch {
-      baseDir = "";
-    }
+    const writes: DirResult[] = [];
+    const errors: DirError[] = [];
 
-    // Try filesystem write first
-    if (baseDir) {
+    for (const t of targets) {
       try {
-        if (!fs.existsSync(baseDir)) {
-          fs.mkdirSync(baseDir, { recursive: true });
+        if (!fs.existsSync(t.resolved)) {
+          fs.mkdirSync(t.resolved, { recursive: true });
         }
-        const folderName = uniqueFolderName(baseDir, bundle.folderName);
-        writeBackupToFs(baseDir, folderName, bundle);
+        const folderName = uniqueFolderName(t.resolved, bundle.folderName);
+        writeBackupToFs(t.resolved, folderName, bundle);
 
-        // Rotation: list backup folders, sorted oldest-first
-        const folders = listBackupFolders(baseDir).sort(
+        const folders = listBackupFolders(t.resolved).sort(
           (a, b) => a.mtimeMs - b.mtimeMs
         );
         const totalBackups = folders.length;
@@ -114,26 +129,30 @@ export async function POST() {
             ? folders.slice(0, totalBackups - KEEP).map((f) => f.name)
             : [];
 
-        return NextResponse.json({
-          success: true,
-          mode: "filesystem",
+        writes.push({
+          baseDir: t.resolved,
           folder: folderName,
-          fullPath: path.join(baseDir, folderName),
-          baseDir,
-          rowCounts: bundle.manifest.rowCounts,
+          fullPath: path.join(t.resolved, folderName),
           totalBackups,
           oldestFolders,
         });
       } catch (fsErr) {
-        // Fall through to ZIP download
-        console.warn(
-          "[backup] filesystem write failed, falling back to ZIP:",
-          fsErr
-        );
+        errors.push({ baseDir: t.resolved, error: String(fsErr) });
       }
     }
 
-    // Filesystem not available — return as ZIP download
+    // If at least one filesystem write succeeded, return JSON summary.
+    if (writes.length > 0) {
+      return NextResponse.json({
+        success: true,
+        mode: "filesystem",
+        directories: writes,
+        errors,
+        rowCounts: bundle.manifest.rowCounts,
+      });
+    }
+
+    // No filesystem writes succeeded — fall back to ZIP download.
     const zipBytes = await buildZip(bundle);
     return new NextResponse(zipBytes as unknown as BodyInit, {
       status: 200,

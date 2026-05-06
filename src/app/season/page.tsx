@@ -108,12 +108,14 @@ export default function SeasonPage() {
 
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
-  // Last value persisted on the server — used to detect unsaved changes
+  const [backupDir2, setBackupDir2] = useState("");
+  // Last values persisted on the server — used to detect unsaved changes
   // before running a backup, so Run Full Backup auto-saves on demand.
   const [savedBackupDir, setSavedBackupDir] = useState("Backup");
-  // Resolved absolute path that the server will actually use for backups.
-  // Returned by /api/app-settings.
+  const [savedBackupDir2, setSavedBackupDir2] = useState("");
+  // Resolved absolute paths that the server will actually use for backups.
   const [backupDirResolved, setBackupDirResolved] = useState("");
+  const [backupDir2Resolved, setBackupDir2Resolved] = useState("");
 
   // Weekly game summary
   const [weeklyContractsSold, setWeeklyContractsSold] = useState<number | null>(null);
@@ -184,6 +186,8 @@ export default function SeasonPage() {
       const data = (await res.json()) as {
         backupDir?: string;
         backupDirResolved?: string;
+        backupDir2?: string | null;
+        backupDir2Resolved?: string | null;
       };
       if (data.backupDir) {
         setBackupDir(data.backupDir);
@@ -192,6 +196,10 @@ export default function SeasonPage() {
       if (data.backupDirResolved) {
         setBackupDirResolved(data.backupDirResolved);
       }
+      const second = data.backupDir2 ?? "";
+      setBackupDir2(second);
+      setSavedBackupDir2(second);
+      setBackupDir2Resolved(data.backupDir2Resolved ?? "");
     } catch (err) {
       console.error("Failed to load app settings:", err);
     }
@@ -408,13 +416,19 @@ export default function SeasonPage() {
 
   // Run a unified full backup. Returns the result (folder name + rotation info)
   // for callers that chain (e.g. the rebuild-games flow), or null on failure.
-  interface BackupResult {
+  interface BackupDirResult {
+    baseDir: string;
     folder: string;
+    fullPath: string;
+    totalBackups: number;
+    oldestFolders: string[];
+  }
+  interface BackupResult {
     mode: "filesystem" | "zip";
-    fullPath?: string;
+    folder: string; // first dir's folder name (or zip name)
     rowCounts?: Record<string, number>;
-    totalBackups?: number;
-    oldestFolders?: string[];
+    directories?: BackupDirResult[];
+    errors?: { baseDir: string; error: string }[];
   }
 
   const runFullBackup = async (): Promise<BackupResult | null> => {
@@ -442,23 +456,20 @@ export default function SeasonPage() {
       const data = (await res.json()) as {
         success?: boolean;
         mode?: string;
-        folder?: string;
-        fullPath?: string;
+        directories?: BackupDirResult[];
+        errors?: { baseDir: string; error: string }[];
         rowCounts?: Record<string, number>;
-        totalBackups?: number;
-        oldestFolders?: string[];
         error?: string;
       };
-      if (!res.ok || !data.success || !data.folder) {
+      if (!res.ok || !data.success || !data.directories || data.directories.length === 0) {
         return null;
       }
       return {
-        folder: data.folder,
         mode: "filesystem",
-        fullPath: data.fullPath,
+        folder: data.directories[0].folder,
+        directories: data.directories,
+        errors: data.errors,
         rowCounts: data.rowCounts,
-        totalBackups: data.totalBackups,
-        oldestFolders: data.oldestFolders,
       };
     } catch {
       return null;
@@ -466,7 +477,7 @@ export default function SeasonPage() {
   };
 
   // Legacy alias kept so existing callers (rebuild-games flow) still work.
-  // Returns the folder name string, or false on failure.
+  // Returns the folder name string of the primary backup, or false on failure.
   const downloadBackup = async (): Promise<string | false> => {
     const result = await runFullBackup();
     return result ? result.folder : false;
@@ -476,10 +487,10 @@ export default function SeasonPage() {
     setBackupDownloading(true);
     setBackupDownloadMessage("");
 
-    // Auto-save the backup directory if the user has typed a new value
-    // since the page last loaded its saved value.
-    if (backupDir !== savedBackupDir) {
-      const ok = await persistBackupDir();
+    // Auto-save backup directories if the user has typed any new values
+    // since the page last loaded its saved values.
+    if (backupDir !== savedBackupDir || backupDir2 !== savedBackupDir2) {
+      const ok = await persistBackupDirs();
       if (!ok) {
         setBackupDownloading(false);
         return;
@@ -501,45 +512,75 @@ export default function SeasonPage() {
       return;
     }
 
-    // Filesystem mode
+    // Filesystem mode — may have written to 1 or 2 directories
     const counts = result.rowCounts ?? {};
     const totalRows = Object.values(counts).reduce((s, n) => s + n, 0);
-    const summary =
-      `✓ Backup saved to ${result.fullPath ?? `${backupDir}/${result.folder}`} ` +
-      `(${totalRows} rows across ${Object.keys(counts).length} tables).`;
+    const dirs = result.directories ?? [];
 
-    // Rotation prompt
-    if (result.oldestFolders && result.oldestFolders.length > 0) {
-      const list = result.oldestFolders.join("\n  • ");
+    const linePerDir = dirs
+      .map((d) => `  • ${d.fullPath}`)
+      .join("\n");
+    let summary =
+      `✓ Backup saved (${totalRows} rows across ${Object.keys(counts).length} tables) to:\n` +
+      linePerDir;
+
+    if (result.errors && result.errors.length > 0) {
+      summary +=
+        "\n\nFailed locations:\n" +
+        result.errors.map((e) => `  • ${e.baseDir}: ${e.error}`).join("\n");
+    }
+
+    // Rotation: gather all directories that have folders to delete
+    const dirsNeedingCleanup = dirs.filter(
+      (d) => d.oldestFolders && d.oldestFolders.length > 0
+    );
+
+    if (dirsNeedingCleanup.length > 0) {
+      const promptLines = dirsNeedingCleanup.map(
+        (d) =>
+          `  ${d.baseDir}: ${d.totalBackups} backups → delete oldest ${d.oldestFolders.length}:\n` +
+          d.oldestFolders.map((f) => `    • ${f}`).join("\n")
+      );
       const ok = window.confirm(
-        `${summary}\n\nYou now have ${result.totalBackups} backup folders in this directory. ` +
-          `Delete the ${result.oldestFolders.length} oldest to keep only the 3 most recent?\n\n  • ${list}`
+        `${summary}\n\n${dirsNeedingCleanup.length === 1 ? "This directory has" : "These directories have"} more than 3 backups. Keep only the 3 most recent in each?\n\n${promptLines.join("\n\n")}`
       );
       if (ok) {
         try {
           const cleanRes = await fetch("/api/backup/cleanup", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ folders: result.oldestFolders }),
+            body: JSON.stringify({
+              directories: dirsNeedingCleanup.map((d) => ({
+                baseDir: d.baseDir,
+                folders: d.oldestFolders,
+              })),
+            }),
           });
           const cleanData = (await cleanRes.json()) as {
             success?: boolean;
-            deleted?: string[];
-            remaining?: number;
+            results?: Array<{
+              baseDir: string;
+              deleted: string[];
+              remaining: number;
+            }>;
             error?: string;
           };
-          if (cleanRes.ok && cleanData.success) {
-            setBackupDownloadMessage(
-              `${summary} Deleted ${cleanData.deleted?.length ?? 0} old backup(s); ${cleanData.remaining} remain.`
-            );
+          if (cleanRes.ok && cleanData.success && cleanData.results) {
+            const cleanLines = cleanData.results
+              .map(
+                (r) =>
+                  `  • ${r.baseDir}: deleted ${r.deleted.length}, ${r.remaining} remaining`
+              )
+              .join("\n");
+            setBackupDownloadMessage(`${summary}\n\nCleanup:\n${cleanLines}`);
           } else {
             setBackupDownloadMessage(
-              `${summary} Cleanup failed: ${cleanData.error ?? "unknown"}`
+              `${summary}\n\nCleanup failed: ${cleanData.error ?? "unknown"}`
             );
           }
         } catch (err) {
           setBackupDownloadMessage(
-            `${summary} Cleanup error: ${err instanceof Error ? err.message : String(err)}`
+            `${summary}\n\nCleanup error: ${err instanceof Error ? err.message : String(err)}`
           );
         }
         return;
@@ -552,30 +593,32 @@ export default function SeasonPage() {
   // Persist the currently-typed backupDir to the server. Returns true on success.
   // Called automatically by handleDownloadBackup when the input differs from
   // what's saved.
-  const persistBackupDir = async (): Promise<boolean> => {
+  const persistBackupDirs = async (): Promise<boolean> => {
     try {
       const res = await fetch("/api/app-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ backupDir }),
+        body: JSON.stringify({ backupDir, backupDir2 }),
       });
       const data = (await res.json()) as {
         backupDir?: string;
         backupDirResolved?: string;
+        backupDir2?: string | null;
+        backupDir2Resolved?: string | null;
         error?: string;
       };
       if (!res.ok) {
-        setBackupDownloadMessage(`Error saving backup directory: ${data.error ?? "unknown"}`);
+        setBackupDownloadMessage(`Error saving backup directories: ${data.error ?? "unknown"}`);
         return false;
       }
       setSavedBackupDir(backupDir);
-      if (data.backupDirResolved) {
-        setBackupDirResolved(data.backupDirResolved);
-      }
+      setSavedBackupDir2(backupDir2);
+      if (data.backupDirResolved) setBackupDirResolved(data.backupDirResolved);
+      setBackupDir2Resolved(data.backupDir2Resolved ?? "");
       return true;
     } catch (err) {
       setBackupDownloadMessage(
-        `Error saving backup directory: ${err instanceof Error ? err.message : String(err)}`
+        `Error saving backup directories: ${err instanceof Error ? err.message : String(err)}`
       );
       return false;
     }
@@ -1636,9 +1679,11 @@ export default function SeasonPage() {
       {/* Backup Settings */}
       <div className="border border-border rounded-lg p-6 mb-6">
         <h2 className="font-semibold mb-4">Backup Settings</h2>
-        <div className="mb-2">
+
+        {/* Primary backup directory */}
+        <div className="mb-4">
           <label className="block text-sm text-muted mb-1">
-            Backup Directory
+            Backup Directory (primary)
           </label>
           <input
             type="text"
@@ -1649,9 +1694,6 @@ export default function SeasonPage() {
           />
           {(() => {
             const isAbs = backupDir.startsWith("/");
-            // If the user typed an absolute path, we can preview it directly.
-            // Otherwise (relative or empty), fall back to the saved resolved
-            // path; if changed, just show "(saves after Run Full Backup)".
             const previewPath = isAbs ? backupDir : backupDirResolved;
             const isUnsaved = backupDir !== savedBackupDir;
             if (!previewPath) return null;
@@ -1674,17 +1716,74 @@ export default function SeasonPage() {
               </p>
             );
           })()}
-          <p className="text-xs text-muted mt-1">
-            Relative paths resolve against the project root; absolute paths (e.g.{" "}
-            <code className="text-xs">/Volumes/ExternalDrive/Backups</code>) are stored as-is.
-            Each backup creates a folder named{" "}
-            <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code> here.
-            When more than 3 backups exist, you&apos;ll be asked whether to delete the oldest.
-            On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your home network.
-            {" "}
-            <strong>The path is saved automatically the next time you click Run Full Backup.</strong>
-          </p>
         </div>
+
+        {/* Secondary (optional) backup directory */}
+        <div className="mb-2">
+          <label className="block text-sm text-muted mb-1">
+            Backup Directory (secondary &mdash; optional)
+          </label>
+          <input
+            type="text"
+            value={backupDir2}
+            onChange={(e) => setBackupDir2(e.target.value)}
+            placeholder="(none)"
+            className="border border-border rounded px-3 py-2 text-sm w-full max-w-2xl font-mono"
+          />
+          {(() => {
+            const value = backupDir2.trim();
+            if (!value && !savedBackupDir2) {
+              return (
+                <p className="text-xs text-muted mt-1">
+                  Leave blank to write only to the primary location.
+                  Common second target: an iCloud Documents path like{" "}
+                  <code className="text-xs">
+                    /Users/&lt;you&gt;/Library/Mobile Documents/com~apple~CloudDocs/Documents/TennisBackups
+                  </code>
+                </p>
+              );
+            }
+            const isAbs = value.startsWith("/");
+            const previewPath = isAbs ? value : backupDir2Resolved;
+            const isUnsaved = backupDir2 !== savedBackupDir2;
+            return (
+              <p className="text-xs text-muted mt-1 break-all">
+                <strong>Backups will also be saved to:</strong>{" "}
+                <code className="font-mono">{previewPath || "(none)"}</code>
+                {isUnsaved && !isAbs && previewPath && (
+                  <span className="text-amber-700">
+                    {" "}
+                    (currently-saved path shown — typed path is relative; will resolve on save)
+                  </span>
+                )}
+                {isUnsaved && isAbs && (
+                  <span className="text-amber-700">
+                    {" "}
+                    (preview of unsaved input)
+                  </span>
+                )}
+                {isUnsaved && !value && (
+                  <span className="text-amber-700">
+                    {" "}
+                    (will be cleared on save)
+                  </span>
+                )}
+              </p>
+            );
+          })()}
+        </div>
+
+        <p className="text-xs text-muted mt-3">
+          Relative paths resolve against the project root; absolute paths (e.g.{" "}
+          <code className="text-xs">/Volumes/ExternalDrive/Backups</code>) are stored as-is.
+          Each backup creates a folder named{" "}
+          <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code>{" "}
+          in <strong>each</strong> configured directory. When any directory has more than 3 backups,
+          you&apos;ll be asked whether to delete the oldest.
+          On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your local paths.
+          {" "}
+          <strong>Both paths are saved automatically the next time you click Run Full Backup.</strong>
+        </p>
       </div>
 
       {/* Holidays + Generate Games */}

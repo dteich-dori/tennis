@@ -4,9 +4,34 @@ import { appSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import path from "path";
 
-function resolveBackupDir(dir: string | undefined | null): string {
-  const value = (dir && dir.trim()) || "Backup";
+function resolveBackupDir(dir: string | undefined | null): string | null {
+  const value = (dir ?? "").trim();
+  if (!value) return null;
   return path.isAbsolute(value) ? value : path.join(process.cwd(), value);
+}
+
+interface AppSettingsResponse {
+  id?: number;
+  backupDir: string;
+  backupDirResolved: string | null;
+  backupDir2: string | null;
+  backupDir2Resolved: string | null;
+}
+
+function shapeResponse(row: {
+  id?: number;
+  backupDir?: string | null;
+  backupDir2?: string | null;
+}): AppSettingsResponse {
+  const primary = row.backupDir ?? "Backup";
+  return {
+    id: row.id,
+    backupDir: primary,
+    backupDirResolved:
+      resolveBackupDir(primary) ?? path.join(process.cwd(), "Backup"),
+    backupDir2: row.backupDir2 ?? null,
+    backupDir2Resolved: resolveBackupDir(row.backupDir2 ?? null),
+  };
 }
 
 export async function GET() {
@@ -14,13 +39,12 @@ export async function GET() {
     const database = await db();
     const rows = await database.select().from(appSettings);
 
-    const backupDir = rows.length === 0 ? "Backup" : rows[0].backupDir;
-    const backupDirResolved = resolveBackupDir(backupDir);
-
     if (rows.length === 0) {
-      return NextResponse.json({ backupDir, backupDirResolved });
+      return NextResponse.json(
+        shapeResponse({ backupDir: "Backup", backupDir2: null })
+      );
     }
-    return NextResponse.json({ ...rows[0], backupDirResolved });
+    return NextResponse.json(shapeResponse(rows[0]));
   } catch (err) {
     console.error("[app-settings GET] error:", err);
     return NextResponse.json(
@@ -32,12 +56,15 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { backupDir: string };
-    const raw = body.backupDir ?? "";
-    // Always trim — guards against leading/trailing whitespace that would
-    // confuse path.isAbsolute() and cause the path to be re-rooted in /var/task
-    // on Vercel.
-    const backupDir = raw.trim();
+    const body = (await request.json()) as {
+      backupDir?: string;
+      backupDir2?: string | null;
+    };
+
+    // Trim both inputs. Empty/missing secondary clears it.
+    const backupDir = (body.backupDir ?? "").trim();
+    const backupDir2Raw =
+      body.backupDir2 === undefined ? undefined : (body.backupDir2 ?? "").trim();
 
     if (backupDir === "") {
       return NextResponse.json(
@@ -46,38 +73,35 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // We DO NOT validate filesystem existence here. This endpoint runs
-    // wherever the request hits the server (Vercel, local dev, etc.) — but
-    // the user's intended backup target may be a local network path that's
-    // only reachable from their workstation. The actual backup run is where
-    // filesystem access matters; that path falls back to ZIP download if the
-    // directory isn't reachable.
+    // Filesystem existence is NOT validated here — the configured paths may
+    // live on the user's local network and only be reachable from their
+    // workstation, not from Vercel. Backup run handles fallback to ZIP.
 
     const database = await db();
     const existing = await database.select().from(appSettings);
 
+    // Build the set object: only include backupDir2 if explicitly provided
+    // in the body (so omitting it doesn't accidentally clear it).
+    const updates: { backupDir: string; backupDir2?: string | null } = {
+      backupDir,
+    };
+    if (backupDir2Raw !== undefined) {
+      updates.backupDir2 = backupDir2Raw === "" ? null : backupDir2Raw;
+    }
+
     if (existing.length > 0) {
       const result = await database
         .update(appSettings)
-        .set({ backupDir })
+        .set(updates)
         .where(eq(appSettings.id, existing[0].id))
         .returning();
-      return NextResponse.json({
-        ...result[0],
-        backupDirResolved: resolveBackupDir(result[0].backupDir),
-      });
+      return NextResponse.json(shapeResponse(result[0]));
     } else {
       const result = await database
         .insert(appSettings)
-        .values({ backupDir })
+        .values(updates)
         .returning();
-      return NextResponse.json(
-        {
-          ...result[0],
-          backupDirResolved: resolveBackupDir(result[0].backupDir),
-        },
-        { status: 201 }
-      );
+      return NextResponse.json(shapeResponse(result[0]), { status: 201 });
     }
   } catch (err) {
     console.error("[app-settings PUT] error:", err);
