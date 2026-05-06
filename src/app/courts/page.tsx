@@ -37,7 +37,6 @@ export default function CourtsPage() {
     { dayOfWeek: number; courtNumber: number; startTime: string; isSolo: boolean }[] | null
   >(null);
   const [importError, setImportError] = useState("");
-  const [exportMessage, setExportMessage] = useState("");
 
   const loadSeason = useCallback(async () => {
     const res = await fetch("/api/seasons");
@@ -128,34 +127,6 @@ export default function CourtsPage() {
     if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
     return a.courtNumber - b.courtNumber;
   });
-
-  const handleExportCsv = async () => {
-    if (sortedCourts.length === 0) return;
-    const header = "Day,Court #,Start Time,Group";
-    const rows = sortedCourts.map(
-      (s) =>
-        `${DAYS[s.dayOfWeek]},${s.courtNumber},${s.startTime},${s.isSolo ? "Solo" : "Don's"}`
-    );
-    const csv = [header, ...rows].join("\n");
-
-    // Save to Backup/ directory on server
-    setExportMessage("");
-    try {
-      const res = await fetch("/api/export-csv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: "court-schedule.csv", content: csv }),
-      });
-      const data = (await res.json()) as { success?: boolean; filename?: string; error?: string };
-      if (res.ok && data.success) {
-        setExportMessage(`Court schedule CSV saved to Backup/${data.filename}`);
-      } else {
-        setExportMessage(`Export failed: ${data.error ?? "Unknown error"}`);
-      }
-    } catch (err) {
-      setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -412,23 +383,10 @@ export default function CourtsPage() {
         >
           Import from Backup
         </button>
-        {sortedCourts.length > 0 && (
-          <button
-            onClick={handleExportCsv}
-            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
-          >
-            Export CSV
-          </button>
-        )}
         <span className="text-xs text-muted ml-2">
           {courts.length} court slot{courts.length !== 1 ? "s" : ""} configured
         </span>
       </div>
-      {exportMessage && (
-        <p className={`text-sm mt-2 ${exportMessage.startsWith("Export failed") ? "text-danger" : "text-green-600"}`}>
-          {exportMessage}
-        </p>
-      )}
       <input
         ref={fileInputRef}
         type="file"

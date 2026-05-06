@@ -393,38 +393,136 @@ export default function SeasonPage() {
     }
   };
 
-  // Save a backup of all database tables to Backup/ directory
-  const downloadBackup = async (): Promise<string | false> => {
+  // Run a unified full backup. Returns the result (folder name + rotation info)
+  // for callers that chain (e.g. the rebuild-games flow), or null on failure.
+  interface BackupResult {
+    folder: string;
+    mode: "filesystem" | "zip";
+    fullPath?: string;
+    rowCounts?: Record<string, number>;
+    totalBackups?: number;
+    oldestFolders?: string[];
+  }
+
+  const runFullBackup = async (): Promise<BackupResult | null> => {
     try {
       const res = await fetch("/api/backup", { method: "POST" });
-      const data = (await res.json()) as {
-        success?: boolean;
-        tables?: Record<string, string>;
-        backupFolder?: string;
-        counts?: { players: number; courtSchedules: number; games: number; assignments: number };
-        error?: string;
-      };
-      if (!res.ok || !data.success || !data.tables) {
-        return false;
+      const ctype = res.headers.get("Content-Type") || "";
+
+      // ZIP-fallback path (production / read-only filesystem)
+      if (ctype.startsWith("application/zip")) {
+        const blob = await res.blob();
+        const folder =
+          res.headers.get("X-Backup-Folder") || `Tennis-Scheduler-backup`;
+        const a = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = `${folder}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        return { folder, mode: "zip" };
       }
 
-      return data.backupFolder ?? "Backup";
+      // JSON / filesystem path
+      const data = (await res.json()) as {
+        success?: boolean;
+        mode?: string;
+        folder?: string;
+        fullPath?: string;
+        rowCounts?: Record<string, number>;
+        totalBackups?: number;
+        oldestFolders?: string[];
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.folder) {
+        return null;
+      }
+      return {
+        folder: data.folder,
+        mode: "filesystem",
+        fullPath: data.fullPath,
+        rowCounts: data.rowCounts,
+        totalBackups: data.totalBackups,
+        oldestFolders: data.oldestFolders,
+      };
     } catch {
-      return false;
+      return null;
     }
+  };
+
+  // Legacy alias kept so existing callers (rebuild-games flow) still work.
+  // Returns the folder name string, or false on failure.
+  const downloadBackup = async (): Promise<string | false> => {
+    const result = await runFullBackup();
+    return result ? result.folder : false;
   };
 
   const handleDownloadBackup = async () => {
     setBackupDownloading(true);
     setBackupDownloadMessage("");
-    const result = await downloadBackup();
-    setBackupDownloadMessage(
-      result ? `Backup saved to ${backupDir}/${result}/` : "Backup failed."
-    );
+    const result = await runFullBackup();
     setBackupDownloading(false);
-    if (result) {
-      setTimeout(() => setBackupDownloadMessage(""), 5000);
+
+    if (!result) {
+      setBackupDownloadMessage("Backup failed.");
+      return;
     }
+
+    if (result.mode === "zip") {
+      setBackupDownloadMessage(
+        `✓ Backup downloaded as ${result.folder}.zip (check your browser's Downloads). To save backups directly to your home network, run from your local dev server.`
+      );
+      return;
+    }
+
+    // Filesystem mode
+    const counts = result.rowCounts ?? {};
+    const totalRows = Object.values(counts).reduce((s, n) => s + n, 0);
+    const summary =
+      `✓ Backup saved to ${result.fullPath ?? `${backupDir}/${result.folder}`} ` +
+      `(${totalRows} rows across ${Object.keys(counts).length} tables).`;
+
+    // Rotation prompt
+    if (result.oldestFolders && result.oldestFolders.length > 0) {
+      const list = result.oldestFolders.join("\n  • ");
+      const ok = window.confirm(
+        `${summary}\n\nYou now have ${result.totalBackups} backup folders in this directory. ` +
+          `Delete the ${result.oldestFolders.length} oldest to keep only the 3 most recent?\n\n  • ${list}`
+      );
+      if (ok) {
+        try {
+          const cleanRes = await fetch("/api/backup/cleanup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folders: result.oldestFolders }),
+          });
+          const cleanData = (await cleanRes.json()) as {
+            success?: boolean;
+            deleted?: string[];
+            remaining?: number;
+            error?: string;
+          };
+          if (cleanRes.ok && cleanData.success) {
+            setBackupDownloadMessage(
+              `${summary} Deleted ${cleanData.deleted?.length ?? 0} old backup(s); ${cleanData.remaining} remain.`
+            );
+          } else {
+            setBackupDownloadMessage(
+              `${summary} Cleanup failed: ${cleanData.error ?? "unknown"}`
+            );
+          }
+        } catch (err) {
+          setBackupDownloadMessage(
+            `${summary} Cleanup error: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+        return;
+      }
+    }
+
+    setBackupDownloadMessage(summary);
   };
 
   const handleSaveBackupDir = async () => {
@@ -1216,10 +1314,10 @@ export default function SeasonPage() {
             <button
               onClick={handleDownloadBackup}
               disabled={backupDownloading}
-              title="Downloads a ZIP file containing CSV backups of all database tables"
+              title="Saves a complete backup of all data (every table, manifest, JSON + CSV) to the configured backup directory. On Vercel/production, falls back to a ZIP download."
               className="border-2 border-primary text-primary px-4 py-2 rounded text-sm hover:bg-blue-50 transition-colors disabled:opacity-50"
             >
-              {backupDownloading ? "Downloading..." : "Download Backup"}
+              {backupDownloading ? "Backing up..." : "Run Full Backup"}
             </button>
           )}
           {activeSeason && (
@@ -1243,8 +1341,9 @@ export default function SeasonPage() {
 
         {backupDownloadMessage && (
           <div
-            className={`border rounded px-4 py-2 mt-3 text-sm ${
-              backupDownloadMessage.includes("failed")
+            className={`border rounded px-4 py-2 mt-3 text-sm whitespace-pre-line ${
+              backupDownloadMessage.toLowerCase().includes("failed") ||
+              backupDownloadMessage.toLowerCase().includes("error")
                 ? "bg-red-50 border-red-200 text-red-800"
                 : "bg-green-50 border-green-200 text-green-800"
             }`}
@@ -1517,6 +1616,9 @@ export default function SeasonPage() {
             />
             <p className="text-xs text-muted mt-1">
               Relative to the project root, or an absolute path (e.g. /Volumes/ExternalDrive/Backups).
+              Each backup creates a folder named <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code> here.
+              When more than 3 backups exist, you&apos;ll be asked whether to delete the oldest.
+              On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your home network.
             </p>
           </div>
           <button

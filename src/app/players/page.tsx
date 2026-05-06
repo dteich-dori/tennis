@@ -88,7 +88,6 @@ export default function PlayersPage() {
   const [sortField, setSortField] = useState<"lastName" | "firstName" | "skillLevel" | "contractedFrequency">("lastName");
   const [sortAsc, setSortAsc] = useState(true);
   const [importMessage, setImportMessage] = useState("");
-  const [exportMessage, setExportMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<
@@ -530,72 +529,6 @@ export default function PlayersPage() {
     setImportFileName("");
   };
 
-  const handleExportCsv = async () => {
-    const FULL_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-    // Helper to escape CSV fields containing commas or quotes
-    const esc = (val: string) => {
-      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
-        return `"${val.replace(/"/g, '""')}"`;
-      }
-      return val;
-    };
-
-    const header = "Last Name,First Name,Cell,Home,Email,Skill,Frequency,Solo Games,,Active,Derated,No Consecutive Days,No Early Games,Blocked Days,Vacations,Does Not Play With";
-    const rows = sortedPlayers.map((p) => {
-      const blockedDays = p.blockedDays.map((d) => FULL_DAYS[d]).join("; ") || "";
-      const vacations = p.vacations.map((v) => `${v.startDate} to ${v.endDate}`).join("; ") || "";
-      const doNotPair = (p.doNotPair ?? [])
-        .map((id) => {
-          const match = players.find((pl) => pl.id === id);
-          return match ? `${match.lastName}, ${match.firstName}` : "";
-        })
-        .filter(Boolean)
-        .join("; ") || "";
-      const freq = p.contractedFrequency === "0" ? "Sub" : p.contractedFrequency;
-      const soloGames = p.soloGames ? String(p.soloGames) : "";
-
-      return [
-        esc(p.lastName),
-        esc(p.firstName),
-        esc(formatPhone(p.cellNumber)),
-        esc(formatPhone(p.homeNumber)),
-        esc(p.email ?? ""),
-        p.skillLevel,
-        freq,
-        soloGames,
-        "", // placeholder for removed Solo Pair column (maintains column positions)
-        p.isActive ? "Yes" : "No",
-        p.isDerated ? "Yes" : "No",
-        p.noConsecutiveDays ? "Yes" : "No",
-        p.noEarlyGames ? "Yes" : "No",
-        esc(blockedDays),
-        esc(vacations),
-        esc(doNotPair),
-      ].join(",");
-    });
-
-    const csv = [header, ...rows].join("\n");
-
-    // Save to Backup/ directory on server
-    setExportMessage("");
-    try {
-      const res = await fetch("/api/export-csv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: "players.csv", content: csv }),
-      });
-      const data = (await res.json()) as { success?: boolean; filename?: string; error?: string };
-      if (res.ok && data.success) {
-        setExportMessage(`Players CSV saved to Backup/${data.filename}`);
-      } else {
-        setExportMessage(`Export failed: ${data.error ?? "Unknown error"}`);
-      }
-    } catch (err) {
-      setExportMessage(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
-
   const SortHeader = ({
     field,
     label,
@@ -643,14 +576,6 @@ export default function PlayersPage() {
           >
             Import from Backup
           </button>
-          {players.length > 0 && (
-            <button
-              onClick={handleExportCsv}
-              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
-            >
-              Export CSV
-            </button>
-          )}
           <button
             onClick={() => {
               resetForm();
@@ -671,12 +596,6 @@ export default function PlayersPage() {
       {importMessage && (
         <div className="bg-green-50 border border-green-200 text-green-800 rounded px-4 py-2 mb-4 text-sm">
           {importMessage}
-        </div>
-      )}
-
-      {exportMessage && (
-        <div className={`border rounded px-4 py-2 mb-4 text-sm ${exportMessage.startsWith("Export failed") ? "bg-red-50 border-red-200 text-red-800" : "bg-green-50 border-green-200 text-green-800"}`}>
-          {exportMessage}
         </div>
       )}
 
