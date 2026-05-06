@@ -11,6 +11,7 @@ interface Season {
 }
 
 interface BudgetParamsData {
+  weeksPerSeason: number;
   priceDons1: number;
   priceDons2: number;
   priceExtraHour: number;
@@ -138,7 +139,10 @@ export default function AccountsTab({ season, params }: Props) {
   // --- Compute per-player rows (Don's contract players only) ---
   const rows: AccountRow[] = (() => {
     if (!season) return [];
-    const totalWeeks = season.totalWeeks ?? 36;
+    // Use the Budget config "weeksPerSeason" as the contract base length.
+    // season.totalWeeks may include makeup weeks, but a 2x contract is still
+    // priced for the standard season length (typically 36 weeks).
+    const baseWeeks = params.weeksPerSeason || 36;
 
     // Count games per player (Don's, normal status only)
     const gamesByPlayer = new Map<number, number>();
@@ -184,7 +188,7 @@ export default function AccountsTab({ season, params }: Props) {
         base = params.priceDons2;
         extraGames = locked
           ? (p.lockedExtraGames as number)
-          : Math.max(0, scheduledGames - 2 * totalWeeks);
+          : Math.max(0, scheduledGames - 2 * baseWeeks);
         extras = extraGames * params.priceExtraHour;
       } else if (contract === "0") {
         // Subs: no base fee — charged per game played

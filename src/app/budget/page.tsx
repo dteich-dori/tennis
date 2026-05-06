@@ -685,6 +685,7 @@ export default function BudgetPage() {
         <AccountsTab
           season={season}
           params={{
+            weeksPerSeason: params.weeksPerSeason,
             priceDons1: params.priceDons1,
             priceDons2: params.priceDons2,
             priceExtraHour: params.priceExtraHour,
