@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { generateExtraGamesPdf } from "@/lib/reports/extraGamesPdf";
+import { useBackup } from "@/lib/useBackup";
 
 const DAYS = [
   "Sunday",
@@ -61,6 +62,7 @@ interface Player {
 }
 
 export default function SchedulePage() {
+  const backup = useBackup();
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -1009,7 +1011,38 @@ export default function SchedulePage() {
   return (
     <div className="flex gap-4">
       <div className="flex-1 min-w-0 max-w-5xl">
-      <h1 className="text-2xl font-bold mb-6">Schedule</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Schedule</h1>
+        <button
+          onClick={backup.runBackup}
+          disabled={backup.busy}
+          title="Run a complete backup (all data, every table) using the directories configured on Season Setup."
+          className="border-2 border-primary text-primary px-4 py-2 rounded text-sm hover:bg-blue-50 transition-colors disabled:opacity-50"
+        >
+          {backup.busy ? "Backing up..." : "Backup All"}
+        </button>
+      </div>
+
+      {backup.message && (
+        <div
+          className={`border rounded px-4 py-2 mb-4 text-sm whitespace-pre-line ${
+            backup.isError
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-green-50 border-green-200 text-green-800"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <span className="flex-1">{backup.message}</span>
+            <button
+              onClick={backup.dismiss}
+              className="text-xs text-muted hover:underline whitespace-nowrap"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {totalGames === 0 ? (
         <div className="text-center py-12 text-muted">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { formatPhone } from "@/lib/formatPhone";
+import { useBackup } from "@/lib/useBackup";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -90,6 +91,7 @@ export default function PlayersPage() {
   const [importMessage, setImportMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backup = useBackup();
   const [importPreview, setImportPreview] = useState<
     { firstName: string; lastName: string; cellNumber: string | null; homeNumber: string | null; email: string | null;
       skillLevel: string | null; contractedFrequency: string | null; soloGames: number | null;
@@ -577,6 +579,14 @@ export default function PlayersPage() {
             Import from Backup
           </button>
           <button
+            onClick={backup.runBackup}
+            disabled={backup.busy}
+            title="Run a complete backup (all data, every table) using the directories configured on Season Setup."
+            className="border-2 border-primary text-primary px-4 py-2 rounded text-sm hover:bg-blue-50 transition-colors disabled:opacity-50"
+          >
+            {backup.busy ? "Backing up..." : "Backup All"}
+          </button>
+          <button
             onClick={() => {
               resetForm();
               setShowForm(true);
@@ -596,6 +606,27 @@ export default function PlayersPage() {
       {importMessage && (
         <div className="bg-green-50 border border-green-200 text-green-800 rounded px-4 py-2 mb-4 text-sm">
           {importMessage}
+        </div>
+      )}
+
+      {backup.message && (
+        <div
+          className={`border rounded px-4 py-2 mb-4 text-sm whitespace-pre-line ${
+            backup.isError
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-green-50 border-green-200 text-green-800"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <span className="flex-1">{backup.message}</span>
+            <button
+              onClick={backup.dismiss}
+              className="text-xs text-muted hover:underline whitespace-nowrap"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 

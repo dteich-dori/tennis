@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useBackup } from "@/lib/useBackup";
 
 
 interface Season {
@@ -101,10 +102,6 @@ export default function SeasonPage() {
   // Don's pairings balance state
   const [donsPairingsBalancing, setDonsPairingsBalancing] = useState(false);
   const [donsPairingsMessage, setDonsPairingsMessage] = useState("");
-
-  // Download backup state
-  const [backupDownloading, setBackupDownloading] = useState(false);
-  const [backupDownloadMessage, setBackupDownloadMessage] = useState("");
 
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
@@ -483,118 +480,11 @@ export default function SeasonPage() {
     return result ? result.folder : false;
   };
 
-  const handleDownloadBackup = async () => {
-    setBackupDownloading(true);
-    setBackupDownloadMessage("");
-
-    // Auto-save backup directories if the user has typed any new values
-    // since the page last loaded its saved values.
-    if (backupDir !== savedBackupDir || backupDir2 !== savedBackupDir2) {
-      const ok = await persistBackupDirs();
-      if (!ok) {
-        setBackupDownloading(false);
-        return;
-      }
-    }
-
-    const result = await runFullBackup();
-    setBackupDownloading(false);
-
-    if (!result) {
-      setBackupDownloadMessage("Backup failed.");
-      return;
-    }
-
-    if (result.mode === "zip") {
-      setBackupDownloadMessage(
-        `✓ Backup downloaded as ${result.folder}.zip (check your browser's Downloads). To save backups directly to your home network, run from your local dev server.`
-      );
-      return;
-    }
-
-    // Filesystem mode — may have written to 1 or 2 directories
-    const counts = result.rowCounts ?? {};
-    const totalRows = Object.values(counts).reduce((s, n) => s + n, 0);
-    const dirs = result.directories ?? [];
-
-    const linePerDir = dirs
-      .map((d) => `  • ${d.fullPath}`)
-      .join("\n");
-    let summary =
-      `✓ Backup saved (${totalRows} rows across ${Object.keys(counts).length} tables) to:\n` +
-      linePerDir;
-
-    if (result.errors && result.errors.length > 0) {
-      summary +=
-        "\n\nFailed locations:\n" +
-        result.errors.map((e) => `  • ${e.baseDir}: ${e.error}`).join("\n");
-    }
-
-    // Rotation: each directory is prompted SEPARATELY, so the admin can
-    // choose to keep all backups in one location while pruning another.
-    const dirsNeedingCleanup = dirs.filter(
-      (d) => d.oldestFolders && d.oldestFolders.length > 0
-    );
-
-    if (dirsNeedingCleanup.length === 0) {
-      setBackupDownloadMessage(summary);
-      return;
-    }
-
-    const cleanupLines: string[] = [];
-    for (const d of dirsNeedingCleanup) {
-      const list = d.oldestFolders.map((f) => `  • ${f}`).join("\n");
-      const ok = window.confirm(
-        `Rule of 3 — backup directory:\n  ${d.baseDir}\n\n` +
-          `It now has ${d.totalBackups} backups. Delete the ${d.oldestFolders.length} oldest to keep only the 3 most recent?\n\n${list}`
-      );
-      if (!ok) {
-        cleanupLines.push(
-          `  • ${d.baseDir}: kept all ${d.totalBackups} (skipped)`
-        );
-        continue;
-      }
-      try {
-        const cleanRes = await fetch("/api/backup/cleanup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            directories: [{ baseDir: d.baseDir, folders: d.oldestFolders }],
-          }),
-        });
-        const cleanData = (await cleanRes.json()) as {
-          success?: boolean;
-          results?: Array<{
-            baseDir: string;
-            deleted: string[];
-            remaining: number;
-          }>;
-          error?: string;
-        };
-        if (cleanRes.ok && cleanData.success && cleanData.results?.[0]) {
-          const r = cleanData.results[0];
-          cleanupLines.push(
-            `  • ${d.baseDir}: deleted ${r.deleted.length}, ${r.remaining} remaining`
-          );
-        } else {
-          cleanupLines.push(
-            `  • ${d.baseDir}: cleanup failed (${cleanData.error ?? "unknown"})`
-          );
-        }
-      } catch (err) {
-        cleanupLines.push(
-          `  • ${d.baseDir}: cleanup error (${err instanceof Error ? err.message : String(err)})`
-        );
-      }
-    }
-
-    setBackupDownloadMessage(`${summary}\n\nCleanup:\n${cleanupLines.join("\n")}`);
-  };
-
-  // Persist the currently-typed backupDir to the server. Returns true on success.
-  // Called automatically by handleDownloadBackup when the input differs from
-  // what's saved.
-  const persistBackupDirs = async (): Promise<boolean> => {
+  // Persist the typed backupDir / backupDir2 to the server before running
+  // a backup. Used by the useBackup hook's beforeRun.
+  const persistBackupDirs = async (): Promise<
+    { ok: true } | { ok: false; error: string }
+  > => {
     try {
       const res = await fetch("/api/app-settings", {
         method: "PUT",
@@ -609,21 +499,34 @@ export default function SeasonPage() {
         error?: string;
       };
       if (!res.ok) {
-        setBackupDownloadMessage(`Error saving backup directories: ${data.error ?? "unknown"}`);
-        return false;
+        return {
+          ok: false,
+          error: `Error saving backup directories: ${data.error ?? "unknown"}`,
+        };
       }
       setSavedBackupDir(backupDir);
       setSavedBackupDir2(backupDir2);
       if (data.backupDirResolved) setBackupDirResolved(data.backupDirResolved);
       setBackupDir2Resolved(data.backupDir2Resolved ?? "");
-      return true;
+      return { ok: true };
     } catch (err) {
-      setBackupDownloadMessage(
-        `Error saving backup directories: ${err instanceof Error ? err.message : String(err)}`
-      );
-      return false;
+      return {
+        ok: false,
+        error: `Error saving backup directories: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
   };
+
+  // Unified backup workflow — shared with Players & Schedule pages.
+  // beforeRun auto-saves any unsaved backup-directory edits.
+  const backup = useBackup({
+    beforeRun: async () => {
+      if (backupDir !== savedBackupDir || backupDir2 !== savedBackupDir2) {
+        return await persistBackupDirs();
+      }
+      return { ok: true };
+    },
+  });
 
   const loadCourtSlots = async () => {
     if (!activeSeason) return;
@@ -1390,12 +1293,12 @@ export default function SeasonPage() {
           )}
           {activeSeason && (
             <button
-              onClick={handleDownloadBackup}
-              disabled={backupDownloading}
+              onClick={backup.runBackup}
+              disabled={backup.busy}
               title="Saves a complete backup of all data (every table, manifest, JSON + CSV) to the configured backup directory. On Vercel/production, falls back to a ZIP download."
               className="border-2 border-primary text-primary px-4 py-2 rounded text-sm hover:bg-blue-50 transition-colors disabled:opacity-50"
             >
-              {backupDownloading ? "Backing up..." : "Run Full Backup"}
+              {backup.busy ? "Backing up..." : "Run Full Backup"}
             </button>
           )}
           {activeSeason && (
@@ -1417,16 +1320,24 @@ export default function SeasonPage() {
           )}
         </div>
 
-        {backupDownloadMessage && (
+        {backup.message && (
           <div
             className={`border rounded px-4 py-2 mt-3 text-sm whitespace-pre-line ${
-              backupDownloadMessage.toLowerCase().includes("failed") ||
-              backupDownloadMessage.toLowerCase().includes("error")
+              backup.isError
                 ? "bg-red-50 border-red-200 text-red-800"
                 : "bg-green-50 border-green-200 text-green-800"
             }`}
           >
-            {backupDownloadMessage}
+            <div className="flex items-start justify-between gap-3">
+              <span className="flex-1">{backup.message}</span>
+              <button
+                onClick={backup.dismiss}
+                className="text-xs text-muted hover:underline whitespace-nowrap"
+                title="Dismiss this message"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 
