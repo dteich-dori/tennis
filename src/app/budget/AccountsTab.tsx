@@ -384,6 +384,28 @@ export default function AccountsTab({ season, params }: Props) {
     setDepositMessage(lines.join("\n"));
   };
 
+  // --- Update an existing payment in place ---
+  const updatePayment = async (
+    paymentId: number,
+    fields: { paidDate?: string; amount?: number; note?: string | null }
+  ) => {
+    try {
+      const res = await fetch(`/api/player-payments?id=${paymentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        alert(`Failed to update payment: ${data.error ?? "unknown"}`);
+        return;
+      }
+      await loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const removePayment = async (paymentId: number) => {
     if (!window.confirm("Remove this payment?")) return;
     try {
@@ -637,12 +659,48 @@ export default function AccountsTab({ season, params }: Props) {
                             <tbody>
                               {r.payments.map((pay) => (
                                 <tr key={pay.id} className="border-t border-border">
-                                  <td className="px-2 py-1">{pay.paidDate}</td>
-                                  <td className="px-2 py-1 text-right font-mono">
-                                    {fmt(pay.amount)}
+                                  <td className="px-2 py-1">
+                                    <input
+                                      type="date"
+                                      defaultValue={pay.paidDate}
+                                      onBlur={(e) => {
+                                        const v = e.target.value;
+                                        if (v && v !== pay.paidDate) {
+                                          updatePayment(pay.id, { paidDate: v });
+                                        }
+                                      }}
+                                      className="border border-border rounded px-1 py-0.5 text-xs bg-white"
+                                    />
                                   </td>
-                                  <td className="px-2 py-1 text-muted">
-                                    {pay.note || "—"}
+                                  <td className="px-2 py-1 text-right font-mono">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={pay.amount}
+                                      onBlur={(e) => {
+                                        const n = parseFloat(e.target.value);
+                                        if (Number.isFinite(n) && n !== pay.amount) {
+                                          updatePayment(pay.id, { amount: n });
+                                        }
+                                      }}
+                                      className="border border-border rounded px-1 py-0.5 text-xs w-24 text-right bg-white"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <input
+                                      type="text"
+                                      defaultValue={pay.note ?? ""}
+                                      placeholder="—"
+                                      onBlur={(e) => {
+                                        const v = e.target.value;
+                                        if (v !== (pay.note ?? "")) {
+                                          updatePayment(pay.id, {
+                                            note: v || null,
+                                          });
+                                        }
+                                      }}
+                                      className="border border-border rounded px-1 py-0.5 text-xs w-full bg-white"
+                                    />
                                   </td>
                                   <td className="px-2 py-1 text-center">
                                     <button

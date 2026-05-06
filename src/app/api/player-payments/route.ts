@@ -88,6 +88,77 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * PUT /api/player-payments?id=N
+ * Body: { paidDate?, amount?, note? }
+ * Partially updates an existing payment row.
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const idRaw = request.nextUrl.searchParams.get("id");
+    if (!idRaw) {
+      return NextResponse.json({ error: "id required" }, { status: 400 });
+    }
+    const id = parseInt(idRaw);
+    if (Number.isNaN(id)) {
+      return NextResponse.json({ error: "id must be a number" }, { status: 400 });
+    }
+
+    const body = (await request.json()) as {
+      paidDate?: string;
+      amount?: number;
+      note?: string | null;
+    };
+
+    const updates: Record<string, unknown> = {};
+    if (body.paidDate !== undefined) {
+      if (typeof body.paidDate !== "string" || body.paidDate.trim() === "") {
+        return NextResponse.json(
+          { error: "paidDate must be a non-empty YYYY-MM-DD string" },
+          { status: 400 }
+        );
+      }
+      updates.paidDate = body.paidDate.trim();
+    }
+    if (body.amount !== undefined) {
+      const n = Number(body.amount);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json(
+          { error: "amount must be a number" },
+          { status: 400 }
+        );
+      }
+      updates.amount = n;
+    }
+    if (body.note !== undefined) {
+      updates.note = body.note ? String(body.note).trim() || null : null;
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
+    }
+
+    const database = await db();
+    const result = await database
+      .update(playerPayments)
+      .set(updates)
+      .where(eq(playerPayments.id, id))
+      .returning();
+    if (result.length === 0) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    }
+    return NextResponse.json(result[0]);
+  } catch (err) {
+    console.error("[player-payments PUT] error:", err);
+    return NextResponse.json(
+      { error: "Failed to update payment" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * DELETE /api/player-payments?id=N
  * Removes a single payment.
  */
