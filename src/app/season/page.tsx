@@ -530,64 +530,65 @@ export default function SeasonPage() {
         result.errors.map((e) => `  • ${e.baseDir}: ${e.error}`).join("\n");
     }
 
-    // Rotation: gather all directories that have folders to delete
+    // Rotation: each directory is prompted SEPARATELY, so the admin can
+    // choose to keep all backups in one location while pruning another.
     const dirsNeedingCleanup = dirs.filter(
       (d) => d.oldestFolders && d.oldestFolders.length > 0
     );
 
-    if (dirsNeedingCleanup.length > 0) {
-      const promptLines = dirsNeedingCleanup.map(
-        (d) =>
-          `  ${d.baseDir}: ${d.totalBackups} backups → delete oldest ${d.oldestFolders.length}:\n` +
-          d.oldestFolders.map((f) => `    • ${f}`).join("\n")
-      );
+    if (dirsNeedingCleanup.length === 0) {
+      setBackupDownloadMessage(summary);
+      return;
+    }
+
+    const cleanupLines: string[] = [];
+    for (const d of dirsNeedingCleanup) {
+      const list = d.oldestFolders.map((f) => `  • ${f}`).join("\n");
       const ok = window.confirm(
-        `${summary}\n\n${dirsNeedingCleanup.length === 1 ? "This directory has" : "These directories have"} more than 3 backups. Keep only the 3 most recent in each?\n\n${promptLines.join("\n\n")}`
+        `Rule of 3 — backup directory:\n  ${d.baseDir}\n\n` +
+          `It now has ${d.totalBackups} backups. Delete the ${d.oldestFolders.length} oldest to keep only the 3 most recent?\n\n${list}`
       );
-      if (ok) {
-        try {
-          const cleanRes = await fetch("/api/backup/cleanup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              directories: dirsNeedingCleanup.map((d) => ({
-                baseDir: d.baseDir,
-                folders: d.oldestFolders,
-              })),
-            }),
-          });
-          const cleanData = (await cleanRes.json()) as {
-            success?: boolean;
-            results?: Array<{
-              baseDir: string;
-              deleted: string[];
-              remaining: number;
-            }>;
-            error?: string;
-          };
-          if (cleanRes.ok && cleanData.success && cleanData.results) {
-            const cleanLines = cleanData.results
-              .map(
-                (r) =>
-                  `  • ${r.baseDir}: deleted ${r.deleted.length}, ${r.remaining} remaining`
-              )
-              .join("\n");
-            setBackupDownloadMessage(`${summary}\n\nCleanup:\n${cleanLines}`);
-          } else {
-            setBackupDownloadMessage(
-              `${summary}\n\nCleanup failed: ${cleanData.error ?? "unknown"}`
-            );
-          }
-        } catch (err) {
-          setBackupDownloadMessage(
-            `${summary}\n\nCleanup error: ${err instanceof Error ? err.message : String(err)}`
+      if (!ok) {
+        cleanupLines.push(
+          `  • ${d.baseDir}: kept all ${d.totalBackups} (skipped)`
+        );
+        continue;
+      }
+      try {
+        const cleanRes = await fetch("/api/backup/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            directories: [{ baseDir: d.baseDir, folders: d.oldestFolders }],
+          }),
+        });
+        const cleanData = (await cleanRes.json()) as {
+          success?: boolean;
+          results?: Array<{
+            baseDir: string;
+            deleted: string[];
+            remaining: number;
+          }>;
+          error?: string;
+        };
+        if (cleanRes.ok && cleanData.success && cleanData.results?.[0]) {
+          const r = cleanData.results[0];
+          cleanupLines.push(
+            `  • ${d.baseDir}: deleted ${r.deleted.length}, ${r.remaining} remaining`
+          );
+        } else {
+          cleanupLines.push(
+            `  • ${d.baseDir}: cleanup failed (${cleanData.error ?? "unknown"})`
           );
         }
-        return;
+      } catch (err) {
+        cleanupLines.push(
+          `  • ${d.baseDir}: cleanup error (${err instanceof Error ? err.message : String(err)})`
+        );
       }
     }
 
-    setBackupDownloadMessage(summary);
+    setBackupDownloadMessage(`${summary}\n\nCleanup:\n${cleanupLines.join("\n")}`);
   };
 
   // Persist the currently-typed backupDir to the server. Returns true on success.
