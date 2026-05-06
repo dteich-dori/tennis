@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import AccountsTab from "./AccountsTab";
 
 interface Season {
   id: number;
@@ -73,7 +74,7 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-type BudgetTab = "dons" | "solo";
+type BudgetTab = "dons" | "solo" | "accounts";
 
 export default function BudgetPage() {
   const [season, setSeason] = useState<Season | null>(null);
@@ -360,6 +361,7 @@ export default function BudgetPage() {
         {([
           { key: "dons" as BudgetTab, label: "Don\u2019s" },
           { key: "solo" as BudgetTab, label: "Solo" },
+          { key: "accounts" as BudgetTab, label: "Accounts" },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -676,6 +678,19 @@ export default function BudgetPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Accounts Tab ── */}
+      {activeTab === "accounts" && (
+        <AccountsTab
+          season={season}
+          params={{
+            priceDons1: params.priceDons1,
+            priceDons2: params.priceDons2,
+            priceExtraHour: params.priceExtraHour,
+            priceSubs: params.priceSubs,
+          }}
+        />
       )}
 
       {/* Combined Summary (always visible) */}
