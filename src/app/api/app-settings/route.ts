@@ -5,16 +5,23 @@ import { eq } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
+function resolveBackupDir(dir: string | undefined | null): string {
+  const value = (dir && dir.trim()) || "Backup";
+  return path.isAbsolute(value) ? value : path.join(process.cwd(), value);
+}
+
 export async function GET() {
   try {
     const database = await db();
     const rows = await database.select().from(appSettings);
 
-    if (rows.length === 0) {
-      return NextResponse.json({ backupDir: "Backup" });
-    }
+    const backupDir = rows.length === 0 ? "Backup" : rows[0].backupDir;
+    const backupDirResolved = resolveBackupDir(backupDir);
 
-    return NextResponse.json(rows[0]);
+    if (rows.length === 0) {
+      return NextResponse.json({ backupDir, backupDirResolved });
+    }
+    return NextResponse.json({ ...rows[0], backupDirResolved });
   } catch (err) {
     console.error("[app-settings GET] error:", err);
     return NextResponse.json(
@@ -70,13 +77,22 @@ export async function PUT(request: NextRequest) {
         .set({ backupDir: backupDir.trim() })
         .where(eq(appSettings.id, existing[0].id))
         .returning();
-      return NextResponse.json(result[0]);
+      return NextResponse.json({
+        ...result[0],
+        backupDirResolved: resolveBackupDir(result[0].backupDir),
+      });
     } else {
       const result = await database
         .insert(appSettings)
         .values({ backupDir: backupDir.trim() })
         .returning();
-      return NextResponse.json(result[0], { status: 201 });
+      return NextResponse.json(
+        {
+          ...result[0],
+          backupDirResolved: resolveBackupDir(result[0].backupDir),
+        },
+        { status: 201 }
+      );
     }
   } catch (err) {
     console.error("[app-settings PUT] error:", err);

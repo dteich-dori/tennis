@@ -111,6 +111,9 @@ export default function SeasonPage() {
   // Last value persisted on the server — used to detect unsaved changes
   // before running a backup, so Run Full Backup auto-saves on demand.
   const [savedBackupDir, setSavedBackupDir] = useState("Backup");
+  // Resolved absolute path that the server will actually use for backups.
+  // Returned by /api/app-settings.
+  const [backupDirResolved, setBackupDirResolved] = useState("");
 
   // Weekly game summary
   const [weeklyContractsSold, setWeeklyContractsSold] = useState<number | null>(null);
@@ -178,10 +181,16 @@ export default function SeasonPage() {
   const loadAppSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/app-settings");
-      const data = (await res.json()) as { backupDir?: string };
+      const data = (await res.json()) as {
+        backupDir?: string;
+        backupDirResolved?: string;
+      };
       if (data.backupDir) {
         setBackupDir(data.backupDir);
         setSavedBackupDir(data.backupDir);
+      }
+      if (data.backupDirResolved) {
+        setBackupDirResolved(data.backupDirResolved);
       }
     } catch (err) {
       console.error("Failed to load app settings:", err);
@@ -550,12 +559,19 @@ export default function SeasonPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ backupDir }),
       });
-      const data = (await res.json()) as { backupDir?: string; error?: string };
+      const data = (await res.json()) as {
+        backupDir?: string;
+        backupDirResolved?: string;
+        error?: string;
+      };
       if (!res.ok) {
         setBackupDownloadMessage(`Error saving backup directory: ${data.error ?? "unknown"}`);
         return false;
       }
       setSavedBackupDir(backupDir);
+      if (data.backupDirResolved) {
+        setBackupDirResolved(data.backupDirResolved);
+      }
       return true;
     } catch (err) {
       setBackupDownloadMessage(
@@ -1629,22 +1645,44 @@ export default function SeasonPage() {
             value={backupDir}
             onChange={(e) => setBackupDir(e.target.value)}
             placeholder="Backup"
-            className="border border-border rounded px-3 py-2 text-sm w-full max-w-xl"
+            className="border border-border rounded px-3 py-2 text-sm w-full max-w-2xl font-mono"
           />
+          {(() => {
+            const isAbs = backupDir.startsWith("/");
+            // If the user typed an absolute path, we can preview it directly.
+            // Otherwise (relative or empty), fall back to the saved resolved
+            // path; if changed, just show "(saves after Run Full Backup)".
+            const previewPath = isAbs ? backupDir : backupDirResolved;
+            const isUnsaved = backupDir !== savedBackupDir;
+            if (!previewPath) return null;
+            return (
+              <p className="text-xs text-muted mt-1 break-all">
+                <strong>Backups will be saved to:</strong>{" "}
+                <code className="font-mono">{previewPath}</code>
+                {isUnsaved && !isAbs && (
+                  <span className="text-amber-700">
+                    {" "}
+                    (currently-saved path shown — typed path is relative; will resolve on save)
+                  </span>
+                )}
+                {isUnsaved && isAbs && (
+                  <span className="text-amber-700">
+                    {" "}
+                    (preview of unsaved input)
+                  </span>
+                )}
+              </p>
+            );
+          })()}
           <p className="text-xs text-muted mt-1">
-            Relative to the project root, or an absolute path (e.g. /Volumes/ExternalDrive/Backups).
+            Relative paths resolve against the project root; absolute paths (e.g.{" "}
+            <code className="text-xs">/Volumes/ExternalDrive/Backups</code>) are stored as-is.
             Each backup creates a folder named{" "}
             <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code> here.
             When more than 3 backups exist, you&apos;ll be asked whether to delete the oldest.
             On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your home network.
             {" "}
             <strong>The path is saved automatically the next time you click Run Full Backup.</strong>
-            {backupDir !== savedBackupDir && (
-              <span className="text-amber-700">
-                {" "}
-                (You have unsaved changes — click Run Full Backup to save and back up.)
-              </span>
-            )}
           </p>
         </div>
       </div>
