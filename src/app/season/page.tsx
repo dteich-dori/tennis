@@ -108,8 +108,9 @@ export default function SeasonPage() {
 
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
-  const [backupDirSaving, setBackupDirSaving] = useState(false);
-  const [backupDirMessage, setBackupDirMessage] = useState("");
+  // Last value persisted on the server — used to detect unsaved changes
+  // before running a backup, so Run Full Backup auto-saves on demand.
+  const [savedBackupDir, setSavedBackupDir] = useState("Backup");
 
   // Weekly game summary
   const [weeklyContractsSold, setWeeklyContractsSold] = useState<number | null>(null);
@@ -178,7 +179,10 @@ export default function SeasonPage() {
     try {
       const res = await fetch("/api/app-settings");
       const data = (await res.json()) as { backupDir?: string };
-      if (data.backupDir) setBackupDir(data.backupDir);
+      if (data.backupDir) {
+        setBackupDir(data.backupDir);
+        setSavedBackupDir(data.backupDir);
+      }
     } catch (err) {
       console.error("Failed to load app settings:", err);
     }
@@ -462,6 +466,17 @@ export default function SeasonPage() {
   const handleDownloadBackup = async () => {
     setBackupDownloading(true);
     setBackupDownloadMessage("");
+
+    // Auto-save the backup directory if the user has typed a new value
+    // since the page last loaded its saved value.
+    if (backupDir !== savedBackupDir) {
+      const ok = await persistBackupDir();
+      if (!ok) {
+        setBackupDownloading(false);
+        return;
+      }
+    }
+
     const result = await runFullBackup();
     setBackupDownloading(false);
 
@@ -525,9 +540,10 @@ export default function SeasonPage() {
     setBackupDownloadMessage(summary);
   };
 
-  const handleSaveBackupDir = async () => {
-    setBackupDirSaving(true);
-    setBackupDirMessage("");
+  // Persist the currently-typed backupDir to the server. Returns true on success.
+  // Called automatically by handleDownloadBackup when the input differs from
+  // what's saved.
+  const persistBackupDir = async (): Promise<boolean> => {
     try {
       const res = await fetch("/api/app-settings", {
         method: "PUT",
@@ -536,15 +552,17 @@ export default function SeasonPage() {
       });
       const data = (await res.json()) as { backupDir?: string; error?: string };
       if (!res.ok) {
-        setBackupDirMessage(`Error: ${data.error}`);
-      } else {
-        setBackupDirMessage("Backup directory saved.");
-        setTimeout(() => setBackupDirMessage(""), 3000);
+        setBackupDownloadMessage(`Error saving backup directory: ${data.error ?? "unknown"}`);
+        return false;
       }
-    } catch {
-      setBackupDirMessage("Failed to save backup directory.");
+      setSavedBackupDir(backupDir);
+      return true;
+    } catch (err) {
+      setBackupDownloadMessage(
+        `Error saving backup directory: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return false;
     }
-    setBackupDirSaving(false);
   };
 
   const loadCourtSlots = async () => {
@@ -1602,44 +1620,33 @@ export default function SeasonPage() {
       {/* Backup Settings */}
       <div className="border border-border rounded-lg p-6 mb-6">
         <h2 className="font-semibold mb-4">Backup Settings</h2>
-        <div className="flex gap-4 items-end mb-4">
-          <div className="flex-1">
-            <label className="block text-sm text-muted mb-1">
-              Backup Directory
-            </label>
-            <input
-              type="text"
-              value={backupDir}
-              onChange={(e) => setBackupDir(e.target.value)}
-              placeholder="Backup"
-              className="border border-border rounded px-3 py-2 text-sm w-full"
-            />
-            <p className="text-xs text-muted mt-1">
-              Relative to the project root, or an absolute path (e.g. /Volumes/ExternalDrive/Backups).
-              Each backup creates a folder named <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code> here.
-              When more than 3 backups exist, you&apos;ll be asked whether to delete the oldest.
-              On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your home network.
-            </p>
-          </div>
-          <button
-            onClick={handleSaveBackupDir}
-            disabled={backupDirSaving}
-            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-          >
-            {backupDirSaving ? "Saving..." : "Save"}
-          </button>
+        <div className="mb-2">
+          <label className="block text-sm text-muted mb-1">
+            Backup Directory
+          </label>
+          <input
+            type="text"
+            value={backupDir}
+            onChange={(e) => setBackupDir(e.target.value)}
+            placeholder="Backup"
+            className="border border-border rounded px-3 py-2 text-sm w-full max-w-xl"
+          />
+          <p className="text-xs text-muted mt-1">
+            Relative to the project root, or an absolute path (e.g. /Volumes/ExternalDrive/Backups).
+            Each backup creates a folder named{" "}
+            <code className="text-xs">Tennis-Scheduler-V&lt;version&gt;-&lt;YYYY-MM-DD&gt;</code> here.
+            When more than 3 backups exist, you&apos;ll be asked whether to delete the oldest.
+            On the deployed site (Vercel), backups download as a ZIP instead since the server can&apos;t reach your home network.
+            {" "}
+            <strong>The path is saved automatically the next time you click Run Full Backup.</strong>
+            {backupDir !== savedBackupDir && (
+              <span className="text-amber-700">
+                {" "}
+                (You have unsaved changes — click Run Full Backup to save and back up.)
+              </span>
+            )}
+          </p>
         </div>
-        {backupDirMessage && (
-          <div
-            className={`border rounded px-4 py-2 text-sm ${
-              backupDirMessage.startsWith("Error") || backupDirMessage.startsWith("Failed")
-                ? "bg-red-50 border-red-200 text-red-800"
-                : "bg-green-50 border-green-200 text-green-800"
-            }`}
-          >
-            {backupDirMessage}
-          </div>
-        )}
       </div>
 
       {/* Holidays + Generate Games */}
