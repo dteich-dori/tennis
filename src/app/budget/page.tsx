@@ -319,7 +319,7 @@ export default function BudgetPage() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className={activeTab === "accounts" ? "max-w-6xl" : "max-w-3xl"}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Budget</h1>
         <button

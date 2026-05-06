@@ -492,8 +492,8 @@ export default function AccountsTab({ season, params }: Props) {
         </div>
       )}
 
-      <div className="border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-gray-50">
             <tr>
               <th className="text-left px-3 py-2 font-medium">Last, First</th>
