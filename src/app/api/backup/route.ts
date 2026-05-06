@@ -30,7 +30,7 @@ function uniqueFolderName(baseDir: string, desired: string): string {
 function writeBackupToFs(
   baseDir: string,
   folderName: string,
-  bundle: ReturnType<typeof JSON.stringify> extends infer _ ? Awaited<ReturnType<typeof buildBackup>> : never
+  bundle: Awaited<ReturnType<typeof buildBackup>>
 ) {
   const target = path.join(baseDir, folderName);
   const csvDir = path.join(target, "csv");
@@ -43,6 +43,12 @@ function writeBackupToFs(
   fs.writeFileSync(
     path.join(target, "data.json"),
     JSON.stringify(bundle.dataJson, null, 2),
+    "utf-8"
+  );
+  fs.writeFileSync(path.join(target, "RESTORE.md"), bundle.restoreMd, "utf-8");
+  fs.writeFileSync(
+    path.join(target, "env.template"),
+    bundle.envTemplate,
     "utf-8"
   );
   for (const [name, csv] of Object.entries(bundle.csvFiles)) {
@@ -58,6 +64,8 @@ async function buildZip(bundle: Awaited<ReturnType<typeof buildBackup>>): Promis
   const root = zip.folder(bundle.folderName)!;
   root.file("manifest.json", JSON.stringify(bundle.manifest, null, 2));
   root.file("data.json", JSON.stringify(bundle.dataJson, null, 2));
+  root.file("RESTORE.md", bundle.restoreMd);
+  root.file("env.template", bundle.envTemplate);
   const csvFolder = root.folder("csv")!;
   for (const [name, csv] of Object.entries(bundle.csvFiles)) {
     if (csv) csvFolder.file(`${name}.csv`, csv);
