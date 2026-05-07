@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface Season {
   id: number;
@@ -261,59 +261,68 @@ export default function CommunicationsPage() {
     }
   }, [recipientGroup, selectedPlayerIds]);
 
-  // Debounced preview fetch — re-renders subject + body for the selected
-  // player whenever any of (preview player, season, subject, body) change.
-  useEffect(() => {
+  // Keep latest subject/body in refs so the preview fetch can read them
+  // without re-firing the effect on every keystroke (which was suspected of
+  // interfering with typing in the textarea).
+  const subjectRef = useRef(subject);
+  const messageBodyRef = useRef(messageBody);
+  useEffect(() => { subjectRef.current = subject; }, [subject]);
+  useEffect(() => { messageBodyRef.current = messageBody; }, [messageBody]);
+
+  type PreviewSummary = NonNullable<typeof previewResult>["summary"];
+
+  const fetchPreview = useCallback(async () => {
     if (!season || !previewPlayerId) {
       setPreviewResult(null);
       setPreviewError("");
       return;
     }
-    const timer = setTimeout(async () => {
-      setPreviewLoading(true);
-      setPreviewError("");
-      try {
-        const res = await fetch("/api/communications/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            seasonId: season.id,
-            playerId: previewPlayerId,
-            subject,
-            body: messageBody,
-          }),
-        });
-        const data = (await res.json()) as {
-          subject?: string;
-          body?: string;
-          unknownTokens?: string[];
-          summary?: typeof previewResult extends infer T
-            ? T extends { summary?: infer S }
-              ? S
-              : never
-            : never;
-          error?: string;
-        };
-        if (!res.ok) {
-          setPreviewError(data.error ?? "Failed to load preview");
-          setPreviewResult(null);
-        } else {
-          setPreviewResult({
-            subject: data.subject ?? "",
-            body: data.body ?? "",
-            unknownTokens: data.unknownTokens ?? [],
-            summary: data.summary,
-          });
-        }
-      } catch (err) {
-        setPreviewError(err instanceof Error ? err.message : String(err));
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const res = await fetch("/api/communications/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonId: season.id,
+          playerId: previewPlayerId,
+          subject: subjectRef.current,
+          body: messageBodyRef.current,
+        }),
+      });
+      const data = (await res.json()) as {
+        subject?: string;
+        body?: string;
+        unknownTokens?: string[];
+        summary?: PreviewSummary;
+        error?: string;
+      };
+      if (!res.ok) {
+        setPreviewError(data.error ?? "Failed to load preview");
         setPreviewResult(null);
-      } finally {
-        setPreviewLoading(false);
+      } else {
+        setPreviewResult({
+          subject: data.subject ?? "",
+          body: data.body ?? "",
+          unknownTokens: data.unknownTokens ?? [],
+          summary: data.summary,
+        });
       }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [season, previewPlayerId, subject, messageBody]);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+      setPreviewResult(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [season, previewPlayerId]);
+
+  // Auto-fetch preview when the player selection (or season) changes.
+  // Subject/body changes do NOT auto-trigger — the admin clicks "Refresh"
+  // to re-render. This guarantees typing into the textarea is never blocked
+  // or slowed by background fetches.
+  useEffect(() => {
+    fetchPreview();
+  }, [fetchPreview]);
 
   // Save settings
   const handleSaveSettings = async () => {
@@ -951,6 +960,15 @@ export default function CommunicationsPage() {
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={fetchPreview}
+                disabled={!previewPlayerId || previewLoading}
+                className="text-xs px-2 py-1 border border-border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Re-render the subject/body for the selected player using the current text"
+              >
+                Refresh
+              </button>
               {previewLoading && (
                 <span className="text-xs text-muted">Loading…</span>
               )}
