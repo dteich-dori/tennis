@@ -452,7 +452,10 @@ export default function CommunicationsPage() {
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
           selectedPlayerIds: recipientGroup === "Players" ? selectedPlayerIds : undefined,
-          testAsPlayerId: recipientGroup === "Test" && attachPersonalSchedule ? testAsPlayerId : undefined,
+          // Always pass for Test sends so template variables ({firstName}, etc.)
+          // can resolve — server only uses it for the calendar link when the
+          // calendar attach is also on.
+          testAsPlayerId: recipientGroup === "Test" ? testAsPlayerId : undefined,
           icsFirstEventOnly: recipientGroup === "Test" && attachPersonalSchedule && testFirstEventOnly,
           attachments: attachmentsPayload,
         }),
@@ -1303,6 +1306,45 @@ export default function CommunicationsPage() {
                     placeholder="Message body..."
                   />
                 </div>
+
+                {/* Variables help — same list as Compose tab */}
+                <details className="border border-border rounded bg-blue-50/40 p-2">
+                  <summary className="cursor-pointer text-xs text-primary hover:underline">
+                    Personalize per recipient — show available variables
+                  </summary>
+                  <p className="text-xs text-muted mt-2 mb-1">
+                    Type tokens like <code>{"{firstName}"}</code> or{" "}
+                    <code>{"{balance}"}</code> in the Subject or Body. At send
+                    time each recipient gets their own values substituted in.
+                  </p>
+                  <table className="w-full text-xs mt-1 mb-1">
+                    <thead className="bg-white/60">
+                      <tr>
+                        <th className="text-left px-2 py-1 font-medium">Variable</th>
+                        <th className="text-left px-2 py-1 font-medium">Description</th>
+                        <th className="text-left px-2 py-1 font-medium">Example</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TEMPLATE_VARIABLES_INFO.map((v) => (
+                        <tr key={v.token} className="border-t border-blue-200/50">
+                          <td className="px-2 py-1">
+                            <code>{`{${v.token}}`}</code>
+                          </td>
+                          <td className="px-2 py-1 text-muted">{v.description}</td>
+                          <td className="px-2 py-1 font-mono text-muted">{v.example}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-muted mt-1">
+                    To preview how a saved template renders for a real player,
+                    click <strong>Load</strong> on the template list, then pick
+                    a player in the &ldquo;Preview as:&rdquo; dropdown on the
+                    Compose tab.
+                  </p>
+                </details>
+
                 <div className="flex gap-2">
                   <button
                     onClick={handleSaveTemplate}

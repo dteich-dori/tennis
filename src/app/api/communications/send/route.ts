@@ -190,20 +190,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // For test + calendar link, resolve which player's schedule to reference.
-      // Priority: explicit testAsPlayerId from the client → email match → null.
+      // Resolve which player to reference for personalisation + (optional)
+      // calendar link. Priority: explicit testAsPlayerId from the client →
+      // email match → null. We resolve this UNCONDITIONALLY (not gated on
+      // includeCalendarLink) so template variables like {firstName} render
+      // correctly in test sends even without a calendar link.
       let testPlayerId: number | null = null;
-      if (includeCalendarLink) {
-        if (testAsPlayerId != null) {
-          testPlayerId = testAsPlayerId;
-        } else if (hasTestEmail) {
-          const testPlayerRow = await database
-            .select({ id: players.id })
-            .from(players)
-            .where(and(eq(players.seasonId, seasonId), eq(players.email, testEmail)))
-            .limit(1);
-          if (testPlayerRow[0]) testPlayerId = testPlayerRow[0].id;
-        }
+      if (testAsPlayerId != null) {
+        testPlayerId = testAsPlayerId;
+      } else if (hasTestEmail) {
+        const testPlayerRow = await database
+          .select({ id: players.id })
+          .from(players)
+          .where(and(eq(players.seasonId, seasonId), eq(players.email, testEmail)))
+          .limit(1);
+        if (testPlayerRow[0]) testPlayerId = testPlayerRow[0].id;
       }
 
       if (channel === "email") {
