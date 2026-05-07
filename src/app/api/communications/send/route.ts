@@ -13,6 +13,13 @@ import {
   type EmailAttachment,
 } from "@/lib/email";
 import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
+import { loadAccountSummariesForSeason } from "@/lib/loadAccountSummaries";
+import {
+  buildContext,
+  substituteTemplate,
+  templateHasVariables,
+} from "@/lib/templateSubstitute";
+import type { AccountSummary } from "@/lib/playerAccountSummary";
 
 interface EmailRecipientWithPlayer {
   name: string;
@@ -165,7 +172,8 @@ export async function POST(request: NextRequest) {
     const settings = settingsRows[0];
 
     const emailRecipients: EmailRecipientWithPlayer[] = [];
-    const smsRecipients: SmsRecipient[] = [];
+    type LocalSmsRecipient = SmsRecipient & { playerId: number | null };
+    const smsRecipients: LocalSmsRecipient[] = [];
     const recipientNamesForLog: string[] = [];
 
     if (recipientGroup === "Test") {
@@ -202,14 +210,14 @@ export async function POST(request: NextRequest) {
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
       } else if (channel === "sms") {
         if (hasTestSms) {
-          smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier });
+          smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
         } else if (hasTestEmail) {
           emailRecipients.push({ name: "Test (SMS fallback)", email: testEmail, playerId: testPlayerId });
         }
       } else {
         // "both"
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
-        if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier });
+        if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
       }
 
       recipientNamesForLog.push("Test");
@@ -279,13 +287,13 @@ export async function POST(request: NextRequest) {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
         } else if (channel === "sms") {
           if (hasSms) {
-            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
+            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
           } else if (hasEmail) {
             emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
         } else {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
-          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier! });
+          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
         }
         if (hasEmail || hasSms) recipientNamesForLog.push(name);
       }
@@ -296,6 +304,53 @@ export async function POST(request: NextRequest) {
         { error: "No recipients with valid email or SMS setup found in this group." },
         { status: 400 }
       );
+    }
+
+    // --- Template-variable substitution ---
+    // If subject or body contains {tokens}, load per-player account summaries
+    // and personalise per recipient. Falls back to the bulk-identical-text
+    // path when no variables are used.
+    const needsSubstitution =
+      templateHasVariables(subject) || templateHasVariables(messageBody);
+
+    let summariesByPlayer: Map<number, AccountSummary> | null = null;
+    if (needsSubstitution) {
+      try {
+        const loaded = await loadAccountSummariesForSeason(seasonId);
+        summariesByPlayer = loaded.byPlayerId;
+      } catch (err) {
+        console.error("[send] failed to load account summaries:", err);
+      }
+    }
+    const allUnknownTokens = new Set<string>();
+
+    /**
+     * Personalise the subject + body for one recipient. When no variables are
+     * present, returns the originals unchanged (free path). When a recipient
+     * has no account summary (sub with no games, etc.), variables that depend
+     * on accounting fields render as their literal token so the admin can
+     * notice the gap.
+     */
+    function personalize(playerId: number | null): {
+      subject: string;
+      text: string;
+    } {
+      if (!needsSubstitution) {
+        return { subject, text: messageBody };
+      }
+      const summary =
+        playerId != null && summariesByPlayer
+          ? summariesByPlayer.get(playerId) ?? null
+          : null;
+      if (!summary) {
+        return { subject, text: messageBody };
+      }
+      const ctx = buildContext(summary);
+      const sub = substituteTemplate(subject, ctx);
+      const txt = substituteTemplate(messageBody, ctx);
+      sub.unknownTokens.forEach((t) => allUnknownTokens.add(t));
+      txt.unknownTokens.forEach((t) => allUnknownTokens.add(t));
+      return { subject: sub.text, text: txt.text };
     }
 
     // --- Send emails ---
@@ -310,7 +365,10 @@ export async function POST(request: NextRequest) {
       // link is actually clickable in email clients like Gmail that don't
       // auto-linkify webcal:// URLs in plain text.
       for (const r of emailRecipients) {
-        let perRecipientText = messageBody;
+        const { subject: perSubject, text: personalisedBody } = personalize(
+          r.playerId
+        );
+        let perRecipientText = personalisedBody;
         let perRecipientHtml: string | undefined;
 
         if (r.playerId != null) {
@@ -334,15 +392,15 @@ export async function POST(request: NextRequest) {
           // Landing page (https) that redirects to webcal:// — works even in
           // email clients that strip webcal:// hrefs.
           const landingUrl = `${origin}/calendar/subscribe/${token}${suffix}`;
-          perRecipientText = messageBody + buildLinkBlockText(landingUrl);
-          perRecipientHtml = buildHtmlBody(messageBody, landingUrl);
+          perRecipientText = personalisedBody + buildLinkBlockText(landingUrl);
+          perRecipientHtml = buildHtmlBody(personalisedBody, landingUrl);
         } else {
           linkWarnings.push(`${r.name}: no matching player — sent without calendar link`);
         }
 
         const result = await sendEmail({
           to: r.email,
-          subject,
+          subject: perSubject,
           text: perRecipientText,
           html: perRecipientHtml,
           fromName,
@@ -356,22 +414,43 @@ export async function POST(request: NextRequest) {
         }
       }
     } else if (emailRecipients.length > 0) {
-      // Standard bulk path: identical body for everyone.
-      const plainRecipients: Recipient[] = emailRecipients.map((r) => ({
-        name: r.name,
-        email: r.email,
-      }));
-      const bulkResult = await sendBulkEmails(
-        plainRecipients,
-        subject,
-        messageBody,
-        fromName,
-        replyTo,
-        emailAttachments
-      );
-      emailsSent = bulkResult.sent;
-      emailErrors.push(...bulkResult.errors);
-      emailSkipped.push(...bulkResult.skipped);
+      if (needsSubstitution) {
+        // Per-recipient personalised path — slightly slower than bulk but
+        // each email gets its own substituted subject + body.
+        for (const r of emailRecipients) {
+          const { subject: perSubject, text: perText } = personalize(r.playerId);
+          const result = await sendEmail({
+            to: r.email,
+            subject: perSubject,
+            text: perText,
+            fromName,
+            replyTo,
+            attachments: emailAttachments,
+          });
+          if (result.success) {
+            emailsSent++;
+          } else {
+            emailErrors.push(`${r.name}: ${result.error}`);
+          }
+        }
+      } else {
+        // Bulk path: identical body for everyone.
+        const plainRecipients: Recipient[] = emailRecipients.map((r) => ({
+          name: r.name,
+          email: r.email,
+        }));
+        const bulkResult = await sendBulkEmails(
+          plainRecipients,
+          subject,
+          messageBody,
+          fromName,
+          replyTo,
+          emailAttachments
+        );
+        emailsSent = bulkResult.sent;
+        emailErrors.push(...bulkResult.errors);
+        emailSkipped.push(...bulkResult.skipped);
+      }
     }
 
     // --- Send SMS (no calendar link — SMS can't usefully receive one anyway) ---
@@ -383,7 +462,28 @@ export async function POST(request: NextRequest) {
       recipients: [] as string[],
     };
     if (smsRecipients.length > 0) {
-      smsResult = await sendBulkSms(smsRecipients, messageBody, fromName);
+      if (needsSubstitution) {
+        // Per-recipient SMS personalisation
+        for (const r of smsRecipients) {
+          const { text: perText } = personalize(r.playerId);
+          const partial = await sendBulkSms(
+            [{ name: r.name, phone: r.phone, carrier: r.carrier }],
+            perText,
+            fromName
+          );
+          smsResult.smsSent += partial.smsSent;
+          smsResult.errors.push(...partial.errors);
+          smsResult.skipped.push(...partial.skipped);
+          smsResult.recipients.push(...partial.recipients);
+        }
+      } else {
+        const stripped = smsRecipients.map((r) => ({
+          name: r.name,
+          phone: r.phone,
+          carrier: r.carrier,
+        }));
+        smsResult = await sendBulkSms(stripped, messageBody, fromName);
+      }
     }
 
     const totalSent = emailsSent + smsResult.smsSent;
@@ -410,6 +510,13 @@ export async function POST(request: NextRequest) {
       ...linkWarnings,
       ...smsResult.skipped,
       ...smsResult.errors,
+      ...(allUnknownTokens.size > 0
+        ? [
+            `Unknown template tokens left as literal text: ${[...allUnknownTokens]
+              .map((t) => `{${t}}`)
+              .join(", ")}`,
+          ]
+        : []),
     ];
 
     return NextResponse.json({

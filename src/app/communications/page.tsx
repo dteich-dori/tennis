@@ -89,6 +89,25 @@ export default function CommunicationsPage() {
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("ALL");
   const [subject, setSubject] = useState("");
   const [messageBody, setMessageBody] = useState("");
+  // Template variables — preview state (Pass 2)
+  const [previewPlayerId, setPreviewPlayerId] = useState<number | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    subject: string;
+    body: string;
+    unknownTokens: string[];
+    summary?: {
+      firstName: string;
+      lastName: string;
+      contract: string;
+      scheduledGames: number;
+      fee: number;
+      deposits: number;
+      balance: number;
+      depositDue: number;
+    };
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [showRecipients, setShowRecipients] = useState(false);
@@ -96,6 +115,27 @@ export default function CommunicationsPage() {
   const [sendMessage, setSendMessage] = useState("");
   const [sendError, setSendError] = useState("");
   const [sendWarnings, setSendWarnings] = useState<string[]>([]);
+
+  // List of variables admins can use in subject/body (mirrors the server-side
+  // TEMPLATE_VARIABLES in src/lib/templateSubstitute.ts).
+  const TEMPLATE_VARIABLES_INFO: Array<{
+    token: string;
+    description: string;
+    example: string;
+  }> = [
+    { token: "firstName",   description: "First name",                              example: "Alice" },
+    { token: "lastName",    description: "Last name",                               example: "Smith" },
+    { token: "name",        description: "First Last",                              example: "Alice Smith" },
+    { token: "contract",    description: "Contract tier",                           example: "2x" },
+    { token: "games",       description: "Don's games this season",                 example: "72" },
+    { token: "fee",         description: "Total fee charged",                      example: "$1,500" },
+    { token: "deposits",    description: "Total payments paid",                    example: "$500" },
+    { token: "balance",     description: "Outstanding balance",                    example: "$1,000" },
+    { token: "stdDeposit",  description: "Tier's standard deposit",                example: "$750" },
+    { token: "depositDue",  description: "Standard deposit still owed",            example: "$250" },
+    { token: "extraGames",  description: "Extra games (2x+ / sub)",                example: "3" },
+    { token: "extraFee",    description: "Dollar amount of extras",                example: "$150" },
+  ];
 
   // Clear post-send banners whenever the user starts composing a new message
   const clearSendBanners = () => {
@@ -221,6 +261,60 @@ export default function CommunicationsPage() {
     }
   }, [recipientGroup, selectedPlayerIds]);
 
+  // Debounced preview fetch — re-renders subject + body for the selected
+  // player whenever any of (preview player, season, subject, body) change.
+  useEffect(() => {
+    if (!season || !previewPlayerId) {
+      setPreviewResult(null);
+      setPreviewError("");
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true);
+      setPreviewError("");
+      try {
+        const res = await fetch("/api/communications/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seasonId: season.id,
+            playerId: previewPlayerId,
+            subject,
+            body: messageBody,
+          }),
+        });
+        const data = (await res.json()) as {
+          subject?: string;
+          body?: string;
+          unknownTokens?: string[];
+          summary?: typeof previewResult extends infer T
+            ? T extends { summary?: infer S }
+              ? S
+              : never
+            : never;
+          error?: string;
+        };
+        if (!res.ok) {
+          setPreviewError(data.error ?? "Failed to load preview");
+          setPreviewResult(null);
+        } else {
+          setPreviewResult({
+            subject: data.subject ?? "",
+            body: data.body ?? "",
+            unknownTokens: data.unknownTokens ?? [],
+            summary: data.summary,
+          });
+        }
+      } catch (err) {
+        setPreviewError(err instanceof Error ? err.message : String(err));
+        setPreviewResult(null);
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [season, previewPlayerId, subject, messageBody]);
+
   // Save settings
   const handleSaveSettings = async () => {
     if (!season) return;
@@ -270,6 +364,26 @@ export default function CommunicationsPage() {
         `Attachments total ${formatBytes(attachedTotalBytes)} — max ${formatBytes(ATTACH_MAX_BYTES)}.`
       );
       return;
+    }
+
+    // Validation: any {tokens} that aren't recognised? Warn before sending so
+    // the admin doesn't accidentally email a template like
+    // "Hi {firstanme}" with a typo.
+    const KNOWN = new Set(
+      TEMPLATE_VARIABLES_INFO.map((v) => v.token.toLowerCase())
+    );
+    const allTokens = new Set<string>();
+    for (const text of [subject, messageBody]) {
+      for (const m of text.matchAll(/\{([a-zA-Z0-9_]+)\}/g)) {
+        if (!KNOWN.has(m[1].toLowerCase())) allTokens.add(m[1]);
+      }
+    }
+    if (allTokens.size > 0) {
+      const list = [...allTokens].map((t) => `{${t}}`).join(", ");
+      const ok = window.confirm(
+        `These tokens look like template variables but aren't recognised — they'll be sent literally:\n\n  ${list}\n\nKnown variables include {firstName}, {balance}, etc. (see "Personalize per recipient" panel).\n\nSend anyway?`
+      );
+      if (!ok) return;
     }
 
     const channelLabel = channel === "email" ? "Email only" : channel === "sms" ? "Text only" : "Email + Text";
@@ -785,6 +899,91 @@ export default function CommunicationsPage() {
               rows={12}
               placeholder="Enter your message..."
             />
+          </div>
+
+          {/* Variables help + per-player preview */}
+          <div className="border border-border rounded-lg bg-blue-50/40 p-3">
+            <div className="flex items-baseline gap-2 mb-2">
+              <h3 className="font-medium text-sm">Personalize per recipient</h3>
+              <span className="text-xs text-muted">
+                Type <code className="text-xs">{"{firstName}"}</code>, <code className="text-xs">{"{balance}"}</code>, etc. in Subject or Message — each recipient gets their own values.
+              </span>
+            </div>
+            <details className="mb-2">
+              <summary className="cursor-pointer text-xs text-primary hover:underline">
+                Show all available variables
+              </summary>
+              <table className="w-full text-xs mt-2 mb-1">
+                <thead className="bg-white/60">
+                  <tr>
+                    <th className="text-left px-2 py-1 font-medium">Variable</th>
+                    <th className="text-left px-2 py-1 font-medium">Description</th>
+                    <th className="text-left px-2 py-1 font-medium">Example</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {TEMPLATE_VARIABLES_INFO.map((v) => (
+                    <tr key={v.token} className="border-t border-blue-200/50">
+                      <td className="px-2 py-1">
+                        <code>{`{${v.token}}`}</code>
+                      </td>
+                      <td className="px-2 py-1 text-muted">{v.description}</td>
+                      <td className="px-2 py-1 font-mono text-muted">{v.example}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <label className="text-xs text-muted">Preview as:</label>
+              <select
+                value={previewPlayerId ?? ""}
+                onChange={(e) =>
+                  setPreviewPlayerId(e.target.value ? parseInt(e.target.value) : null)
+                }
+                className="border border-border rounded px-2 py-1 text-xs bg-white"
+              >
+                <option value="">— Select a player to preview —</option>
+                {activePlayers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.lastName}, {p.firstName}
+                  </option>
+                ))}
+              </select>
+              {previewLoading && (
+                <span className="text-xs text-muted">Loading…</span>
+              )}
+            </div>
+
+            {previewError && (
+              <p className="text-xs text-red-600">{previewError}</p>
+            )}
+
+            {previewResult && (
+              <div className="border border-border rounded bg-white p-3 text-sm">
+                {previewResult.summary && (
+                  <p className="text-xs text-muted mb-2">
+                    <strong>Account:</strong> {previewResult.summary.contract} · games {previewResult.summary.scheduledGames} · fee ${previewResult.summary.fee.toLocaleString()} · paid ${previewResult.summary.deposits.toLocaleString()} · balance ${previewResult.summary.balance.toLocaleString()} · deposit due ${previewResult.summary.depositDue.toLocaleString()}
+                  </p>
+                )}
+                <div className="font-medium mb-1">
+                  <span className="text-xs text-muted mr-1">Subject:</span>
+                  {previewResult.subject || <em className="text-muted">(empty)</em>}
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-sm border-t border-border pt-2 mt-1">
+                  {previewResult.body || <em className="text-muted">(empty)</em>}
+                </pre>
+                {previewResult.unknownTokens.length > 0 && (
+                  <p className="text-xs text-amber-700 mt-2">
+                    ⚠ Unknown tokens left as literal text:{" "}
+                    {previewResult.unknownTokens
+                      .map((t) => `{${t}}`)
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Channel selection */}
