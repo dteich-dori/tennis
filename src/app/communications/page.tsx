@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Season {
   id: number;
@@ -89,25 +89,6 @@ export default function CommunicationsPage() {
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("ALL");
   const [subject, setSubject] = useState("");
   const [messageBody, setMessageBody] = useState("");
-  // Template variables — preview state (Pass 2)
-  const [previewPlayerId, setPreviewPlayerId] = useState<number | null>(null);
-  const [previewResult, setPreviewResult] = useState<{
-    subject: string;
-    body: string;
-    unknownTokens: string[];
-    summary?: {
-      firstName: string;
-      lastName: string;
-      contract: string;
-      scheduledGames: number;
-      fee: number;
-      deposits: number;
-      balance: number;
-      depositDue: number;
-    };
-  } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState("");
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [showRecipients, setShowRecipients] = useState(false);
@@ -260,69 +241,6 @@ export default function CommunicationsPage() {
       setRecipientCount(selectedPlayerIds.length);
     }
   }, [recipientGroup, selectedPlayerIds]);
-
-  // Keep latest subject/body in refs so the preview fetch can read them
-  // without re-firing the effect on every keystroke (which was suspected of
-  // interfering with typing in the textarea).
-  const subjectRef = useRef(subject);
-  const messageBodyRef = useRef(messageBody);
-  useEffect(() => { subjectRef.current = subject; }, [subject]);
-  useEffect(() => { messageBodyRef.current = messageBody; }, [messageBody]);
-
-  type PreviewSummary = NonNullable<typeof previewResult>["summary"];
-
-  const fetchPreview = useCallback(async () => {
-    if (!season || !previewPlayerId) {
-      setPreviewResult(null);
-      setPreviewError("");
-      return;
-    }
-    setPreviewLoading(true);
-    setPreviewError("");
-    try {
-      const res = await fetch("/api/communications/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          seasonId: season.id,
-          playerId: previewPlayerId,
-          subject: subjectRef.current,
-          body: messageBodyRef.current,
-        }),
-      });
-      const data = (await res.json()) as {
-        subject?: string;
-        body?: string;
-        unknownTokens?: string[];
-        summary?: PreviewSummary;
-        error?: string;
-      };
-      if (!res.ok) {
-        setPreviewError(data.error ?? "Failed to load preview");
-        setPreviewResult(null);
-      } else {
-        setPreviewResult({
-          subject: data.subject ?? "",
-          body: data.body ?? "",
-          unknownTokens: data.unknownTokens ?? [],
-          summary: data.summary,
-        });
-      }
-    } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : String(err));
-      setPreviewResult(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [season, previewPlayerId]);
-
-  // Auto-fetch preview when the player selection (or season) changes.
-  // Subject/body changes do NOT auto-trigger — the admin clicks "Refresh"
-  // to re-render. This guarantees typing into the textarea is never blocked
-  // or slowed by background fetches.
-  useEffect(() => {
-    fetchPreview();
-  }, [fetchPreview]);
 
   // Save settings
   const handleSaveSettings = async () => {
@@ -913,99 +831,33 @@ export default function CommunicationsPage() {
             />
           </div>
 
-          {/* Variables help + per-player preview */}
-          <div className="border border-border rounded-lg bg-blue-50/40 p-3">
-            <div className="flex items-baseline gap-2 mb-2">
-              <h3 className="font-medium text-sm">Personalize per recipient</h3>
-              <span className="text-xs text-muted">
-                Type <code className="text-xs">{"{firstName}"}</code>, <code className="text-xs">{"{balance}"}</code>, etc. in Subject or Message — each recipient gets their own values.
-              </span>
-            </div>
-            <details className="mb-2">
-              <summary className="cursor-pointer text-xs text-primary hover:underline">
-                Show all available variables
-              </summary>
-              <table className="w-full text-xs mt-2 mb-1">
-                <thead className="bg-white/60">
-                  <tr>
-                    <th className="text-left px-2 py-1 font-medium">Variable</th>
-                    <th className="text-left px-2 py-1 font-medium">Description</th>
-                    <th className="text-left px-2 py-1 font-medium">Example</th>
+          {/* Mail-merge tip — single line, expandable to show all variables */}
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted hover:text-foreground">
+              Tip: use <code>{"{firstName}"}</code>, <code>{"{balance}"}</code>,{" "}
+              <code>{"{depositDue}"}</code>, etc. — see all variables ▸
+            </summary>
+            <table className="w-full text-xs mt-2 mb-1 border border-border rounded">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-2 py-1 font-medium">Variable</th>
+                  <th className="text-left px-2 py-1 font-medium">Description</th>
+                  <th className="text-left px-2 py-1 font-medium">Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                {TEMPLATE_VARIABLES_INFO.map((v) => (
+                  <tr key={v.token} className="border-t border-border">
+                    <td className="px-2 py-1">
+                      <code>{`{${v.token}}`}</code>
+                    </td>
+                    <td className="px-2 py-1 text-muted">{v.description}</td>
+                    <td className="px-2 py-1 font-mono text-muted">{v.example}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {TEMPLATE_VARIABLES_INFO.map((v) => (
-                    <tr key={v.token} className="border-t border-blue-200/50">
-                      <td className="px-2 py-1">
-                        <code>{`{${v.token}}`}</code>
-                      </td>
-                      <td className="px-2 py-1 text-muted">{v.description}</td>
-                      <td className="px-2 py-1 font-mono text-muted">{v.example}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <label className="text-xs text-muted">Preview as:</label>
-              <select
-                value={previewPlayerId ?? ""}
-                onChange={(e) =>
-                  setPreviewPlayerId(e.target.value ? parseInt(e.target.value) : null)
-                }
-                className="border border-border rounded px-2 py-1 text-xs bg-white"
-              >
-                <option value="">— Select a player to preview —</option>
-                {activePlayers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.lastName}, {p.firstName}
-                  </option>
                 ))}
-              </select>
-              <button
-                type="button"
-                onClick={fetchPreview}
-                disabled={!previewPlayerId || previewLoading}
-                className="text-xs px-2 py-1 border border-border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Re-render the subject/body for the selected player using the current text"
-              >
-                Refresh
-              </button>
-              {previewLoading && (
-                <span className="text-xs text-muted">Loading…</span>
-              )}
-            </div>
-
-            {previewError && (
-              <p className="text-xs text-red-600">{previewError}</p>
-            )}
-
-            {previewResult && (
-              <div className="border border-border rounded bg-white p-3 text-sm">
-                {previewResult.summary && (
-                  <p className="text-xs text-muted mb-2">
-                    <strong>Account:</strong> {previewResult.summary.contract} · games {previewResult.summary.scheduledGames} · fee ${previewResult.summary.fee.toLocaleString()} · paid ${previewResult.summary.deposits.toLocaleString()} · balance ${previewResult.summary.balance.toLocaleString()} · deposit due ${previewResult.summary.depositDue.toLocaleString()}
-                  </p>
-                )}
-                <div className="font-medium mb-1">
-                  <span className="text-xs text-muted mr-1">Subject:</span>
-                  {previewResult.subject || <em className="text-muted">(empty)</em>}
-                </div>
-                <pre className="whitespace-pre-wrap font-sans text-sm border-t border-border pt-2 mt-1">
-                  {previewResult.body || <em className="text-muted">(empty)</em>}
-                </pre>
-                {previewResult.unknownTokens.length > 0 && (
-                  <p className="text-xs text-amber-700 mt-2">
-                    ⚠ Unknown tokens left as literal text:{" "}
-                    {previewResult.unknownTokens
-                      .map((t) => `{${t}}`)
-                      .join(", ")}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+              </tbody>
+            </table>
+          </details>
 
           {/* Channel selection */}
           <div>
