@@ -857,6 +857,12 @@ export default function CommunicationsPage() {
                 ))}
               </tbody>
             </table>
+            <p className="text-xs text-muted mt-2">
+              <strong>Conditional sections:</strong> wrap text in{" "}
+              <code>{"{#if extraFee}"}</code>…<code>{"{/if}"}</code> to hide
+              that text for recipients whose value is empty or zero. Example:{" "}
+              <code>{"{#if extraFee}You owe {extraFee} for extras.{/if}"}</code>
+            </p>
           </details>
 
           {/* Channel selection */}

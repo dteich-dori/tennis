@@ -62,7 +62,25 @@ export function buildContext(s: AccountSummary): Record<string, string> {
 }
 
 /**
- * Replace `{token}` patterns in `template` using `context` (case-insensitive).
+ * A value counts as "empty/zero" (and thus suppresses an `{#if}` block) when:
+ *   - it's an empty / whitespace-only string
+ *   - it numerically parses to 0 (e.g. "0", "$0", "$0.00", "-$0")
+ */
+function isEmptyOrZero(v: string | undefined): boolean {
+  if (v === undefined) return true;
+  const trimmed = v.trim();
+  if (trimmed === "") return true;
+  // Strip currency symbols, commas, and a leading sign for the numeric check
+  const numeric = trimmed.replace(/[$,\s]/g, "");
+  const n = Number(numeric);
+  return !Number.isNaN(n) && n === 0;
+}
+
+/**
+ * Replace `{token}` patterns in `template` using `context` (case-insensitive)
+ * AND honour `{#if token}...{/if}` blocks — block contents are dropped when
+ * the token's value is empty or zero. `{#if}` blocks may not be nested.
+ *
  * Returns the substituted text plus a list of any tokens that were neither in
  * `context` nor in the static known-variable set (likely typos).
  */
@@ -71,16 +89,41 @@ export function substituteTemplate(
   context: Record<string, string>
 ): { text: string; unknownTokens: string[] } {
   const unknown = new Set<string>();
-  const text = template.replace(/\{([a-zA-Z0-9_]+)\}/g, (full, name: string) => {
-    const key = name.toLowerCase();
-    if (key in context) return context[key];
-    if (KNOWN.has(key)) {
-      // Recognised variable but absent from this context (shouldn't happen)
-      return "";
+
+  // 1. Resolve `{#if token}...{/if}` blocks first (non-greedy, dotall via [\s\S]).
+  let withConditionals = template.replace(
+    /\{#if\s+([a-zA-Z0-9_]+)\s*\}([\s\S]*?)\{\/if\}/g,
+    (_full, name: string, inner: string) => {
+      const key = name.toLowerCase();
+      if (!KNOWN.has(key) && !(key in context)) {
+        unknown.add(name);
+        // Unknown condition variable — keep the inner text rather than
+        // silently dropping it, so the admin notices.
+        return inner;
+      }
+      return isEmptyOrZero(context[key]) ? "" : inner;
     }
-    unknown.add(name);
-    return full; // Leave it literal so the admin can spot it in preview
-  });
+  );
+
+  // 2. Tidy: when a conditional block was on its own line, the resulting empty
+  //    line is ugly. Collapse runs of 3+ newlines down to 2.
+  withConditionals = withConditionals.replace(/\n{3,}/g, "\n\n");
+
+  // 3. Replace remaining `{token}` substitutions.
+  const text = withConditionals.replace(
+    /\{([a-zA-Z0-9_]+)\}/g,
+    (full, name: string) => {
+      const key = name.toLowerCase();
+      if (key in context) return context[key];
+      if (KNOWN.has(key)) {
+        // Recognised variable but absent from this context (shouldn't happen)
+        return "";
+      }
+      unknown.add(name);
+      return full; // Leave it literal so the admin can spot it in preview
+    }
+  );
+
   return { text, unknownTokens: [...unknown] };
 }
 
@@ -90,5 +133,5 @@ export function substituteTemplate(
  * (fast) and the per-recipient personalised path (slower but personalised).
  */
 export function templateHasVariables(s: string): boolean {
-  return /\{[a-zA-Z0-9_]+\}/.test(s);
+  return /\{[a-zA-Z0-9_]+\}/.test(s) || /\{#if\s+[a-zA-Z0-9_]+\s*\}/.test(s);
 }
