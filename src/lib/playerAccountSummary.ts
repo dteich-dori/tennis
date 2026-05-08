@@ -6,6 +6,8 @@
  *
  * Mirrors the formula the Accounts tab uses today:
  *   1x  contract: fee = priceDons1
+ *   1x+ contract: fee = priceDons1 + extraGames × priceSubs
+ *                 extraGames = locked override OR max(0, scheduledGames − 1 × baseWeeks)
  *   2x  contract: fee = priceDons2
  *   2+  contract: fee = priceDons2 + extraGames × priceExtraHour
  *                 extraGames = locked override OR max(0, scheduledGames − 2 × baseWeeks)
@@ -15,6 +17,7 @@
 
 export const STANDARD_DEPOSIT: Record<string, number> = {
   "1": 500,
+  "1+": 500,
   "2": 750,
   "2+": 750,
   // subs deliberately omitted — no standard deposit
@@ -71,12 +74,14 @@ function contractLabel(freq: string): string {
   switch (freq) {
     case "0":
       return "Sub";
-    case "2+":
-      return "2x+";
     case "1":
       return "1x";
+    case "1+":
+      return "1x+";
     case "2":
       return "2x";
+    case "2+":
+      return "2x+";
     default:
       return freq;
   }
@@ -113,7 +118,7 @@ export function computeAccountSummaries(input: {
   for (const p of players) {
     if (!p.isActive) continue;
     const freq = p.contractedFrequency;
-    if (!["0", "1", "2", "2+"].includes(freq)) continue;
+    if (!["0", "1", "1+", "2", "2+"].includes(freq)) continue;
 
     const scheduledGames = gamesByPlayer.get(p.id) ?? 0;
     const locked = p.lockedExtraGames !== null && p.lockedExtraGames !== undefined;
@@ -123,6 +128,14 @@ export function computeAccountSummaries(input: {
     let extras = 0;
     if (freq === "1") {
       base = rates.priceDons1;
+    } else if (freq === "1+") {
+      // 1+ player: 1x base + sub-rate billing for any extra games beyond
+      // their 1-game-per-week contract.
+      base = rates.priceDons1;
+      extraGames = locked
+        ? (p.lockedExtraGames as number)
+        : Math.max(0, scheduledGames - 1 * baseWeeks);
+      extras = extraGames * rates.priceSubs;
     } else if (freq === "2") {
       base = rates.priceDons2;
     } else if (freq === "2+") {

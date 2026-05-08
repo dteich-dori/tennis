@@ -40,6 +40,7 @@ interface ComputedData {
   playerCounts: {
     dons0: number;
     dons1: number;
+    dons1plus: number;
     dons2: number;
     dons2plus: number;
     solo: number;
@@ -276,6 +277,7 @@ export default function BudgetPage() {
 
   const donsIncomeRows = computed ? [
     { label: "1x/week", qty: computed.playerCounts.dons1, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
+    { label: "1+/week", qty: computed.playerCounts.dons1plus, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
     { label: "2x/week", qty: computed.playerCounts.dons2, unit: "players", price: params.priceDons2, priceUnit: "$/player", key: "priceDons2" as const },
     { label: "2+/week", qty: computed.playerCounts.dons2plus, unit: "players", price: params.priceDons2plus, priceUnit: "$/player", key: "priceDons2plus" as const },
     { label: "2+ Extra Games", qty: extraGames2plus, unit: "games", price: params.priceExtraHour, priceUnit: "$/game", key: "priceExtraHour" as const },

@@ -10,6 +10,7 @@ import {
   seasons,
 } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { weeklyContractedGames } from "@/lib/contractFrequency";
 
 const DAYS = [
   "Sunday",
@@ -351,7 +352,7 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
   const playerAnalysis = contractedPlayers.map((p: PlayerType) => {
     const reasons: string[] = [];
     let eligible = true;
-    const freq = p.contractedFrequency === "2+" ? 2 : parseInt(p.contractedFrequency) || 0;
+    const freq = weeklyContractedGames(p.contractedFrequency);
     const wtd = wtdCounts.get(p.id) ?? 0;
     const std = stdCounts.get(p.id) ?? 0;
     const expectedStd = freq * Math.min(game.weekNumber, totalWeeks);

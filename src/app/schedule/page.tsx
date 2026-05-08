@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { generateExtraGamesPdf } from "@/lib/reports/extraGamesPdf";
 import { useBackup } from "@/lib/useBackup";
+import { weeklyContractedGames } from "@/lib/contractFrequency";
 
 const DAYS = [
   "Sunday",
@@ -767,7 +768,7 @@ export default function SchedulePage() {
   // Check if player has a YTD deficit (behind schedule due to vacation/illness)
   // Uses group-specific YTD and frequency when group is provided
   const hasYtdDeficit = (player: Player, group?: string): boolean => {
-    const freq = group ? getEffectiveFreq(player, group) : (parseInt(player.contractedFrequency) || 0);
+    const freq = group ? getEffectiveFreq(player, group) : (weeklyContractedGames(player.contractedFrequency));
     if (freq === 0) return false;
     const expectedYtd = freq * Math.min(currentWeek, 36);
     const counts = playerCounts[player.id];
@@ -779,7 +780,7 @@ export default function SchedulePage() {
   const hasStdDeficit = (player: Player, group?: string): boolean => {
     const freq = group === "solo"
       ? (player.soloGames ? player.soloGames / 36 : 0)
-      : (parseInt(player.contractedFrequency) || 0);
+      : (weeklyContractedGames(player.contractedFrequency));
     if (freq === 0) return false;
     const counts = playerCounts[player.id];
     const actualStd = group === "solo" ? (counts?.stdSolo ?? 0) : group === "dons" ? (counts?.stdDons ?? 0) : 0;
@@ -790,7 +791,7 @@ export default function SchedulePage() {
   const getStdOwed = (player: Player, group: string): number => {
     const freq = group === "solo"
       ? (player.soloGames ? player.soloGames / 36 : 0)
-      : (parseInt(player.contractedFrequency) || 0);
+      : (weeklyContractedGames(player.contractedFrequency));
     if (freq === 0) return 0;
     const counts = playerCounts[player.id];
     const actualStd = group === "solo" ? (counts?.stdSolo ?? 0) : group === "dons" ? (counts?.stdDons ?? 0) : 0;
@@ -804,7 +805,7 @@ export default function SchedulePage() {
     if (gameGroup === "solo") {
       return player.soloGames ? player.soloGames / 36 : 0;
     }
-    return adjustedFreqs[player.id] ?? (parseInt(player.contractedFrequency) || 0);
+    return adjustedFreqs[player.id] ?? (weeklyContractedGames(player.contractedFrequency));
   };
 
   const getPlayerName = (playerId: number): string => {
@@ -914,7 +915,7 @@ export default function SchedulePage() {
     // MUST play uses BASE frequency — front-loaded extras don't trigger MUST
     const baseFreq = game.group === "solo"
       ? (player.soloGames ? player.soloGames / 36 : 0)
-      : (parseInt(player.contractedFrequency) || 0);
+      : (weeklyContractedGames(player.contractedFrequency));
     const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
     const remaining = baseFreq - groupWtd;
 
@@ -968,7 +969,7 @@ export default function SchedulePage() {
   // Check if all contracted players (1x and 2x) have fulfilled their weekly quota
   const allOwedFulfilled = (): boolean => {
     for (const p of players) {
-      const freq = parseInt(p.contractedFrequency) || 0;
+      const freq = weeklyContractedGames(p.contractedFrequency);
       if (freq === 0) continue; // skip subs and 2+ (which is "2+", not a number)
       if (p.contractedFrequency === "2+") continue;
       const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
@@ -1211,7 +1212,7 @@ export default function SchedulePage() {
             // Don's group players (active, with contracted frequency > 0)
             const donsPlayers = players
               .filter((p) => {
-                const freq = parseInt(p.contractedFrequency) || 0;
+                const freq = weeklyContractedGames(p.contractedFrequency);
                 return freq > 0;
               })
               .sort((a, b) => a.lastName.localeCompare(b.lastName));
@@ -1238,7 +1239,7 @@ export default function SchedulePage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                   {donsPlayers.map((p) => {
                     const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                    const freq = parseInt(p.contractedFrequency) || 0;
+                    const freq = weeklyContractedGames(p.contractedFrequency);
                     const adjFreq = adjustedFreqs[p.id];
                     const effectiveFreq = adjFreq ?? freq;
                     const owe = effectiveFreq - counts.wtdDons;
@@ -1798,7 +1799,7 @@ export default function SchedulePage() {
                                           const baseOwedPlayers = allAvailable.filter((p) => {
                                             if (game.group === "solo") return true;
                                             const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                                            const baseFreq = parseInt(p.contractedFrequency) || 0;
+                                            const baseFreq = weeklyContractedGames(p.contractedFrequency);
                                             const groupWtd = counts.wtdDons;
                                             return (baseFreq - groupWtd) > 0 || hasYtdDeficit(p, game.group) || hasStdDeficit(p, game.group);
                                           });
@@ -1811,7 +1812,7 @@ export default function SchedulePage() {
                                                 const adj = adjustedFreqs[p.id];
                                                 if (!adj) return false;
                                                 const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
-                                                const baseFreq = parseInt(p.contractedFrequency) || 0;
+                                                const baseFreq = weeklyContractedGames(p.contractedFrequency);
                                                 // Met base contract but still owe front-loaded games
                                                 return counts.wtdDons >= baseFreq && counts.wtdDons < adj;
                                               })
@@ -1828,10 +1829,10 @@ export default function SchedulePage() {
                                               const bCounts = playerCounts[b.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                               const aBaseFreq = game.group === "solo"
                                                 ? (a.soloGames ? a.soloGames / 36 : 0)
-                                                : (parseInt(a.contractedFrequency) || (a.contractedFrequency === "2+" ? 2 : 0));
+                                                : (weeklyContractedGames(a.contractedFrequency));
                                               const bBaseFreq = game.group === "solo"
                                                 ? (b.soloGames ? b.soloGames / 36 : 0)
-                                                : (parseInt(b.contractedFrequency) || (b.contractedFrequency === "2+" ? 2 : 0));
+                                                : (weeklyContractedGames(b.contractedFrequency));
                                               const aOwed = aBaseFreq - (game.group === "solo" ? aCounts.wtdSolo : aCounts.wtdDons);
                                               const bOwed = bBaseFreq - (game.group === "solo" ? bCounts.wtdSolo : bCounts.wtdDons);
                                               const aYtdOwed = aBaseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? aCounts.ytdSolo : aCounts.ytdDons);
@@ -1908,7 +1909,7 @@ export default function SchedulePage() {
                                             const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                             const baseFreq = game.group === "solo"
                                               ? (p.soloGames ? p.soloGames / 36 : 0)
-                                              : (parseInt(p.contractedFrequency) || (p.contractedFrequency === "2+" ? 2 : 0));
+                                              : (weeklyContractedGames(p.contractedFrequency));
                                             const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
                                             const remaining = baseFreq - groupWtd;
                                             const deficit = hasYtdDeficit(p, game.group);

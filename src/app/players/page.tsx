@@ -397,7 +397,7 @@ export default function PlayersPage() {
 
         const freq = fields[6] ?? "";
         if (freq === "Sub") player.contractedFrequency = "0";
-        else if (["1", "2", "2+"].includes(freq)) player.contractedFrequency = freq;
+        else if (["1", "1+", "2", "2+"].includes(freq)) player.contractedFrequency = freq;
 
         const soloRaw = (fields[7] ?? "").trim().toLowerCase();
         if (soloRaw === "full") player.soloGames = 36;
@@ -707,6 +707,7 @@ export default function PlayersPage() {
               >
                 <option value="0">Sub</option>
                 <option value="1">1x/week</option>
+                <option value="1+">1+/week (also subs)</option>
                 <option value="2">2x/week</option>
                 <option value="2+">2+/week</option>
               </select>

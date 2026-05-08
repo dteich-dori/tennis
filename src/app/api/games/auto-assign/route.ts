@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { weeklyContractedGames, isSubEligible } from "@/lib/contractFrequency";
 
 // Types
 interface PlayerData {
@@ -170,8 +171,17 @@ export async function POST(request: NextRequest) {
     // Only contracted active players (not subs) for Don's auto-assign
     const contractedPlayers = playerData.filter((p) => p.contractedFrequency !== "0");
 
-    // Sub players (frequency "0") — used as fallback if assignCSubs is true
-    const subPlayers = playerData.filter((p) => p.contractedFrequency === "0");
+    // Sub-eligible players — used as fallback if assignCSubs is true. Includes
+    // pure subs ("0") AND 1+ players (who have a 1x contract but are also
+    // allowed to behave like a sub). 1+ players have priority over "0" subs.
+    const subPlayers = playerData
+      .filter((p) => isSubEligible(p.contractedFrequency))
+      .sort((a, b) => {
+        // 1+ first, then "0"
+        const aPriority = a.contractedFrequency === "1+" ? 0 : 1;
+        const bPriority = b.contractedFrequency === "1+" ? 0 : 1;
+        return aPriority - bPriority;
+      });
 
     // 5. Compute WTD counts (from earlier weeks + solo assignments this week)
     // We need YTD up to this week for priority, and WTD for owed calculation
@@ -318,7 +328,7 @@ export async function POST(request: NextRequest) {
     // Compute adjustedFreq per player
     const adjustedFreqMap = new Map<number, number>();
     for (const p of contractedPlayers) {
-      const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+      const freq = weeklyContractedGames(p.contractedFrequency);
       if (freq === 0) continue;
       if (p.skillLevel === "C") continue; // no vacation makeup for C players
 
@@ -489,7 +499,7 @@ export async function POST(request: NextRequest) {
           const wtd = wtdDonsCounts.get(p.id) ?? 0;
           // Season-total cap: non-2+ players cannot exceed freq × 36 games
           if (p.contractedFrequency !== "2+") {
-            const freq = parseInt(p.contractedFrequency) || 0;
+            const freq = weeklyContractedGames(p.contractedFrequency);
             const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
             if (ytd >= freq * contractWeeks) return false;
           }
@@ -504,7 +514,7 @@ export async function POST(request: NextRequest) {
             // Non-2+ players: only eligible if WTD owed > 0 at BASE frequency
             // (front-loading extras are handled in a separate pass to avoid
             // stealing slots from players who haven't met their base contract)
-            const freq = parseInt(p.contractedFrequency) || 0;
+            const freq = weeklyContractedGames(p.contractedFrequency);
             if (freq - wtd <= 0) {
               // Allow through if allowExtras and player has front-loaded adjusted freq
               if (options?.allowExtras) {
@@ -649,7 +659,7 @@ export async function POST(request: NextRequest) {
 
     // Priority scoring for a player
     function getPlayerPriority(p: PlayerData, game: GameData): { mustPlay: boolean; owed: number; ytdDeficit: number; stdDeficit: number; playableDaysLeft: number } {
-      const freq = parseInt(p.contractedFrequency) || 0;
+      const freq = weeklyContractedGames(p.contractedFrequency);
       const wtd = wtdDonsCounts.get(p.id) ?? 0;
       const owed = freq - wtd;
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
@@ -750,7 +760,7 @@ export async function POST(request: NextRequest) {
         if (p.vacations.some((v) => date >= v.startDate && date <= v.endDate)) return false;
         // Only count players who deserve games at base contracted frequency
         if (p.contractedFrequency === "2+") return true;
-        const freq = parseInt(p.contractedFrequency) || 0;
+        const freq = weeklyContractedGames(p.contractedFrequency);
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
         if (freq - wtd > 0) return true;
         return false;
@@ -868,6 +878,14 @@ export async function POST(request: NextRequest) {
           const pa = getPlayerPriority(a, game);
           const pb = getPlayerPriority(b, game);
           if (pa.mustPlay !== pb.mustPlay) return pa.mustPlay ? -1 : 1;
+          // Sub priority: 1+ players (contracted who also sub) outrank
+          // pure-sub "0" players. Only matters when the pool mixes them
+          // (Pass 4 sub fill).
+          const aSubTier = a.contractedFrequency === "1+" ? 0 : a.contractedFrequency === "0" ? 1 : -1;
+          const bSubTier = b.contractedFrequency === "1+" ? 0 : b.contractedFrequency === "0" ? 1 : -1;
+          if (aSubTier !== -1 && bSubTier !== -1 && aSubTier !== bSubTier) {
+            return aSubTier - bSubTier;
+          }
           // Composition: prefer players that don't create A+C violations
           const compA = compositionPenalty(a);
           const compB = compositionPenalty(b);
@@ -1017,7 +1035,7 @@ export async function POST(request: NextRequest) {
           if (eligible.length === 0) {
             const frontLoadEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
-              const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+              const freq = weeklyContractedGames(p.contractedFrequency);
               const effectiveFreq = adjustedFreqMap.get(p.id) ?? freq;
               if (effectiveFreq <= freq) return false; // no front-loading needed
               const wtd = wtdDonsCounts.get(p.id) ?? 0;
@@ -1050,7 +1068,7 @@ export async function POST(request: NextRequest) {
                 // Already assigned a C-game this week — block (at most 1 per week for any player)
                 if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
                 // Check interval-based limit using recent history
-                const freq = parseInt(p.contractedFrequency) || 0;
+                const freq = weeklyContractedGames(p.contractedFrequency);
                 const interval = freq === 1 ? maxCGamesPerWeek1x : maxCGamesPerWeek;
                 if (interval != null && interval > 1) {
                   const lastWeek = lastCGameWeek.get(p.id) ?? 0;
@@ -1077,7 +1095,7 @@ export async function POST(request: NextRequest) {
             const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               if (p.contractedFrequency === "0") return false; // not subs
-              const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+              const freq = weeklyContractedGames(p.contractedFrequency);
               if (freq === 0) return false;
               const std = stdDonsCounts.get(p.id) ?? 0;
               return freq * contractWeeks - std > 0; // has season deficit
@@ -1113,7 +1131,7 @@ export async function POST(request: NextRequest) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
             } else if (passUsed === 3.5) {
               pass35Count++;
-              const freq = chosen.contractedFrequency === "2+" ? 2 : (parseInt(chosen.contractedFrequency) || 0);
+              const freq = weeklyContractedGames(chosen.contractedFrequency);
               const std = stdDonsCounts.get(chosen.id) ?? 0;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as STD-CATCHUP (season deficit: ${freq * contractWeeks - std} games behind)` });
             } else if (passUsed === 4) {
@@ -1313,7 +1331,7 @@ export async function POST(request: NextRequest) {
       // same-day game, AND that game has an over-assigned same-level player who can be replaced
       // by the owed player.
       for (const p of contractedPlayers) {
-        const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
+        const freq = weeklyContractedGames(p.contractedFrequency);
         if (freq === 0) continue;
         const wtd = wtdDonsCounts.get(p.id) ?? 0;
         if (wtd >= freq) continue; // not under-assigned
@@ -1346,7 +1364,7 @@ export async function POST(request: NextRequest) {
             const overPlayer = playerData.find((pl) => pl.id === overPid);
             if (!overPlayer || overPlayer.skillLevel !== p.skillLevel) continue;
             const overWtd = wtdDonsCounts.get(overPid) ?? 0;
-            const overFreq = overPlayer.contractedFrequency === "2+" ? 2 : (parseInt(overPlayer.contractedFrequency) || 0);
+            const overFreq = weeklyContractedGames(overPlayer.contractedFrequency);
             if (overWtd <= overFreq) continue; // not over-assigned
 
             // p would replace overPlayer. Check DNP: p with remaining roster (includes blocker? No — blocker is the problem)

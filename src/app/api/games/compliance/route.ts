@@ -10,6 +10,7 @@ import {
   seasons,
 } from "@/db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { weeklyContractedGames } from "@/lib/contractFrequency";
 
 interface Violation {
   rule: string;
@@ -264,8 +265,12 @@ export async function GET(request: NextRequest) {
           const g = gameMap.get(a.gameId);
           return g && g.status === "normal";
         });
-        const freq = parseInt(p.contractedFrequency) || 0;
-        if (normalGames.length > freq && freq > 0) {
+        const freq = weeklyContractedGames(p.contractedFrequency);
+        // 1+ players are explicitly allowed to exceed their contract via the
+        // sub pool, so don't flag them. (2+ is unbounded by design.)
+        const canExceedContract =
+          p.contractedFrequency === "1+" || p.contractedFrequency === "2+";
+        if (normalGames.length > freq && freq > 0 && !canExceedContract) {
           violations.push({
             rule: "Over contracted frequency",
             severity: "warning",
@@ -535,7 +540,7 @@ export async function GET(request: NextRequest) {
       const groupLabel = group === "dons" ? "Dons" : "Total";
       for (const [, p] of playerMap) {
         if (!p.isActive) continue;
-        const freq = parseInt(p.contractedFrequency) || 0;
+        const freq = weeklyContractedGames(p.contractedFrequency);
         if (freq === 0) continue; // skip subs
         const count = weeklyCount.get(p.id) ?? 0;
         if (count < freq) {
