@@ -324,6 +324,20 @@ export async function POST(request: NextRequest) {
       }
     }
     const allUnknownTokens = new Set<string>();
+    // For Test sends with mail-merge tokens, if the resolved test player
+    // doesn't have an account summary (e.g. they're a sub with no games),
+    // fall back to ANY player who does so the test still shows real values.
+    let testFallbackSummary: AccountSummary | null = null;
+    if (
+      needsSubstitution &&
+      recipientGroup === "Test" &&
+      summariesByPlayer &&
+      summariesByPlayer.size > 0
+    ) {
+      testFallbackSummary = [...summariesByPlayer.values()][0];
+    }
+    let usedTestFallback = false;
+    let testSubstitutedAs: string | null = null;
 
     /**
      * Personalise the subject + body for one recipient. When no variables are
@@ -339,12 +353,21 @@ export async function POST(request: NextRequest) {
       if (!needsSubstitution) {
         return { subject, text: messageBody };
       }
-      const summary =
+      let summary: AccountSummary | null =
         playerId != null && summariesByPlayer
           ? summariesByPlayer.get(playerId) ?? null
           : null;
+      // Test fallback: if no summary for the resolved test player, use any
+      // summary so the admin still sees substituted values in their preview.
+      if (!summary && testFallbackSummary) {
+        summary = testFallbackSummary;
+        usedTestFallback = true;
+      }
       if (!summary) {
         return { subject, text: messageBody };
+      }
+      if (recipientGroup === "Test" && !testSubstitutedAs) {
+        testSubstitutedAs = `${summary.firstName} ${summary.lastName}`;
       }
       const ctx = buildContext(summary);
       const sub = substituteTemplate(subject, ctx);
@@ -516,6 +539,13 @@ export async function POST(request: NextRequest) {
             `Unknown template tokens left as literal text: ${[...allUnknownTokens]
               .map((t) => `{${t}}`)
               .join(", ")}`,
+          ]
+        : []),
+      ...(testSubstitutedAs
+        ? [
+            usedTestFallback
+              ? `Test: substituted using ${testSubstitutedAs} (the resolved test player had no account summary, e.g. sub with no games)`
+              : `Test: substituted using ${testSubstitutedAs}`,
           ]
         : []),
     ];
