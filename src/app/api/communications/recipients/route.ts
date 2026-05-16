@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Query active players (include phone + carrier so UI can show SMS capability)
+    // Query active players (include phone so UI can show SMS capability)
     const allPlayers = await database
       .select({
         id: players.id,
@@ -48,7 +48,6 @@ export async function GET(request: NextRequest) {
         lastName: players.lastName,
         email: players.email,
         cellNumber: players.cellNumber,
-        carrier: players.carrier,
         contractedFrequency: players.contractedFrequency,
       })
       .from(players)
@@ -62,7 +61,7 @@ export async function GET(request: NextRequest) {
     // Only include players reachable by email or SMS
     let filtered = allPlayers.filter((p) => {
       const hasEmail = !!(p.email && p.email.trim());
-      const hasSms = !!(p.cellNumber && p.carrier);
+      const hasSms = !!(p.cellNumber);
       return hasEmail || hasSms;
     });
 
@@ -88,9 +87,8 @@ export async function GET(request: NextRequest) {
         lastName: p.lastName,
         email: p.email,
         cellNumber: p.cellNumber,
-        carrier: p.carrier,
         hasEmail: !!(p.email && p.email.trim()),
-        hasSms: !!(p.cellNumber && p.carrier),
+        hasSms: !!(p.cellNumber),
       })),
       count: filtered.length,
     });

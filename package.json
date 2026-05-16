@@ -22,7 +22,8 @@
 		"nodemailer": "^8.0.5",
 		"react": "19.1.5",
 		"react-dom": "19.1.5",
-		"resend": "^6.9.2"
+		"resend": "^6.9.2",
+		"twilio": "^6.0.2"
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "^3",

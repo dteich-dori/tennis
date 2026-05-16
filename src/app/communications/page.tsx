@@ -14,22 +14,9 @@ interface Recipient {
   lastName: string;
   email: string | null;
   cellNumber: string | null;
-  carrier: string | null;
   hasEmail: boolean;
   hasSms: boolean;
 }
-
-const CARRIERS = [
-  { value: "", label: "— Carrier —" },
-  { value: "verizon", label: "Verizon" },
-  { value: "att", label: "AT&T" },
-  { value: "tmobile", label: "T-Mobile" },
-  { value: "sprint", label: "Sprint" },
-  { value: "uscellular", label: "US Cellular" },
-  { value: "boost", label: "Boost Mobile" },
-  { value: "cricket", label: "Cricket" },
-  { value: "metro", label: "Metro by T-Mobile" },
-];
 
 type Channel = "email" | "sms" | "both";
 
@@ -74,7 +61,6 @@ export default function CommunicationsPage() {
   const [replyTo, setReplyTo] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testPhone, setTestPhone] = useState("");
-  const [testCarrier, setTestCarrier] = useState("");
   const [questionnaireUrl, setQuestionnaireUrl] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
 
@@ -160,14 +146,12 @@ export default function CommunicationsPage() {
       replyTo: string;
       testEmail: string;
       testPhone?: string;
-      testCarrier?: string;
       questionnaireUrl: string;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
     setTestEmail(data.testEmail || "");
     setTestPhone(data.testPhone || "");
-    setTestCarrier(data.testCarrier || "");
     setQuestionnaireUrl(data.questionnaireUrl || "");
   }, []);
 
@@ -249,7 +233,7 @@ export default function CommunicationsPage() {
     const res = await fetch("/api/communications/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, testPhone, testCarrier, questionnaireUrl }),
+      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, testPhone, questionnaireUrl }),
     });
     if (res.ok) {
       setSettingsMessage("Settings saved.");
@@ -570,19 +554,6 @@ export default function CommunicationsPage() {
                   title="Phone number for SMS testing"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1">Test Carrier</label>
-                <select
-                  value={testCarrier}
-                  onChange={(e) => setTestCarrier(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
-                  title="Mobile carrier for SMS gateway"
-                >
-                  {CARRIERS.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
               <div />
             </div>
             <div className="mt-3">
@@ -607,7 +578,7 @@ export default function CommunicationsPage() {
               )}
             </div>
             <p className="mt-2 text-xs text-muted">
-              Note: Emails are sent from your configured Gmail account. The From Name is displayed as the sender, and replies go to the Reply-To address. SMS uses carrier email gateways (e.g. <code>@vtext.com</code>) — players need a phone + carrier configured.
+              Note: Emails are sent from your configured Gmail account. The From Name is displayed as the sender, and replies go to the Reply-To address. SMS is sent via Twilio — players need a phone number configured.
             </p>
           </div>
 
@@ -759,7 +730,7 @@ export default function CommunicationsPage() {
                     <span>{r.lastName}, {r.firstName}</span>
                     <span className="text-muted text-xs">
                       {r.hasEmail && <span title={r.email || ""}>📧</span>}
-                      {r.hasSms && <span className="ml-1" title={`${r.cellNumber} (${r.carrier})`}>📱</span>}
+                      {r.hasSms && <span className="ml-1" title={r.cellNumber || ""}>📱</span>}
                     </span>
                   </div>
                 ))}
@@ -877,7 +848,7 @@ export default function CommunicationsPage() {
                 <input type="radio" name="channel" value="email" checked={channel === "email"} onChange={() => setChannel("email")} />
                 Email only
               </label>
-              <label className={`flex items-center gap-1.5 text-sm ${attachPersonalSchedule ? "text-muted cursor-not-allowed" : "cursor-pointer"}`} title="Prefer text; players without phone+carrier get email instead">
+              <label className={`flex items-center gap-1.5 text-sm ${attachPersonalSchedule ? "text-muted cursor-not-allowed" : "cursor-pointer"}`} title="Prefer text; players without phone get email instead">
                 <input type="radio" name="channel" value="sms" checked={channel === "sms"} disabled={attachPersonalSchedule} onChange={() => setChannel("sms")} />
                 Text only
               </label>
@@ -886,7 +857,7 @@ export default function CommunicationsPage() {
               {attachPersonalSchedule && "Calendar attachments require an email client — channel is locked to Email only."}
               {!attachPersonalSchedule && channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
               {!attachPersonalSchedule && channel === "email" && "All players with email receive an email."}
-              {!attachPersonalSchedule && channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
+              {!attachPersonalSchedule && channel === "sms" && "Players with a phone number get a text. Players without get email as fallback."}
             </p>
           </div>
 
@@ -1033,7 +1004,7 @@ export default function CommunicationsPage() {
           <div className="flex items-center gap-4">
             <button
               onClick={handleSend}
-              disabled={sending || !subject.trim() || !messageBody.trim() || (recipientGroup === "Test" && !testEmail && !(testPhone && testCarrier))}
+              disabled={sending || !subject.trim() || !messageBody.trim() || (recipientGroup === "Test" && !testEmail && !testPhone)}
               className="px-6 py-2 bg-primary text-white rounded font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sending ? "Sending..." : "Send"}

@@ -6,17 +6,6 @@ import { useBackup } from "@/lib/useBackup";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const CARRIERS = [
-  { value: "", label: "— None —" },
-  { value: "verizon", label: "Verizon" },
-  { value: "att", label: "AT&T" },
-  { value: "tmobile", label: "T-Mobile" },
-  { value: "sprint", label: "Sprint" },
-  { value: "uscellular", label: "US Cellular" },
-  { value: "boost", label: "Boost Mobile" },
-  { value: "cricket", label: "Cricket" },
-  { value: "metro", label: "Metro by T-Mobile" },
-];
 
 interface Player {
   id: number;
@@ -26,7 +15,6 @@ interface Player {
   cellNumber: string | null;
   homeNumber: string | null;
   email: string | null;
-  carrier: string | null;
   isActive: boolean;
   contractedFrequency: string;
   skillLevel: string;
@@ -61,7 +49,6 @@ const emptyPlayer = {
   cellNumber: "",
   homeNumber: "",
   email: "",
-  carrier: "",
   isActive: true,
   contractedFrequency: "1",
   skillLevel: "C",
@@ -153,7 +140,6 @@ export default function PlayersPage() {
       cellNumber: player.cellNumber ?? "",
       homeNumber: player.homeNumber ?? "",
       email: player.email ?? "",
-      carrier: player.carrier ?? "",
       isActive: player.isActive,
       contractedFrequency: player.contractedFrequency,
       skillLevel: player.skillLevel,
@@ -215,7 +201,6 @@ export default function PlayersPage() {
       cellNumber: form.cellNumber || null,
       homeNumber: form.homeNumber || null,
       email: form.email || null,
-      carrier: form.carrier || null,
       soloGames: form.soloGames || null,
       preassignedGamesWanted: form.preassignedGamesWanted || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
@@ -675,19 +660,6 @@ export default function PlayersPage() {
                 onChange={(e) => setForm({ ...form, cellNumber: e.target.value })}
                 className="border border-border rounded px-3 py-2 text-sm w-full"
               />
-            </div>
-            <div>
-              <label className="block text-sm text-muted mb-1" title="Mobile carrier — required for SMS text messages">Carrier</label>
-              <select
-                value={form.carrier}
-                onChange={(e) => setForm({ ...form, carrier: e.target.value })}
-                className="border border-border rounded px-3 py-2 text-sm w-full"
-                title="Select the player's mobile carrier for SMS texting"
-              >
-                {CARRIERS.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="block text-sm text-muted mb-1">Home</label>
