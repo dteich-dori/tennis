@@ -179,8 +179,9 @@ export async function POST(request: NextRequest) {
     if (recipientGroup === "Test") {
       const testEmail = settings?.testEmail || "";
       const testPhone = settings?.testPhone || "";
+      const testCarrier = settings?.testCarrier || "";
       const hasTestEmail = !!testEmail;
-      const hasTestSms = !!(testPhone);
+      const hasTestSms = !!(testPhone && testCarrier);
 
       if (!hasTestEmail && !hasTestSms) {
         return NextResponse.json(
@@ -210,14 +211,14 @@ export async function POST(request: NextRequest) {
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
       } else if (channel === "sms") {
         if (hasTestSms) {
-          smsRecipients.push({ name: "Test", phone: testPhone, playerId: testPlayerId });
+          smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
         } else if (hasTestEmail) {
           emailRecipients.push({ name: "Test (SMS fallback)", email: testEmail, playerId: testPlayerId });
         }
       } else {
         // "both"
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
-        if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, playerId: testPlayerId });
+        if (hasTestSms) smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
       }
 
       recipientNamesForLog.push("Test");
@@ -230,6 +231,7 @@ export async function POST(request: NextRequest) {
           lastName: players.lastName,
           email: players.email,
           cellNumber: players.cellNumber,
+          carrier: players.carrier,
           contractedFrequency: players.contractedFrequency,
         })
         .from(players)
@@ -280,19 +282,19 @@ export async function POST(request: NextRequest) {
       for (const p of filtered) {
         const name = `${p.firstName} ${p.lastName}`;
         const hasEmail = !!(p.email && p.email.trim());
-        const hasSms = !!(p.cellNumber);
+        const hasSms = !!(p.cellNumber && p.carrier);
 
         if (channel === "email") {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
         } else if (channel === "sms") {
           if (hasSms) {
-            smsRecipients.push({ name, phone: p.cellNumber!, playerId: p.id });
+            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
           } else if (hasEmail) {
             emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
         } else {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
-          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, playerId: p.id });
+          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
         }
         if (hasEmail || hasSms) recipientNamesForLog.push(name);
       }
@@ -489,7 +491,7 @@ export async function POST(request: NextRequest) {
         for (const r of smsRecipients) {
           const { text: perText } = personalize(r.playerId);
           const partial = await sendBulkSms(
-            [{ name: r.name, phone: r.phone }],
+            [{ name: r.name, phone: r.phone, carrier: r.carrier }],
             perText,
             fromName
           );
@@ -502,6 +504,7 @@ export async function POST(request: NextRequest) {
         const stripped = smsRecipients.map((r) => ({
           name: r.name,
           phone: r.phone,
+          carrier: r.carrier,
         }));
         smsResult = await sendBulkSms(stripped, messageBody, fromName);
       }

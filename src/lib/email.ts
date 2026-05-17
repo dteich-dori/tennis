@@ -2,11 +2,24 @@ import nodemailer from "nodemailer";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function normalizeToE164(phone: string): string | null {
+// SMS gateway domains by carrier
+const SMS_GATEWAYS: Record<string, string> = {
+  verizon: "vtext.com",
+  att: "txt.att.net",
+  tmobile: "tmomail.net",
+  sprint: "messaging.sprintpcs.com",
+  uscellular: "email.uscc.net",
+  boost: "sms.myboostmobile.com",
+  cricket: "sms.cricketwireless.net",
+  metro: "mymetropcs.com",
+};
+
+export function getSmsGatewayEmail(phone: string, carrier: string): string | null {
+  const domain = SMS_GATEWAYS[carrier];
+  if (!domain) return null;
   const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return null;
+  if (digits.length !== 10) return null;
+  return `${digits}@${domain}`;
 }
 
 export function validateEmailConfig(): string | null {
@@ -122,39 +135,41 @@ export async function sendBulkEmails(
 export interface SmsRecipient {
   name: string;
   phone: string;
+  carrier: string;
 }
 
 export async function sendBulkSms(
   recipients: SmsRecipient[],
   text: string,
-  _fromName: string
+  fromName: string
 ): Promise<BulkResult> {
   const result: BulkResult = { sent: 0, smsSent: 0, errors: [], skipped: [], recipients: [] };
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-
-  if (!accountSid || !authToken || !fromNumber) {
-    result.errors.push("Twilio is not configured — add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER to environment variables");
+  const configError = validateEmailConfig();
+  if (configError) {
+    result.errors.push(configError);
     return result;
   }
 
-  const twilio = (await import("twilio")).default;
-  const client = twilio(accountSid, authToken);
-
   for (const r of recipients) {
-    const to = normalizeToE164(r.phone);
-    if (!to) {
-      result.skipped.push(`${r.name} (invalid phone: ${r.phone})`);
+    const gatewayEmail = getSmsGatewayEmail(r.phone, r.carrier);
+    if (!gatewayEmail) {
+      result.skipped.push(`${r.name} (invalid phone/carrier: ${r.phone}/${r.carrier})`);
       continue;
     }
-    try {
-      await client.messages.create({ body: text, from: fromNumber, to });
+
+    // SMS messages should be short — no subject line needed
+    const sendResult = await sendEmail({
+      to: gatewayEmail,
+      subject: fromName,
+      text,
+      fromName,
+    });
+    if (sendResult.success) {
       result.smsSent++;
       result.recipients.push(`${r.name} (SMS)`);
-    } catch (err) {
-      result.errors.push(`${r.name} (SMS): ${String(err)}`);
+    } else {
+      result.errors.push(`${r.name} (SMS): ${sendResult.error}`);
     }
   }
 
