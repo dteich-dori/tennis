@@ -12,6 +12,12 @@ const SMS_GATEWAYS: Record<string, string> = {
   boost: "sms.myboostmobile.com",
   cricket: "sms.cricketwireless.net",
   metro: "mymetropcs.com",
+  googlefi: "msg.fi.google.com",
+  consumercellular: "mailmymobile.net",
+  mint: "tmomail.net",
+  visible: "vtext.com",
+  xfinity: "vtext.com",
+  republic: "msg.republic.com",
 };
 
 export function getSmsGatewayEmail(phone: string, carrier: string): string | null {

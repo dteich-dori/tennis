@@ -8,14 +8,20 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CARRIERS = [
   { value: "", label: "— None —" },
-  { value: "verizon", label: "Verizon" },
-  { value: "att", label: "AT&T" },
-  { value: "tmobile", label: "T-Mobile" },
-  { value: "sprint", label: "Sprint" },
-  { value: "uscellular", label: "US Cellular" },
+  { value: "att", label: "AT&T / BellSouth" },
   { value: "boost", label: "Boost Mobile" },
+  { value: "consumercellular", label: "Consumer Cellular" },
   { value: "cricket", label: "Cricket" },
+  { value: "googlefi", label: "Google Fi" },
   { value: "metro", label: "Metro by T-Mobile" },
+  { value: "mint", label: "Mint Mobile" },
+  { value: "republic", label: "Republic Wireless" },
+  { value: "sprint", label: "Sprint" },
+  { value: "tmobile", label: "T-Mobile" },
+  { value: "uscellular", label: "US Cellular" },
+  { value: "verizon", label: "Verizon" },
+  { value: "visible", label: "Visible" },
+  { value: "xfinity", label: "Xfinity Mobile" },
 ];
 
 interface Player {
