@@ -90,6 +90,9 @@ export default function CommunicationsPage() {
   const [reminderTemplate, setReminderTemplate] = useState(
     "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
   );
+  const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
+  const [reminderTestSending, setReminderTestSending] = useState(false);
+  const [reminderTestResult, setReminderTestResult] = useState<string>("");
 
   // Channel selection
   const [channel, setChannel] = useState<Channel>("both");
@@ -287,6 +290,52 @@ export default function CommunicationsPage() {
       setTimeout(() => setSettingsMessage(""), 3000);
     } else {
       setSettingsMessage("Failed to save settings.");
+    }
+  };
+
+  // Send a one-off test reminder to the picked player using the same logic
+  // as the daily cron. Useful before games exist for the season.
+  const handleSendTestReminder = async () => {
+    if (!season || !reminderTestPlayerId) return;
+    setReminderTestSending(true);
+    setReminderTestResult("");
+    try {
+      const res = await fetch("/api/cron/reminders/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonId: season.id,
+          playerId: reminderTestPlayerId,
+        }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        usedSample?: boolean;
+        sentTo?: { name: string; email: string | null; sms: string | null };
+        rendered?: { subject: string; body: string };
+        emailResult?: { success: boolean; error?: string };
+        smsResult?: { sent: number; errors: string[] };
+        error?: string;
+      };
+      if (!res.ok || !data.success) {
+        setReminderTestResult(`✗ ${data.error ?? "Test failed"}`);
+        return;
+      }
+      const parts: string[] = [];
+      if (data.emailResult?.success) parts.push(`email → ${data.sentTo?.email}`);
+      if (data.emailResult && !data.emailResult.success)
+        parts.push(`email failed: ${data.emailResult.error}`);
+      if (data.smsResult && data.smsResult.sent > 0)
+        parts.push(`SMS → ${data.sentTo?.sms}`);
+      if (data.smsResult && data.smsResult.errors.length > 0)
+        parts.push(`SMS errors: ${data.smsResult.errors.join("; ")}`);
+      setReminderTestResult(
+        `✓ Sent (${data.usedSample ? "sample data — player has no games yet" : "real game data"}): ${parts.join(", ")}`
+      );
+    } catch (err) {
+      setReminderTestResult(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setReminderTestSending(false);
     }
   };
 
@@ -667,6 +716,51 @@ export default function CommunicationsPage() {
                 <p className="text-xs text-muted mt-1">
                   Variables: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
                 </p>
+              </div>
+
+              {/* Manual test send */}
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <label className="block text-xs font-medium mb-1">
+                  Send test reminder
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={reminderTestPlayerId ?? ""}
+                    onChange={(e) =>
+                      setReminderTestPlayerId(
+                        e.target.value ? parseInt(e.target.value) : null
+                      )
+                    }
+                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="">— Select a player —</option>
+                    {activePlayers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.lastName}, {p.firstName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSendTestReminder}
+                    disabled={!reminderTestPlayerId || reminderTestSending}
+                    className="px-3 py-1 text-sm border border-primary text-primary rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Send a single reminder right now to the selected player — uses real game data if any exists, otherwise sample placeholders."
+                  >
+                    {reminderTestSending ? "Sending…" : "Send test now"}
+                  </button>
+                </div>
+                {reminderTestResult && (
+                  <p
+                    className={`text-xs mt-2 ${
+                      reminderTestResult.startsWith("✓")
+                        ? "text-green-700"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {reminderTestResult}
+                  </p>
+                )}
               </div>
             </div>
 
