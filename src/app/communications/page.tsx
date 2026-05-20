@@ -84,6 +84,13 @@ export default function CommunicationsPage() {
   const [questionnaireUrl, setQuestionnaireUrl] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
 
+  // Daily reminders (chrono)
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [reminderHour, setReminderHour] = useState(18);
+  const [reminderTemplate, setReminderTemplate] = useState(
+    "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
+  );
+
   // Channel selection
   const [channel, setChannel] = useState<Channel>("both");
   const [attachPersonalSchedule, setAttachPersonalSchedule] = useState(false);
@@ -168,10 +175,17 @@ export default function CommunicationsPage() {
       testPhone?: string;
       testCarrier?: string;
       questionnaireUrl: string;
+      remindersEnabled?: boolean;
+      reminderHour?: number;
+      reminderTemplate?: string;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
     setTestEmail(data.testEmail || "");
+    setRemindersEnabled(!!data.remindersEnabled);
+    if (typeof data.reminderHour === "number") setReminderHour(data.reminderHour);
+    if (typeof data.reminderTemplate === "string" && data.reminderTemplate)
+      setReminderTemplate(data.reminderTemplate);
     setTestPhone(data.testPhone || "");
     setTestCarrier(data.testCarrier || "");
     setQuestionnaireUrl(data.questionnaireUrl || "");
@@ -255,7 +269,18 @@ export default function CommunicationsPage() {
     const res = await fetch("/api/communications/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seasonId: season.id, fromName, replyTo, testEmail, testPhone, testCarrier, questionnaireUrl }),
+      body: JSON.stringify({
+        seasonId: season.id,
+        fromName,
+        replyTo,
+        testEmail,
+        testPhone,
+        testCarrier,
+        questionnaireUrl,
+        remindersEnabled,
+        reminderHour,
+        reminderTemplate,
+      }),
     });
     if (res.ok) {
       setSettingsMessage("Settings saved.");
@@ -601,6 +626,66 @@ export default function CommunicationsPage() {
                 placeholder="https://docs.google.com/forms/d/e/..."
               />
             </div>
+
+            {/* ===== Daily reminders ===== */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">Daily game reminders</h3>
+                <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={remindersEnabled}
+                    onChange={(e) => setRemindersEnabled(e.target.checked)}
+                  />
+                  <span className={remindersEnabled ? "text-green-700 font-medium" : "text-muted"}>
+                    {remindersEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </label>
+              </div>
+              <p className="text-xs text-muted mb-2">
+                Once a day at the chosen time (Eastern), every player who has a
+                game tomorrow gets an automatic email + SMS reminder. Uses the
+                template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Send time (ET)</label>
+                  <select
+                    value={reminderHour}
+                    onChange={(e) => setReminderHour(parseInt(e.target.value))}
+                    disabled={!remindersEnabled}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white disabled:bg-gray-100"
+                  >
+                    {Array.from({ length: 24 }).map((_, h) => {
+                      const ampm = h >= 12 ? "PM" : "AM";
+                      const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                      return (
+                        <option key={h} value={h}>
+                          {display}:00 {ampm}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-2">
+                <label className="block text-xs font-medium mb-1">
+                  Reminder template
+                </label>
+                <textarea
+                  value={reminderTemplate}
+                  onChange={(e) => setReminderTemplate(e.target.value)}
+                  disabled={!remindersEnabled}
+                  rows={6}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white font-mono disabled:bg-gray-100"
+                  placeholder="Hi {firstName}, you have a game tomorrow ..."
+                />
+                <p className="text-xs text-muted mt-1">
+                  Variables: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
+                </p>
+              </div>
+            </div>
+
             <div className="mt-3 flex items-center gap-3">
               <button
                 onClick={handleSaveSettings}

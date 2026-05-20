@@ -108,6 +108,59 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    name: "reminders-enabled",
+    description: "email_settings: add reminders_enabled column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE email_settings ADD COLUMN reminders_enabled INTEGER NOT NULL DEFAULT 0`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
+  {
+    name: "reminder-hour",
+    description: "email_settings: add reminder_hour column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE email_settings ADD COLUMN reminder_hour INTEGER NOT NULL DEFAULT 18`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
+  {
+    name: "reminder-template",
+    description: "email_settings: add reminder_template column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql.raw(
+            `ALTER TABLE email_settings ADD COLUMN reminder_template TEXT NOT NULL DEFAULT 'Hi {firstName},
+
+Reminder: you have a game tomorrow ({date}) at {time} on Court {court}.
+
+Partners: {partners}
+
+See you on the courts!'`
+          )
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

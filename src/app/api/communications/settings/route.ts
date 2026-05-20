@@ -3,6 +3,9 @@ import { db } from "@/db/getDb";
 import { emailSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+const DEFAULT_REMINDER_TEMPLATE =
+  "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!";
+
 export async function GET(request: NextRequest) {
   try {
     const seasonId = request.nextUrl.searchParams.get("seasonId");
@@ -25,6 +28,9 @@ export async function GET(request: NextRequest) {
         testPhone: "",
         testCarrier: "",
         questionnaireUrl: "",
+        remindersEnabled: false,
+        reminderHour: 18,
+        reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
       });
     }
 
@@ -48,6 +54,9 @@ export async function PUT(request: NextRequest) {
       testPhone?: string;
       testCarrier?: string;
       questionnaireUrl: string;
+      remindersEnabled?: boolean;
+      reminderHour?: number;
+      reminderTemplate?: string;
     };
     const {
       seasonId,
@@ -57,33 +66,69 @@ export async function PUT(request: NextRequest) {
       testPhone = "",
       testCarrier = "",
       questionnaireUrl,
+      remindersEnabled,
+      reminderHour,
+      reminderTemplate,
     } = body;
 
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
 
+    // Clamp reminderHour to 0-23 if provided
+    let safeHour: number | undefined = undefined;
+    if (reminderHour !== undefined) {
+      const n = Number(reminderHour);
+      if (!Number.isInteger(n) || n < 0 || n > 23) {
+        return NextResponse.json(
+          { error: "reminderHour must be an integer 0-23" },
+          { status: 400 }
+        );
+      }
+      safeHour = n;
+    }
+
     const database = await db();
 
-    // Check if settings exist for this season
     const existing = await database
       .select()
       .from(emailSettings)
       .where(eq(emailSettings.seasonId, seasonId));
 
     if (existing.length > 0) {
-      // Update
+      const updates: Record<string, unknown> = {
+        fromName,
+        replyTo,
+        testEmail,
+        testPhone,
+        testCarrier,
+        questionnaireUrl,
+      };
+      if (remindersEnabled !== undefined) updates.remindersEnabled = remindersEnabled;
+      if (safeHour !== undefined) updates.reminderHour = safeHour;
+      if (reminderTemplate !== undefined) updates.reminderTemplate = reminderTemplate;
+
       const result = await database
         .update(emailSettings)
-        .set({ fromName, replyTo, testEmail, testPhone, testCarrier, questionnaireUrl })
+        .set(updates)
         .where(eq(emailSettings.seasonId, seasonId))
         .returning();
       return NextResponse.json(result[0]);
     } else {
-      // Insert
       const result = await database
         .insert(emailSettings)
-        .values({ seasonId, fromName, replyTo, testEmail, testPhone, testCarrier, questionnaireUrl })
+        .values({
+          seasonId,
+          fromName,
+          replyTo,
+          testEmail,
+          testPhone,
+          testCarrier,
+          questionnaireUrl,
+          remindersEnabled: remindersEnabled ?? false,
+          reminderHour: safeHour ?? 18,
+          reminderTemplate: reminderTemplate ?? DEFAULT_REMINDER_TEMPLATE,
+        })
         .returning();
       return NextResponse.json(result[0], { status: 201 });
     }

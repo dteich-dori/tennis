@@ -12,4 +12,14 @@ export const emailSettings = sqliteTable("email_settings", {
   testPhone: text("test_phone").notNull().default(""),
   testCarrier: text("test_carrier").notNull().default(""),
   questionnaireUrl: text("questionnaire_url").notNull().default(""),
+  // --- Daily reminders (chrono) ---
+  // When enabled, an hourly Vercel cron fires reminders at the configured ET
+  // hour to every player who has a game scheduled for tomorrow.
+  remindersEnabled: integer("reminders_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  reminderHour: integer("reminder_hour").notNull().default(18), // Eastern Time
+  reminderTemplate: text("reminder_template").notNull().default(
+    "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
+  ),
 });
