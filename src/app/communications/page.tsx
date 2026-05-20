@@ -643,31 +643,15 @@ export default function CommunicationsPage() {
                 </label>
               </div>
               <p className="text-xs text-muted mb-2">
-                Once a day at the chosen time (Eastern), every player who has a
-                game tomorrow gets an automatic email + SMS reminder. Uses the
-                template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
+                Once a day around <strong>6 PM Eastern</strong>, every player
+                who has a normal game tomorrow gets an automatic email + SMS
+                reminder. Uses the template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
+                <br />
+                <span className="text-[11px] text-muted/70">
+                  (Send time is fixed by the Vercel Hobby plan&apos;s daily-cron
+                  limit. Edit <code>vercel.json</code> to change it.)
+                </span>
               </p>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">Send time (ET)</label>
-                  <select
-                    value={reminderHour}
-                    onChange={(e) => setReminderHour(parseInt(e.target.value))}
-                    disabled={!remindersEnabled}
-                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white disabled:bg-gray-100"
-                  >
-                    {Array.from({ length: 24 }).map((_, h) => {
-                      const ampm = h >= 12 ? "PM" : "AM";
-                      const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-                      return (
-                        <option key={h} value={h}>
-                          {display}:00 {ampm}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">
                   Reminder template

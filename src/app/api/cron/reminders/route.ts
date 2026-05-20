@@ -131,13 +131,10 @@ export async function GET(request: NextRequest) {
       seasonResults.push({ seasonId: settings.seasonId, skipped: "disabled" });
       continue;
     }
-    if (!force && settings.reminderHour !== currentHour) {
-      seasonResults.push({
-        seasonId: settings.seasonId,
-        skipped: `hour mismatch (now=${currentHour}, configured=${settings.reminderHour} ET)`,
-      });
-      continue;
-    }
+    // Hobby plan only allows ONE daily cron, so vercel.json fires at a fixed
+    // UTC hour (22:00 = 6PM EDT / 5PM EST). The reminderHour setting is no
+    // longer used as a gate — kept in the schema for future Pro-plan upgrade.
+    void currentHour;
     if (validateEmailConfig()) {
       seasonResults.push({
         seasonId: settings.seasonId,
