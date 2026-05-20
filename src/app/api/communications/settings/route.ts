@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         remindersEnabled: false,
         reminderHour: 18,
         reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
+        reminderChannel: "both",
       });
     }
 
@@ -57,6 +58,7 @@ export async function PUT(request: NextRequest) {
       remindersEnabled?: boolean;
       reminderHour?: number;
       reminderTemplate?: string;
+      reminderChannel?: string;
     };
     const {
       seasonId,
@@ -69,6 +71,7 @@ export async function PUT(request: NextRequest) {
       remindersEnabled,
       reminderHour,
       reminderTemplate,
+      reminderChannel,
     } = body;
 
     if (!seasonId) {
@@ -107,6 +110,15 @@ export async function PUT(request: NextRequest) {
       if (remindersEnabled !== undefined) updates.remindersEnabled = remindersEnabled;
       if (safeHour !== undefined) updates.reminderHour = safeHour;
       if (reminderTemplate !== undefined) updates.reminderTemplate = reminderTemplate;
+      if (reminderChannel !== undefined) {
+        if (!["both", "email", "sms", "sms-fallback"].includes(reminderChannel)) {
+          return NextResponse.json(
+            { error: "reminderChannel must be one of: both, email, sms, sms-fallback" },
+            { status: 400 }
+          );
+        }
+        updates.reminderChannel = reminderChannel;
+      }
 
       const result = await database
         .update(emailSettings)
@@ -128,6 +140,7 @@ export async function PUT(request: NextRequest) {
           remindersEnabled: remindersEnabled ?? false,
           reminderHour: safeHour ?? 18,
           reminderTemplate: reminderTemplate ?? DEFAULT_REMINDER_TEMPLATE,
+          reminderChannel: reminderChannel ?? "both",
         })
         .returning();
       return NextResponse.json(result[0], { status: 201 });

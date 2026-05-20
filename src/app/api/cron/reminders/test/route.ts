@@ -194,8 +194,11 @@ export async function POST(request: NextRequest) {
 
     let emailResult: { success: boolean; error?: string } | undefined;
     let smsResult: { sent: number; errors: string[] } | undefined;
+    let smsFallbackTriggered = false;
 
-    if (hasEmail) {
+    const ch = settings.reminderChannel || "both";
+
+    const doEmail = async () => {
       const r = await sendEmail({
         to: player.email!,
         subject,
@@ -204,8 +207,9 @@ export async function POST(request: NextRequest) {
         replyTo: settings.replyTo || undefined,
       });
       emailResult = { success: r.success, error: r.error };
-    }
-    if (hasSms) {
+      return r.success;
+    };
+    const doSms = async () => {
       const r = await sendBulkSms(
         [
           {
@@ -218,11 +222,35 @@ export async function POST(request: NextRequest) {
         settings.fromName
       );
       smsResult = { sent: r.smsSent, errors: r.errors };
+      return r.smsSent > 0;
+    };
+
+    if (ch === "email") {
+      if (hasEmail) await doEmail();
+    } else if (ch === "sms") {
+      if (hasSms) await doSms();
+      else if (hasEmail) await doEmail();
+    } else if (ch === "sms-fallback") {
+      if (hasSms) {
+        const ok = await doSms();
+        if (!ok && hasEmail) {
+          smsFallbackTriggered = true;
+          await doEmail();
+        }
+      } else if (hasEmail) {
+        await doEmail();
+      }
+    } else {
+      // "both" — current behavior
+      if (hasEmail) await doEmail();
+      if (hasSms) await doSms();
     }
 
     return NextResponse.json({
       success: true,
       usedSample,
+      channelUsed: ch,
+      smsFallbackTriggered,
       sentTo: {
         name: ctx.name,
         email: hasEmail ? player.email : null,

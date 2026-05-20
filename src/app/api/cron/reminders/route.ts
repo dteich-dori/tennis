@@ -237,8 +237,10 @@ export async function GET(request: NextRequest) {
 
         const hasEmail = !!(player.email && player.email.trim());
         const hasSms = !!(player.cellNumber && player.carrier);
+        const ch = settings.reminderChannel || "both";
 
-        if (hasEmail) {
+        const sendOneEmail = async (): Promise<boolean> => {
+          if (!hasEmail) return false;
           const result = await sendEmail({
             to: player.email!,
             subject,
@@ -248,12 +250,13 @@ export async function GET(request: NextRequest) {
           });
           if (result.success) {
             emailsSent++;
-            recipients.push(ctx.name);
-          } else {
-            errors.push(`${ctx.name} email: ${result.error}`);
+            return true;
           }
-        }
-        if (hasSms) {
+          errors.push(`${ctx.name} email: ${result.error}`);
+          return false;
+        };
+        const sendOneSms = async (): Promise<boolean> => {
+          if (!hasSms) return false;
           const partial = await sendBulkSms(
             [
               {
@@ -265,10 +268,33 @@ export async function GET(request: NextRequest) {
             body,
             settings.fromName
           );
-          smsSent += partial.smsSent;
-          errors.push(...partial.errors);
-          if (partial.smsSent > 0 && !hasEmail) recipients.push(ctx.name);
+          if (partial.smsSent > 0) {
+            smsSent += partial.smsSent;
+            return true;
+          }
+          if (partial.errors.length > 0) errors.push(...partial.errors);
+          return false;
+        };
+
+        let delivered = false;
+        if (ch === "email") {
+          delivered = await sendOneEmail();
+        } else if (ch === "sms") {
+          delivered = hasSms ? await sendOneSms() : await sendOneEmail();
+        } else if (ch === "sms-fallback") {
+          if (hasSms) {
+            delivered = await sendOneSms();
+            if (!delivered && hasEmail) delivered = await sendOneEmail();
+          } else {
+            delivered = await sendOneEmail();
+          }
+        } else {
+          // "both"
+          const e = await sendOneEmail();
+          const s = await sendOneSms();
+          delivered = e || s;
         }
+        if (delivered) recipients.push(ctx.name);
       }
     }
 

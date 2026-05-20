@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       body: string;
       fromName: string;
       replyTo: string;
-      channel?: "email" | "sms" | "both";
+      channel?: "email" | "sms" | "both" | "sms-fallback";
       attachPersonalSchedule?: boolean; // kept for UI compat; means "append calendar link"
       testAsPlayerId?: number | null;
       selectedPlayerId?: number | null; // deprecated — use selectedPlayerIds
@@ -172,7 +172,11 @@ export async function POST(request: NextRequest) {
     const settings = settingsRows[0];
 
     const emailRecipients: EmailRecipientWithPlayer[] = [];
-    type LocalSmsRecipient = SmsRecipient & { playerId: number | null };
+    type LocalSmsRecipient = SmsRecipient & {
+      playerId: number | null;
+      /** When set (only for channel="sms-fallback"), retry via this email if the SMS send returns an error. */
+      emailFallback?: string;
+    };
     const smsRecipients: LocalSmsRecipient[] = [];
     const recipientNamesForLog: string[] = [];
 
@@ -210,6 +214,14 @@ export async function POST(request: NextRequest) {
       if (channel === "email") {
         if (hasTestEmail) emailRecipients.push({ name: "Test", email: testEmail, playerId: testPlayerId });
       } else if (channel === "sms") {
+        if (hasTestSms) {
+          smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
+        } else if (hasTestEmail) {
+          emailRecipients.push({ name: "Test (SMS fallback)", email: testEmail, playerId: testPlayerId });
+        }
+      } else if (channel === "sms-fallback") {
+        // Same as "sms" for the Test path — only difference vs. "sms" is in
+        // the real-player path below: on send failure we retry via email.
         if (hasTestSms) {
           smsRecipients.push({ name: "Test", phone: testPhone, carrier: testCarrier, playerId: testPlayerId });
         } else if (hasTestEmail) {
@@ -290,6 +302,20 @@ export async function POST(request: NextRequest) {
           if (hasSms) {
             smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
           } else if (hasEmail) {
+            emailRecipients.push({ name, email: p.email!, playerId: p.id });
+          }
+        } else if (channel === "sms-fallback") {
+          // Try SMS first; if the SMS send returns an error, retry via email.
+          if (hasSms) {
+            smsRecipients.push({
+              name,
+              phone: p.cellNumber!,
+              carrier: p.carrier!,
+              playerId: p.id,
+              emailFallback: hasEmail ? p.email! : undefined,
+            });
+          } else if (hasEmail) {
+            // No SMS configured at all — go straight to email.
             emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
         } else {
@@ -485,34 +511,68 @@ export async function POST(request: NextRequest) {
       skipped: [] as string[],
       recipients: [] as string[],
     };
+    const smsFallbackEmailsSent: string[] = [];
     if (smsRecipients.length > 0) {
-      if (needsSubstitution) {
-        // Per-recipient SMS personalisation
-        for (const r of smsRecipients) {
-          const { text: perText } = personalize(r.playerId);
-          const partial = await sendBulkSms(
-            [{ name: r.name, phone: r.phone, carrier: r.carrier }],
-            perText,
-            fromName
-          );
-          smsResult.smsSent += partial.smsSent;
+      // Always per-recipient so we can apply per-recipient email-fallback on
+      // SMS failure (when channel="sms-fallback"). For identical-text sends
+      // we just reuse messageBody each iteration.
+      for (const r of smsRecipients) {
+        const perText = needsSubstitution
+          ? personalize(r.playerId).text
+          : messageBody;
+        const partial = await sendBulkSms(
+          [{ name: r.name, phone: r.phone, carrier: r.carrier }],
+          perText,
+          fromName
+        );
+        smsResult.smsSent += partial.smsSent;
+        smsResult.skipped.push(...partial.skipped);
+        smsResult.recipients.push(...partial.recipients);
+
+        // sms-fallback: if SMS failed AND we have an email fallback for
+        // this recipient, send via email instead of surfacing the SMS error.
+        const smsFailed = partial.smsSent === 0 && partial.errors.length > 0;
+        if (smsFailed && r.emailFallback) {
+          const perSubject = needsSubstitution
+            ? personalize(r.playerId).subject
+            : subject;
+          const fbBody = needsSubstitution
+            ? personalize(r.playerId).text
+            : messageBody;
+          const fbResult = await sendEmail({
+            to: r.emailFallback,
+            subject: perSubject,
+            text: fbBody,
+            fromName,
+            replyTo,
+            attachments: emailAttachments,
+          });
+          if (fbResult.success) {
+            emailsSent++;
+            smsFallbackEmailsSent.push(
+              `${r.name}: SMS failed (${partial.errors.join("; ")}), email fallback delivered to ${r.emailFallback}`
+            );
+          } else {
+            // Both channels failed
+            smsResult.errors.push(
+              `${r.name}: SMS failed AND email fallback failed (${fbResult.error})`
+            );
+          }
+        } else {
           smsResult.errors.push(...partial.errors);
-          smsResult.skipped.push(...partial.skipped);
-          smsResult.recipients.push(...partial.recipients);
         }
-      } else {
-        const stripped = smsRecipients.map((r) => ({
-          name: r.name,
-          phone: r.phone,
-          carrier: r.carrier,
-        }));
-        smsResult = await sendBulkSms(stripped, messageBody, fromName);
       }
     }
 
     const totalSent = emailsSent + smsResult.smsSent;
     const channelLabel =
-      channel === "email" ? "Email" : channel === "sms" ? "Text" : "Email+Text";
+      channel === "email"
+        ? "Email"
+        : channel === "sms"
+          ? "Text"
+          : channel === "sms-fallback"
+            ? "Text→Email"
+            : "Email+Text";
     const logGroupLabel = includeCalendarLink
       ? `${recipientGroup} (${channelLabel}+Cal)`
       : `${recipientGroup} (${channelLabel})`;
@@ -534,6 +594,7 @@ export async function POST(request: NextRequest) {
       ...linkWarnings,
       ...smsResult.skipped,
       ...smsResult.errors,
+      ...smsFallbackEmailsSent,
       ...(allUnknownTokens.size > 0
         ? [
             `Unknown template tokens left as literal text: ${[...allUnknownTokens]

@@ -37,7 +37,7 @@ const CARRIERS = [
   { value: "xfinity", label: "Xfinity Mobile" },
 ];
 
-type Channel = "email" | "sms" | "both";
+type Channel = "email" | "sms" | "both" | "sms-fallback";
 
 interface Template {
   id: number;
@@ -90,6 +90,7 @@ export default function CommunicationsPage() {
   const [reminderTemplate, setReminderTemplate] = useState(
     "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
   );
+  const [reminderChannel, setReminderChannel] = useState<Channel>("both");
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
@@ -181,6 +182,7 @@ export default function CommunicationsPage() {
       remindersEnabled?: boolean;
       reminderHour?: number;
       reminderTemplate?: string;
+      reminderChannel?: Channel;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
@@ -189,6 +191,7 @@ export default function CommunicationsPage() {
     if (typeof data.reminderHour === "number") setReminderHour(data.reminderHour);
     if (typeof data.reminderTemplate === "string" && data.reminderTemplate)
       setReminderTemplate(data.reminderTemplate);
+    if (data.reminderChannel) setReminderChannel(data.reminderChannel);
     setTestPhone(data.testPhone || "");
     setTestCarrier(data.testCarrier || "");
     setQuestionnaireUrl(data.questionnaireUrl || "");
@@ -283,6 +286,7 @@ export default function CommunicationsPage() {
         remindersEnabled,
         reminderHour,
         reminderTemplate,
+        reminderChannel,
       }),
     });
     if (res.ok) {
@@ -393,7 +397,14 @@ export default function CommunicationsPage() {
       if (!ok) return;
     }
 
-    const channelLabel = channel === "email" ? "Email only" : channel === "sms" ? "Text only" : "Email + Text";
+    const channelLabel =
+      channel === "email"
+        ? "Email only"
+        : channel === "sms"
+          ? "Text only"
+          : channel === "sms-fallback"
+            ? "Text → Email on failure"
+            : "Email + Text";
     let confirmMsg: string;
     if (recipientGroup === "Test") {
       confirmMsg = `Send test (${channelLabel})?`;
@@ -701,6 +712,20 @@ export default function CommunicationsPage() {
                   limit. Edit <code>vercel.json</code> to change it.)
                 </span>
               </p>
+              <div className="mt-2">
+                <label className="block text-xs font-medium mb-1">Send via</label>
+                <select
+                  value={reminderChannel}
+                  onChange={(e) => setReminderChannel(e.target.value as Channel)}
+                  disabled={!remindersEnabled}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white disabled:bg-gray-100"
+                >
+                  <option value="both">Email + Text (both, if configured)</option>
+                  <option value="email">Email only</option>
+                  <option value="sms">Text only (email fallback if no phone)</option>
+                  <option value="sms-fallback">Text → Email if SMS fails</option>
+                </select>
+              </div>
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">
                   Reminder template
@@ -1050,12 +1075,17 @@ export default function CommunicationsPage() {
                 <input type="radio" name="channel" value="sms" checked={channel === "sms"} disabled={attachPersonalSchedule} onChange={() => setChannel("sms")} />
                 Text only
               </label>
+              <label className={`flex items-center gap-1.5 text-sm ${attachPersonalSchedule ? "text-muted cursor-not-allowed" : "cursor-pointer"}`} title="Try Text first; if the SMS send fails, automatically retry that recipient via email.">
+                <input type="radio" name="channel" value="sms-fallback" checked={channel === "sms-fallback"} disabled={attachPersonalSchedule} onChange={() => setChannel("sms-fallback")} />
+                Text → Email on failure
+              </label>
             </div>
             <p className="text-xs text-muted mt-1">
               {attachPersonalSchedule && "Calendar attachments require an email client — channel is locked to Email only."}
               {!attachPersonalSchedule && channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
               {!attachPersonalSchedule && channel === "email" && "All players with email receive an email."}
               {!attachPersonalSchedule && channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
+              {!attachPersonalSchedule && channel === "sms-fallback" && "Players with phone+carrier get text; if the SMS send fails, that recipient gets the message via email instead."}
             </p>
           </div>
 

@@ -22,4 +22,7 @@ export const emailSettings = sqliteTable("email_settings", {
   reminderTemplate: text("reminder_template").notNull().default(
     "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
   ),
+  // Channel for the daily reminder cron. Values: "both" (email + SMS),
+  // "email", "sms", "sms-fallback" (try SMS, fall back to email on failure).
+  reminderChannel: text("reminder_channel").notNull().default("both"),
 });

@@ -161,6 +161,21 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "reminder-channel",
+    description: "email_settings: add reminder_channel column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE email_settings ADD COLUMN reminder_channel TEXT NOT NULL DEFAULT 'both'`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {
