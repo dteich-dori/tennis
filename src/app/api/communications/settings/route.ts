@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         remindersEnabled: false,
         reminderHour: 18,
         reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
-        reminderChannel: "both",
+        reminderChannel: "sms-fallback",
       });
     }
 
@@ -140,7 +140,7 @@ export async function PUT(request: NextRequest) {
           remindersEnabled: remindersEnabled ?? false,
           reminderHour: safeHour ?? 18,
           reminderTemplate: reminderTemplate ?? DEFAULT_REMINDER_TEMPLATE,
-          reminderChannel: reminderChannel ?? "both",
+          reminderChannel: reminderChannel ?? "sms-fallback",
         })
         .returning();
       return NextResponse.json(result[0], { status: 201 });

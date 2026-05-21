@@ -90,7 +90,7 @@ export default function CommunicationsPage() {
   const [reminderTemplate, setReminderTemplate] = useState(
     "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
   );
-  const [reminderChannel, setReminderChannel] = useState<Channel>("both");
+  const [reminderChannel, setReminderChannel] = useState<Channel>("sms-fallback");
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
@@ -714,17 +714,64 @@ export default function CommunicationsPage() {
               </p>
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">Send via</label>
-                <select
-                  value={reminderChannel}
-                  onChange={(e) => setReminderChannel(e.target.value as Channel)}
-                  disabled={!remindersEnabled}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white disabled:bg-gray-100"
-                >
-                  <option value="both">Email + Text (both, if configured)</option>
-                  <option value="email">Email only</option>
-                  <option value="sms">Text only (email fallback if no phone)</option>
-                  <option value="sms-fallback">Text → Email if SMS fails</option>
-                </select>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <label
+                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
+                    title="Try Text first; if the SMS send fails, retry that recipient via email."
+                  >
+                    <input
+                      type="radio"
+                      name="reminderChannel"
+                      value="sms-fallback"
+                      checked={reminderChannel === "sms-fallback"}
+                      disabled={!remindersEnabled}
+                      onChange={() => setReminderChannel("sms-fallback")}
+                    />
+                    Text → Email on failure
+                  </label>
+                  <label
+                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
+                    title="Send to both email AND text (players with both configured get both)"
+                  >
+                    <input
+                      type="radio"
+                      name="reminderChannel"
+                      value="both"
+                      checked={reminderChannel === "both"}
+                      disabled={!remindersEnabled}
+                      onChange={() => setReminderChannel("both")}
+                    />
+                    Email + Text
+                  </label>
+                  <label
+                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
+                    title="Email only to all players with an email address"
+                  >
+                    <input
+                      type="radio"
+                      name="reminderChannel"
+                      value="email"
+                      checked={reminderChannel === "email"}
+                      disabled={!remindersEnabled}
+                      onChange={() => setReminderChannel("email")}
+                    />
+                    Email only
+                  </label>
+                  <label
+                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
+                    title="Prefer text; players without phone+carrier get email instead"
+                  >
+                    <input
+                      type="radio"
+                      name="reminderChannel"
+                      value="sms"
+                      checked={reminderChannel === "sms"}
+                      disabled={!remindersEnabled}
+                      onChange={() => setReminderChannel("sms")}
+                    />
+                    Text only
+                  </label>
+                </div>
               </div>
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">
