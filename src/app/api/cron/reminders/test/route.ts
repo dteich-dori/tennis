@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import {
   emailSettings,
+  emailTemplates,
   games,
   gameAssignments,
   players,
@@ -175,8 +176,22 @@ export async function POST(request: NextRequest) {
       group: gameMeta.group,
     };
 
-    const bodyText = substitute(settings.reminderTemplate, ctx);
-    const subject = `Game reminder — ${ctx.date} at ${ctx.time}${usedSample ? " (TEST)" : ""}`;
+    // Pick the template (saved one if linked, else the inline fallback)
+    let templateSubject = `Game reminder — tomorrow`;
+    let templateBody = settings.reminderTemplate;
+    if (settings.reminderTemplateId) {
+      const [tpl] = await database
+        .select()
+        .from(emailTemplates)
+        .where(eq(emailTemplates.id, settings.reminderTemplateId));
+      if (tpl) {
+        templateSubject = tpl.subject;
+        templateBody = tpl.body;
+      }
+    }
+    const bodyText = substitute(templateBody, ctx);
+    const subject =
+      substitute(templateSubject, ctx) + (usedSample ? " (TEST)" : "");
 
     const hasEmail = !!(player.email && player.email.trim());
     const hasSms = !!(player.cellNumber && player.carrier);

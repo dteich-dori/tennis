@@ -176,6 +176,21 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "reminder-template-id",
+    description: "email_settings: add reminder_template_id column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE email_settings ADD COLUMN reminder_template_id INTEGER`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

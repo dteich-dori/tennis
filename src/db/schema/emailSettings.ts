@@ -25,4 +25,8 @@ export const emailSettings = sqliteTable("email_settings", {
   // Channel for the daily reminder cron. Values: "both" (email + SMS),
   // "email", "sms", "sms-fallback" (try SMS, fall back to email on failure).
   reminderChannel: text("reminder_channel").notNull().default("sms-fallback"),
+  // FK to email_templates.id. When set, the cron uses that template's
+  // subject + body (with full variable substitution) instead of the
+  // inline reminder_template text above. Nullable for backward compat.
+  reminderTemplateId: integer("reminder_template_id"),
 });

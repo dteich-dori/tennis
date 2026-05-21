@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import {
   emailSettings,
+  emailTemplates,
   seasons,
   games,
   gameAssignments,
@@ -204,6 +205,21 @@ export async function GET(request: NextRequest) {
       byGame.set(r.gameId, arr);
     }
 
+    // Resolve which template (subject + body) to use. Prefer the linked
+    // template id; fall back to the inline reminder_template text.
+    let templateSubject = `Game reminder — tomorrow`;
+    let templateBody = settings.reminderTemplate;
+    if (settings.reminderTemplateId) {
+      const [tpl] = await database
+        .select()
+        .from(emailTemplates)
+        .where(eq(emailTemplates.id, settings.reminderTemplateId));
+      if (tpl) {
+        templateSubject = tpl.subject;
+        templateBody = tpl.body;
+      }
+    }
+
     // Send one message per (player, game). If a player has two games
     // tomorrow (rare) they get two messages.
     let emailsSent = 0;
@@ -232,8 +248,8 @@ export async function GET(request: NextRequest) {
           group: gameMeta.group,
         };
 
-        const body = substitute(settings.reminderTemplate, ctx);
-        const subject = `Game reminder — ${ctx.date} at ${ctx.time}`;
+        const body = substitute(templateBody, ctx);
+        const subject = substitute(templateSubject, ctx);
 
         const hasEmail = !!(player.email && player.email.trim());
         const hasSms = !!(player.cellNumber && player.carrier);

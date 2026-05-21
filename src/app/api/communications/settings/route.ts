@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
         reminderHour: 18,
         reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
         reminderChannel: "sms-fallback",
+        reminderTemplateId: null,
       });
     }
 
@@ -59,6 +60,7 @@ export async function PUT(request: NextRequest) {
       reminderHour?: number;
       reminderTemplate?: string;
       reminderChannel?: string;
+      reminderTemplateId?: number | null;
     };
     const {
       seasonId,
@@ -72,6 +74,7 @@ export async function PUT(request: NextRequest) {
       reminderHour,
       reminderTemplate,
       reminderChannel,
+      reminderTemplateId,
     } = body;
 
     if (!seasonId) {
@@ -119,6 +122,10 @@ export async function PUT(request: NextRequest) {
         }
         updates.reminderChannel = reminderChannel;
       }
+      if (reminderTemplateId !== undefined) {
+        // null = clear / use inline template; integer = use that template id
+        updates.reminderTemplateId = reminderTemplateId;
+      }
 
       const result = await database
         .update(emailSettings)
@@ -141,6 +148,7 @@ export async function PUT(request: NextRequest) {
           reminderHour: safeHour ?? 18,
           reminderTemplate: reminderTemplate ?? DEFAULT_REMINDER_TEMPLATE,
           reminderChannel: reminderChannel ?? "sms-fallback",
+          reminderTemplateId: reminderTemplateId ?? null,
         })
         .returning();
       return NextResponse.json(result[0], { status: 201 });

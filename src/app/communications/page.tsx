@@ -90,6 +90,7 @@ export default function CommunicationsPage() {
   const [reminderTemplate, setReminderTemplate] = useState(
     "Hi {firstName},\n\nReminder: you have a game tomorrow ({date}) at {time} on Court {court}.\n\nPartners: {partners}\n\nSee you on the courts!"
   );
+  const [reminderTemplateId, setReminderTemplateId] = useState<number | null>(null);
   const [reminderChannel, setReminderChannel] = useState<Channel>("sms-fallback");
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
@@ -183,6 +184,7 @@ export default function CommunicationsPage() {
       reminderHour?: number;
       reminderTemplate?: string;
       reminderChannel?: Channel;
+      reminderTemplateId?: number | null;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
@@ -192,6 +194,8 @@ export default function CommunicationsPage() {
     if (typeof data.reminderTemplate === "string" && data.reminderTemplate)
       setReminderTemplate(data.reminderTemplate);
     if (data.reminderChannel) setReminderChannel(data.reminderChannel);
+    if (data.reminderTemplateId !== undefined)
+      setReminderTemplateId(data.reminderTemplateId);
     setTestPhone(data.testPhone || "");
     setTestCarrier(data.testCarrier || "");
     setQuestionnaireUrl(data.questionnaireUrl || "");
@@ -287,6 +291,7 @@ export default function CommunicationsPage() {
         reminderHour,
         reminderTemplate,
         reminderChannel,
+        reminderTemplateId,
       }),
     });
     if (res.ok) {
@@ -715,79 +720,69 @@ export default function CommunicationsPage() {
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">Send via</label>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <label
-                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
-                    title="Try Text first; if the SMS send fails, retry that recipient via email."
-                  >
-                    <input
-                      type="radio"
-                      name="reminderChannel"
-                      value="sms-fallback"
-                      checked={reminderChannel === "sms-fallback"}
-                      disabled={!remindersEnabled}
-                      onChange={() => setReminderChannel("sms-fallback")}
-                    />
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Try Text first; if the SMS send fails, retry that recipient via email.">
+                    <input type="radio" name="reminderChannel" value="sms-fallback" checked={reminderChannel === "sms-fallback"} onChange={() => setReminderChannel("sms-fallback")} />
                     Text → Email on failure
                   </label>
-                  <label
-                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
-                    title="Send to both email AND text (players with both configured get both)"
-                  >
-                    <input
-                      type="radio"
-                      name="reminderChannel"
-                      value="both"
-                      checked={reminderChannel === "both"}
-                      disabled={!remindersEnabled}
-                      onChange={() => setReminderChannel("both")}
-                    />
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Send to both email AND text (players with both configured get both)">
+                    <input type="radio" name="reminderChannel" value="both" checked={reminderChannel === "both"} onChange={() => setReminderChannel("both")} />
                     Email + Text
                   </label>
-                  <label
-                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
-                    title="Email only to all players with an email address"
-                  >
-                    <input
-                      type="radio"
-                      name="reminderChannel"
-                      value="email"
-                      checked={reminderChannel === "email"}
-                      disabled={!remindersEnabled}
-                      onChange={() => setReminderChannel("email")}
-                    />
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Email only to all players with an email address">
+                    <input type="radio" name="reminderChannel" value="email" checked={reminderChannel === "email"} onChange={() => setReminderChannel("email")} />
                     Email only
                   </label>
-                  <label
-                    className={`flex items-center gap-1.5 text-sm ${remindersEnabled ? "cursor-pointer" : "text-muted cursor-not-allowed"}`}
-                    title="Prefer text; players without phone+carrier get email instead"
-                  >
-                    <input
-                      type="radio"
-                      name="reminderChannel"
-                      value="sms"
-                      checked={reminderChannel === "sms"}
-                      disabled={!remindersEnabled}
-                      onChange={() => setReminderChannel("sms")}
-                    />
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Prefer text; players without phone+carrier get email instead">
+                    <input type="radio" name="reminderChannel" value="sms" checked={reminderChannel === "sms"} onChange={() => setReminderChannel("sms")} />
                     Text only
                   </label>
                 </div>
               </div>
+
               <div className="mt-2">
                 <label className="block text-xs font-medium mb-1">
                   Reminder template
                 </label>
-                <textarea
-                  value={reminderTemplate}
-                  onChange={(e) => setReminderTemplate(e.target.value)}
-                  disabled={!remindersEnabled}
-                  rows={6}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white font-mono disabled:bg-gray-100"
-                  placeholder="Hi {firstName}, you have a game tomorrow ..."
-                />
+                <select
+                  value={reminderTemplateId ?? ""}
+                  onChange={(e) =>
+                    setReminderTemplateId(
+                      e.target.value ? parseInt(e.target.value) : null
+                    )
+                  }
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                >
+                  <option value="">— Built-in default (edit below) —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
                 <p className="text-xs text-muted mt-1">
-                  Variables: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
+                  Pick one of your saved templates from the Templates tab, or
+                  leave unset to use the built-in fallback below. Variables
+                  available: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
                 </p>
+                {!reminderTemplateId && (
+                  <textarea
+                    value={reminderTemplate}
+                    onChange={(e) => setReminderTemplate(e.target.value)}
+                    rows={6}
+                    className="mt-2 w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white font-mono"
+                    placeholder="Hi {firstName}, you have a game tomorrow ..."
+                  />
+                )}
+                {reminderTemplateId && (() => {
+                  const tpl = templates.find((t) => t.id === reminderTemplateId);
+                  if (!tpl) return null;
+                  return (
+                    <div className="mt-2 p-2 border border-gray-200 bg-gray-50 rounded text-xs">
+                      <div className="font-medium mb-1">Preview: <span className="text-muted">{tpl.subject}</span></div>
+                      <pre className="whitespace-pre-wrap font-mono text-[11px] text-gray-700">{tpl.body}</pre>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Manual test send */}
