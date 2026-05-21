@@ -187,7 +187,10 @@ export function generatePlayerStatsPdf(
         : (freq === 0 ? "Sub" : String(freq));
 
       const contractTotal36 = freq * 36;
-      const deficit = contractTotal36 - stat.std;
+      // Clamp to >= 0: negative "deficit" means the player exceeded their
+      // contract, which already shows up in the Extra column. Showing a
+      // negative number here confused some users.
+      const deficit = Math.max(0, contractTotal36 - stat.std);
       const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
 
       const values = group === "dons"
@@ -195,7 +198,7 @@ export function generatePlayerStatsPdf(
             stat.lastName,
             contractValue,
             String(stat.std),
-            freq > 0 ? String(deficit) : "—",
+            freq > 0 && deficit > 0 ? String(deficit) : "—",
             extra > 0 ? String(extra) : "—",
             String(stat.ballsBrought),
             stat.vacationGamesLost > 0 ? String(stat.vacationGamesLost) : "—",
@@ -265,7 +268,10 @@ export function generatePlayerStatsPdf(
     doc.setFontSize(9);
     const totalDeficit = sectionStats.reduce((sum, s) => {
       const freq = parseInt(s.frequency) || 0;
-      return freq > 0 ? sum + (freq * 36 - s.std) : sum;
+      // Only sum POSITIVE deficits — negative deficits (over-contract play)
+      // are already shown in the Extra column, so summing them here would
+      // understate how far the group is behind.
+      return freq > 0 ? sum + Math.max(0, freq * 36 - s.std) : sum;
     }, 0);
     const totalVacGameDays = sectionStats.reduce((sum, s) => sum + (s.vacationGamesLost ?? 0), 0);
     const totalMadeUpVac = sectionStats.reduce((sum, s) => sum + (s.madeUpVac ?? 0), 0);
@@ -275,7 +281,7 @@ export function generatePlayerStatsPdf(
           "Total",
           contractTotal,
           String(totalStd),
-          String(totalDeficit),
+          totalDeficit > 0 ? String(totalDeficit) : "—",
           totalExtra > 0 ? String(totalExtra) : "—",
           String(totalBalls),
           totalVacGameDays > 0 ? String(totalVacGameDays) : "—",
