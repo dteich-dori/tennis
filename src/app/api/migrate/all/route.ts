@@ -191,6 +191,21 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "excluded-from-auto-assign",
+    description: "players: add excluded_from_auto_assign column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE players ADD COLUMN excluded_from_auto_assign INTEGER NOT NULL DEFAULT 0`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

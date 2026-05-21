@@ -119,7 +119,18 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Load all active players with constraints
-    const allPlayers = await database.select().from(players).where(and(eq(players.seasonId, seasonId), eq(players.isActive, true)));
+    const allPlayers = await database
+      .select()
+      .from(players)
+      .where(
+        and(
+          eq(players.seasonId, seasonId),
+          eq(players.isActive, true),
+          // Players flagged "Exclude from auto-assign" are filtered out
+          // here, so neither contractedPlayers nor subPlayers can see them.
+          eq(players.excludedFromAutoAssign, false)
+        )
+      );
     const playerIds = allPlayers.map((p) => p.id);
 
     let blockedDaysRows: { playerId: number; dayOfWeek: number }[] = [];

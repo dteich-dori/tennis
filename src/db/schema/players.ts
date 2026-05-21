@@ -28,6 +28,11 @@ export const players = sqliteTable("players", {
   // count. null = dynamically computed from current scheduled games.
   // Applies to 2x+ players (extras above 2/wk) and subs (total games).
   lockedExtraGames: integer("locked_extra_games"),
+  // When true, this player is skipped by auto-assign entirely. They remain
+  // visible everywhere else (manual assignment, communications, reports).
+  excludedFromAutoAssign: integer("excluded_from_auto_assign", { mode: "boolean" })
+    .notNull()
+    .default(false),
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {

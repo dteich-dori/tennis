@@ -44,6 +44,7 @@ interface Player {
   soloGames: number | null;
   groupPct: number;
   preassignedGamesWanted: number | null;
+  excludedFromAutoAssign: boolean;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -79,6 +80,7 @@ const emptyPlayer = {
   soloGames: null as number | null,
   groupPct: 0,
   preassignedGamesWanted: null as number | null,
+  excludedFromAutoAssign: false,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -171,6 +173,7 @@ export default function PlayersPage() {
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
       preassignedGamesWanted: player.preassignedGamesWanted ?? null,
+      excludedFromAutoAssign: player.excludedFromAutoAssign ?? false,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
@@ -835,6 +838,17 @@ export default function PlayersPage() {
                 />
                 C games OK
               </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="When checked, auto-assign skips this player entirely. They remain visible everywhere else (manual assignment, communications, reports)."
+              >
+                <input
+                  type="checkbox"
+                  checked={form.excludedFromAutoAssign}
+                  onChange={(e) => setForm({ ...form, excludedFromAutoAssign: e.target.checked })}
+                />
+                Exclude from auto-assign
+              </label>
               {form.cGamesOk && (
                 <label className="flex items-center gap-2 text-sm ml-6">
                   <span>Frequency:</span>
@@ -1147,6 +1161,14 @@ export default function PlayersPage() {
                   >
                     {player.lastName}
                   </button>
+                  {player.excludedFromAutoAssign && (
+                    <span
+                      className="ml-1 inline-block px-1.5 py-0 text-[10px] bg-amber-100 text-amber-800 rounded border border-amber-300 align-middle"
+                      title="Excluded from auto-assign"
+                    >
+                      ⛔ AA
+                    </span>
+                  )}
                 </td>
                 <td className="px-2 py-1">{player.firstName}</td>
                 <td className="px-2 py-1">{formatPhone(player.cellNumber)}</td>

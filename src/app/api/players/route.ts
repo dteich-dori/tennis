@@ -156,6 +156,7 @@ export async function POST(request: NextRequest) {
       groupMembers,
       preassignedGamesWanted,
       lockedExtraGames,
+      excludedFromAutoAssign,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -224,6 +225,7 @@ export async function POST(request: NextRequest) {
         groupPct: groupPct ?? 0,
         preassignedGamesWanted: preassignedGamesWanted || null,
         lockedExtraGames: lockedExtraGames ?? null,
+        excludedFromAutoAssign: excludedFromAutoAssign ?? false,
       })
       .returning();
 
@@ -307,6 +309,7 @@ export async function PUT(request: NextRequest) {
       groupMembers,
       preassignedGamesWanted,
       lockedExtraGames,
+      excludedFromAutoAssign,
     } = body;
 
     if (!id) {
@@ -351,6 +354,10 @@ export async function PUT(request: NextRequest) {
         lockedExtraGames !== undefined
           ? (lockedExtraGames === null ? null : lockedExtraGames)
           : currentPlayer.lockedExtraGames,
+      excludedFromAutoAssign:
+        excludedFromAutoAssign !== undefined
+          ? excludedFromAutoAssign
+          : currentPlayer.excludedFromAutoAssign,
     };
 
     // Check for duplicate name (excluding this player, scoped to season)
