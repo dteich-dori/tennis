@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { weeklyContractedGames } from "@/lib/contractFrequency";
 
 interface PlayerInfo {
   id: number;
@@ -109,7 +110,7 @@ export function generateWeeklyGameCountsPdf(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.text(
-      `Don's group · normal-status games only · counts per week${pageLabel ? ` · ${pageLabel}` : ""}`,
+      `Don's group · normal-status games only · counts per week · green = over basic contract${pageLabel ? ` · ${pageLabel}` : ""}`,
       pageWidth / 2,
       y,
       { align: "center" }
@@ -206,13 +207,24 @@ export function generateWeeklyGameCountsPdf(
     doc.setFont("helvetica", "normal");
     doc.text(displayName(p), marginLeft + 4, currentY + rowHeight - 3);
 
-    // Week cells
+    // Week cells. Highlight in green when the player exceeded their
+    // basic per-week contract (e.g. 1x player with 2 games this week,
+    // sub with any game at all).
+    const baseFreq = weeklyContractedGames(p.contractedFrequency);
     let rowTotal = 0;
     const wkMap = counts.get(p.id);
     for (let w = 1; w <= totalWeeks; w++) {
       const c = wkMap?.get(w) ?? 0;
       rowTotal += c;
-      const cx = marginLeft + nameColW + (w - 0.5) * weekColW;
+      const cellX = marginLeft + nameColW + (w - 1) * weekColW;
+      const cx = cellX + weekColW / 2;
+
+      if (c > baseFreq) {
+        // Fill cell with a soft green so the over-contract weeks pop out.
+        doc.setFillColor(190, 230, 190);
+        doc.rect(cellX, currentY, weekColW, rowHeight, "F");
+      }
+
       if (c > 0) {
         doc.text(String(c), cx, currentY + rowHeight - 3, { align: "center" });
       } else {
