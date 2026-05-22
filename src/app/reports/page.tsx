@@ -8,6 +8,7 @@ import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
+import { generateWeeklyGameCountsPdf } from "@/lib/reports/weeklyGameCountsPdf";
 import { generateExceptionsPdf } from "@/lib/reports/exceptionsPdf";
 import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
 
@@ -458,6 +459,54 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleWeeklyGameCountsReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("weeklyGameCounts");
+
+    try {
+      const [gamesRes, playersRes] = await Promise.all([
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/players?seasonId=${season.id}`),
+      ]);
+
+      if (!gamesRes.ok || !playersRes.ok) {
+        setError("Failed to load data for Weekly Game Counts report.");
+        setGenerating(null);
+        return;
+      }
+
+      const allGames = (await gamesRes.json()) as {
+        weekNumber: number;
+        status: string;
+        group: string;
+        assignments: { playerId: number }[];
+      }[];
+      const allPlayers = (await playersRes.json()) as {
+        id: number;
+        firstName: string;
+        lastName: string;
+        contractedFrequency: string;
+        isActive: boolean;
+      }[];
+
+      const hasAssignments = allGames.some(
+        (g) => g.status === "normal" && g.group === "dons" && g.assignments.length > 0
+      );
+      if (!hasAssignments) {
+        setError("No Don's-group assignments found. Assign players to games first.");
+        setGenerating(null);
+        return;
+      }
+
+      generateWeeklyGameCountsPdf(allPlayers, allGames, season);
+    } catch {
+      setError("Failed to generate Weekly Game Counts report.");
+    }
+
+    setGenerating(null);
+  };
+
   const handleCompositionReport = async () => {
     if (!season) return;
     setError("");
@@ -601,6 +650,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "gamesByPlayer" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Weekly Game Counts Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Weekly Game Counts</h2>
+          <p className="text-sm text-muted mb-4">
+            Matrix of players (rows) × weeks (columns). Each cell shows how many Don&apos;s-group games that player was assigned in that week, plus a season total per player.
+          </p>
+          <button
+            onClick={handleWeeklyGameCountsReport}
+            disabled={generating === "weeklyGameCounts"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "weeklyGameCounts" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
 
