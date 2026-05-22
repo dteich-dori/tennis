@@ -7,6 +7,7 @@ interface PlayerInfo {
   lastName: string;
   contractedFrequency: string;
   isActive: boolean;
+  excludedFromAutoAssign?: boolean;
 }
 
 interface GameAssignmentLite {
@@ -46,9 +47,11 @@ export function generateWeeklyGameCountsPdf(
   const endYear = season.endDate.substring(0, 4);
   const totalWeeks = season.totalWeeks ?? 36;
 
-  // Active players sorted: contract first, then subs; within each, by lastName.
+  // Active, auto-assignable players sorted: contract first, then subs;
+  // within each, by lastName. Players flagged "Exclude from auto-assign"
+  // are dropped from this report — they're not part of the schedule.
   const sortedPlayers = [...players]
-    .filter((p) => p.isActive)
+    .filter((p) => p.isActive && !p.excludedFromAutoAssign)
     .sort((a, b) => {
       const aSub = a.contractedFrequency === "0" ? 1 : 0;
       const bSub = b.contractedFrequency === "0" ? 1 : 0;

@@ -488,6 +488,7 @@ export default function ReportsPage() {
         lastName: string;
         contractedFrequency: string;
         isActive: boolean;
+        excludedFromAutoAssign?: boolean;
       }[];
 
       const hasAssignments = allGames.some(
