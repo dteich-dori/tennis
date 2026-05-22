@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
-import { weeklyContractedGames } from "@/lib/contractFrequency";
+import { weeklyContractedGames, contractLabel } from "@/lib/contractFrequency";
 
 interface PlayerInfo {
   id: number;
@@ -91,7 +91,7 @@ export function generateWeeklyGameCountsPdf(
   const marginRight = 24;
   const marginTop = 28;
   const usableW = pageWidth - marginLeft - marginRight;
-  const nameColW = 78;
+  const nameColW = 96;
   const totalColW = 28;
   const weekColW = (usableW - nameColW - totalColW) / totalWeeks;
   const rowHeight = 12;
@@ -203,9 +203,13 @@ export function generateWeeklyGameCountsPdf(
 
     doc.setDrawColor(220, 220, 220);
 
-    // Player name
+    // Player name + contract value, e.g. "Smith (2x+)"
     doc.setFont("helvetica", "normal");
-    doc.text(displayName(p), marginLeft + 4, currentY + rowHeight - 3);
+    doc.text(
+      `${displayName(p)} (${contractLabel(p.contractedFrequency)})`,
+      marginLeft + 4,
+      currentY + rowHeight - 3
+    );
 
     // Week cells. Highlight in green when the player exceeded their
     // basic per-week contract (e.g. 1x player with 2 games this week,
