@@ -2,10 +2,13 @@ import nodemailer from "nodemailer";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// SMS gateway domains by carrier
+// SMS gateway domains by carrier. AT&T's plain SMS gateway (txt.att.net) is
+// frequently rejected by Gmail's SMTP as an invalid recipient — using the
+// MMS gateway (mms.att.net) is far more reliable. It accepts the same
+// plain-text payload our sendEmail helper produces.
 const SMS_GATEWAYS: Record<string, string> = {
   verizon: "vtext.com",
-  att: "txt.att.net",
+  att: "mms.att.net",
   tmobile: "tmomail.net",
   sprint: "messaging.sprintpcs.com",
   uscellular: "email.uscc.net",
