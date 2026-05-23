@@ -206,6 +206,36 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "last-auto-assign-at",
+    description: "seasons: add last_auto_assign_at column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE seasons ADD COLUMN last_auto_assign_at TEXT`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
+  {
+    name: "last-player-change-at",
+    description: "seasons: add last_player_change_at column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE seasons ADD COLUMN last_player_change_at TEXT`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

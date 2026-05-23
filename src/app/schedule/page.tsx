@@ -21,6 +21,8 @@ interface Season {
   endDate: string;
   totalWeeks: number;
   maxDeratedPerWeek: number | null;
+  lastAutoAssignAt: string | null;
+  lastPlayerChangeAt: string | null;
 }
 
 interface Assignment {
@@ -1023,6 +1025,29 @@ export default function SchedulePage() {
           {backup.busy ? "Backing up..." : "Backup All"}
         </button>
       </div>
+
+      {/* Stale-schedule warning: any player CRUD after the last auto-assign
+          probably means the schedule no longer reflects the roster. */}
+      {(() => {
+        if (!season?.lastPlayerChangeAt) return null;
+        const lastAA = season.lastAutoAssignAt ?? "";
+        const lastPC = season.lastPlayerChangeAt;
+        if (lastAA && lastPC <= lastAA) return null;
+        const aaLabel = lastAA
+          ? new Date(lastAA + (lastAA.endsWith("Z") ? "" : "Z")).toLocaleString()
+          : "never";
+        const pcLabel = new Date(
+          lastPC + (lastPC.endsWith("Z") ? "" : "Z")
+        ).toLocaleString();
+        return (
+          <div className="mb-4 border border-amber-300 bg-amber-50 rounded px-4 py-3 text-sm text-amber-900">
+            <strong>⚠ Schedule may be stale.</strong> A player record was added,
+            edited, or deleted on <span className="font-mono">{pcLabel}</span>,
+            after the last auto-assign on <span className="font-mono">{aaLabel}</span>.
+            Re-run auto-assign so the schedule reflects the current roster.
+          </div>
+        );
+      })()}
 
       {backup.message && (
         <div

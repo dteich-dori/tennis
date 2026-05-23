@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments } from "@/db/schema";
+import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PlayerBody = any;
+
+/**
+ * Bump seasons.lastPlayerChangeAt — called after every successful player
+ * add / update / delete. Lets the Schedule page warn when the schedule is
+ * potentially stale relative to the current player roster.
+ */
+async function markPlayerChange(
+  database: Awaited<ReturnType<typeof db>>,
+  seasonId: number
+): Promise<void> {
+  try {
+    await database
+      .update(seasons)
+      .set({ lastPlayerChangeAt: new Date().toISOString() })
+      .where(eq(seasons.id, seasonId));
+  } catch (err) {
+    // Non-fatal — don't break the player CRUD if the timestamp write fails.
+    console.error("[markPlayerChange] failed:", err);
+  }
+}
 
 const VALID_FREQUENCIES = ["0", "1", "1+", "2", "2+"];
 const VALID_SKILL_LEVELS = ["A", "B", "C", "D"];
@@ -272,6 +292,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await markPlayerChange(database, seasonId);
     return NextResponse.json(newPlayer, { status: 201 });
   } catch (err) {
     console.error("[players POST] error:", err);
@@ -448,6 +469,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    await markPlayerChange(database, currentPlayer.seasonId);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[players PUT] error:", err);
@@ -468,6 +490,13 @@ export async function DELETE(request: NextRequest) {
     const playerId = parseInt(id);
     const database = await db();
 
+    // Grab seasonId BEFORE the delete so we can bump the season's
+    // lastPlayerChangeAt after the cascade.
+    const [doomed] = await database
+      .select({ seasonId: players.seasonId })
+      .from(players)
+      .where(eq(players.id, playerId));
+
     await database.delete(gameAssignments).where(eq(gameAssignments.playerId, playerId));
     await database.delete(playerBlockedDays).where(eq(playerBlockedDays.playerId, playerId));
     await database.delete(playerVacations).where(eq(playerVacations.playerId, playerId));
@@ -476,6 +505,7 @@ export async function DELETE(request: NextRequest) {
     await database.delete(playerGroupMembers).where(eq(playerGroupMembers.memberId, playerId));
     await database.delete(players).where(eq(players.id, playerId));
 
+    if (doomed) await markPlayerChange(database, doomed.seasonId);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[players DELETE] error:", err);

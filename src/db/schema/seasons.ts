@@ -12,4 +12,10 @@ export const seasons = sqliteTable("seasons", {
   maxACGamesPerSeason: integer("max_ac_games_per_season").default(1), // max A+C games per season for cGamesOk players; null = no limit
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  // Last time auto-assign ran successfully (UTC ISO). Null = never.
+  lastAutoAssignAt: text("last_auto_assign_at"),
+  // Last time ANY player record was added, edited, or deleted (UTC ISO).
+  // Bumped by every /api/players POST / PUT / DELETE. Used together with
+  // lastAutoAssignAt to detect "schedule may be stale" situations.
+  lastPlayerChangeAt: text("last_player_change_at"),
 });

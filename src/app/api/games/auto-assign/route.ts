@@ -1776,6 +1776,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Stamp the season so the Schedule page knows when auto-assign last ran
+    // and can warn if any player change happened after this moment.
+    try {
+      const { seasons } = await import("@/db/schema");
+      await database
+        .update(seasons)
+        .set({ lastAutoAssignAt: new Date().toISOString() })
+        .where(eq(seasons.id, seasonId));
+    } catch (stampErr) {
+      console.error("[auto-assign] failed to stamp lastAutoAssignAt:", stampErr);
+    }
+
     return NextResponse.json({
       success: true,
       assignedCount: filled,
