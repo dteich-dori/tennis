@@ -10,12 +10,22 @@ interface BackupDirResult {
   oldestFolders: string[];
 }
 
+interface DropboxResult {
+  basePath: string;
+  folderName: string;
+  uploadedFiles: number;
+  prunedFolders: string[];
+  totalFoldersAfter: number;
+}
+
 interface BackupResult {
-  mode: "filesystem" | "zip";
+  mode: "filesystem" | "zip" | "dropbox-only";
   folder: string;
   rowCounts?: Record<string, number>;
   directories?: BackupDirResult[];
   errors?: { baseDir: string; error: string }[];
+  dropbox?: DropboxResult | null;
+  dropboxError?: string | null;
 }
 
 type BeforeRunOutcome = { ok: true } | { ok: false; error: string };
@@ -73,10 +83,11 @@ export function useBackup(options: UseBackupOptions = {}) {
       const ctype = res.headers.get("Content-Type") || "";
 
       if (ctype.startsWith("application/zip")) {
-        // ZIP-fallback path — production / read-only filesystem
+        // ZIP-fallback path — every destination (filesystem + Dropbox) failed.
         const blob = await res.blob();
         const folder =
           res.headers.get("X-Backup-Folder") || "Tennis-Scheduler-backup";
+        const dropboxErr = res.headers.get("X-Backup-Dropbox-Error") || "";
         const a = document.createElement("a");
         const url = URL.createObjectURL(blob);
         a.href = url;
@@ -85,32 +96,39 @@ export function useBackup(options: UseBackupOptions = {}) {
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 10000);
-        result = { folder, mode: "zip" };
+        result = {
+          folder,
+          mode: "zip",
+          dropboxError: dropboxErr || null,
+        };
       } else {
         const data = (await res.json()) as {
           success?: boolean;
           mode?: string;
           directories?: BackupDirResult[];
           errors?: { baseDir: string; error: string }[];
+          dropbox?: DropboxResult | null;
+          dropboxError?: string | null;
           rowCounts?: Record<string, number>;
           error?: string;
         };
-        if (
-          !res.ok ||
-          !data.success ||
-          !data.directories ||
-          data.directories.length === 0
-        ) {
+        if (!res.ok || !data.success) {
           setIsError(true);
           setMessage(`Backup failed: ${data.error ?? "no destination wrote successfully"}`);
           setBusy(false);
           return;
         }
+        const folder =
+          data.directories?.[0]?.folder ??
+          data.dropbox?.folderName ??
+          "Tennis-Scheduler-backup";
         result = {
-          mode: "filesystem",
-          folder: data.directories[0].folder,
+          mode: (data.mode as "filesystem" | "dropbox-only") ?? "filesystem",
+          folder,
           directories: data.directories,
           errors: data.errors,
+          dropbox: data.dropbox ?? null,
+          dropboxError: data.dropboxError ?? null,
           rowCounts: data.rowCounts,
         };
       }
@@ -131,27 +149,46 @@ export function useBackup(options: UseBackupOptions = {}) {
     }
 
     if (result.mode === "zip") {
+      const dbxLine = result.dropboxError
+        ? `\n\n⚠ Dropbox upload failed: ${result.dropboxError}`
+        : "";
       setMessage(
-        `✓ Backup downloaded as ${result.folder}.zip (check your browser's Downloads). To save backups directly to your home network or iCloud, run from your local dev server.`
+        `✓ Backup downloaded as ${result.folder}.zip (check your browser's Downloads). To save backups directly to a configured destination, configure Dropbox env vars or run from your local dev server.${dbxLine}`
       );
       setBusy(false);
       return;
     }
 
-    // Filesystem mode — may have written to 1 or 2 directories
+    // Filesystem / Dropbox mode — may have written to 0+ FS directories and/or Dropbox
     const counts = result.rowCounts ?? {};
     const totalRows = Object.values(counts).reduce((s, n) => s + n, 0);
     const dirs = result.directories ?? [];
 
-    const linePerDir = dirs.map((d) => `  • ${d.fullPath}`).join("\n");
+    const lines: string[] = [];
+    for (const d of dirs) lines.push(`  • ${d.fullPath}`);
+    if (result.dropbox) {
+      const dbx = result.dropbox;
+      lines.push(
+        `  • Dropbox: ${dbx.basePath}/${dbx.folderName}/  (${dbx.uploadedFiles} files, ${dbx.totalFoldersAfter} backups kept)`
+      );
+      if (dbx.prunedFolders.length > 0) {
+        lines.push(
+          `    pruned ${dbx.prunedFolders.length} older: ${dbx.prunedFolders.join(", ")}`
+        );
+      }
+    }
+
     let summary =
       `✓ Backup saved (${totalRows} rows across ${Object.keys(counts).length} tables) to:\n` +
-      linePerDir;
+      lines.join("\n");
 
     if (result.errors && result.errors.length > 0) {
       summary +=
         "\n\nFailed locations:\n" +
         result.errors.map((e) => `  • ${e.baseDir}: ${e.error}`).join("\n");
+    }
+    if (result.dropboxError) {
+      summary += `\n\n⚠ Dropbox upload failed: ${result.dropboxError}`;
     }
 
     // Rule of 3: each directory prompted SEPARATELY so the admin can keep

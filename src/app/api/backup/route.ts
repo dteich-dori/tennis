@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { buildBackup } from "@/lib/buildBackup";
 import { getBackupDirs } from "@/lib/getBackupDir";
+import {
+  dropboxConfigured,
+  uploadBundleToDropbox,
+  type DropboxUploadResult,
+} from "@/lib/dropboxBackup";
 import path from "path";
 import fs from "fs";
 import JSZip from "jszip";
@@ -141,18 +146,34 @@ export async function POST() {
       }
     }
 
-    // If at least one filesystem write succeeded, return JSON summary.
-    if (writes.length > 0) {
+    // --- Dropbox upload (in addition to FS writes) ---
+    // Runs whenever the three env vars are configured. Pruned to KEEP=3
+    // newest folders within the season's backup directory.
+    let dropbox: DropboxUploadResult | null = null;
+    let dropboxError: string | null = null;
+    if (dropboxConfigured()) {
+      try {
+        dropbox = await uploadBundleToDropbox(bundle, { keep: 3 });
+      } catch (dbxErr) {
+        dropboxError = String(dbxErr);
+        console.error("[backup] Dropbox upload failed:", dbxErr);
+      }
+    }
+
+    // If at least one filesystem write OR Dropbox succeeded, return JSON.
+    if (writes.length > 0 || dropbox) {
       return NextResponse.json({
         success: true,
-        mode: "filesystem",
+        mode: writes.length > 0 ? "filesystem" : "dropbox-only",
         directories: writes,
         errors,
+        dropbox,
+        dropboxError,
         rowCounts: bundle.manifest.rowCounts,
       });
     }
 
-    // No filesystem writes succeeded — fall back to ZIP download.
+    // Nothing wrote — fall back to ZIP download.
     const zipBytes = await buildZip(bundle);
     return new NextResponse(zipBytes as unknown as BodyInit, {
       status: 200,
@@ -161,6 +182,7 @@ export async function POST() {
         "Content-Disposition": `attachment; filename="${bundle.folderName}.zip"`,
         "X-Backup-Mode": "zip",
         "X-Backup-Folder": bundle.folderName,
+        "X-Backup-Dropbox-Error": dropboxError ?? "",
       },
     });
   } catch (err) {
