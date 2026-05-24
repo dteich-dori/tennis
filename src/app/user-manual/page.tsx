@@ -411,6 +411,10 @@ export default function UserManualPage() {
                       &mdash; One game per week
                     </li>
                     <li>
+                      <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">1+/week (also subs)</span>{" "}
+                      &mdash; One guaranteed game per week AND eligible to be picked from the sub pool. 1+ players have priority over pure subs when auto-assign needs to fill open slots. Their fee is 1x base + sub-rate per extra game beyond their weekly contract.
+                    </li>
+                    <li>
                       <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">2x/week</span>{" "}
                       &mdash; Two games per week
                     </li>
@@ -432,6 +436,14 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">Active</span> &mdash; Inactive players are
                   excluded from assignment dropdowns and auto-assign.
+                </li>
+                <li>
+                  <span className="font-semibold">Exclude from auto-assign</span> &mdash; When
+                  checked, auto-assign skips this player entirely while they remain visible
+                  everywhere else (manual assignment, communications, reports, Accounts). Useful
+                  for subs you want to keep on the roster but not auto-schedule. Flagged players
+                  show a small amber <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1 rounded text-[10px]">⛔ AA</span>{" "}
+                  badge on the roster row.
                 </li>
                 <li>
                   <span className="font-semibold">No Consecutive Days</span> &mdash; Prevents
@@ -613,6 +625,16 @@ export default function UserManualPage() {
                 After completion, an Auto-Assign Report shows the log of assignments and any warnings.
                 Use <span className="font-semibold">Clear Don&apos;s</span> to remove Don&apos;s
                 assignments for the week.
+              </p>
+
+              <h3 className="font-semibold mb-2">Stale-Schedule Warning</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                The Schedule page shows an amber banner at the top when any player record was
+                added, edited, or deleted <em>after</em> the last auto-assign run. This signals
+                that the current schedule may no longer reflect the active roster (e.g. a new
+                sub was added, a vacation was extended, a player&apos;s contract changed).
+                Re-running auto-assign clears the warning. The banner shows the exact timestamps
+                of both events.
               </p>
 
               <h3 className="font-semibold mb-2">Player Info Panel</h3>
@@ -1106,13 +1128,41 @@ export default function UserManualPage() {
                   Separate reports for Don&apos;s Group and Solo Group.
                 </li>
                 <li>
-                  Don&apos;s Group columns: Player, Contract, STD (season total games), Deficit (STD &minus; contract &times; 36),
-                  Extra (games beyond expected), Balls (bringing count), Vac Games (game dates lost to vacation,
-                  excluding blocked days and holidays, capped per-week at contract frequency), and Made Up Vac
-                  (weeks where the player was assigned more games than their contract &mdash; the surplus count).
+                  Don&apos;s Group columns: Player, Contract, STD (season total games), Deficit
+                  (games still owed against the 36-week contract &mdash; shown as a dash when at
+                  or above contract), Extra (games beyond expected), Balls (bringing count), Vac
+                  Games (game dates lost to vacation, excluding blocked days and holidays, capped
+                  per-week at contract frequency), and Made Up Vac (weeks where the player was
+                  assigned more games than their contract &mdash; the surplus count).
                 </li>
                 <li>
                   Includes summary tables by skill level and by contract type.
+                </li>
+                <li>
+                  The totals-row Deficit sums only positive deficits, so over-contract play in
+                  some players doesn&apos;t mask the shortfall in others.
+                </li>
+              </ul>
+
+              <h3 className="font-semibold mb-2">Weekly Game Counts</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li>
+                  A landscape matrix with one row per active, auto-assignable player and one
+                  column per week of the season. Each cell shows how many Don&apos;s games that
+                  player was assigned that week (a dot for zero).
+                </li>
+                <li>
+                  Each player name is followed by the contract tier in parentheses &mdash; e.g.
+                  <code>Smith (2x+)</code> &mdash; so you can see the baseline at a glance.
+                </li>
+                <li>
+                  <span className="font-semibold">Green fill</span> highlights cells where the
+                  player exceeded their basic weekly contract (1x over 1, 2x over 2, sub over 0).
+                  Makes over-contract weeks stand out at a glance.
+                </li>
+                <li>
+                  Players flagged <span className="font-semibold">Exclude from auto-assign</span>{" "}
+                  are dropped from this report.
                 </li>
               </ul>
 
@@ -1169,42 +1219,111 @@ export default function UserManualPage() {
             <div className="border border-border rounded-lg p-6">
               <h2 className="font-semibold text-lg mb-4">Communications</h2>
               <p className="text-sm leading-relaxed mb-4">
-                The Communications page allows sending bulk emails to players via the Resend email
-                service. It has three tabs: Compose, Templates, and History.
+                The Communications page allows sending bulk email and/or SMS to players via Gmail
+                SMTP. It has three tabs: Compose, Templates, and History, plus a Daily Reminders
+                section inside Email Settings.
               </p>
+
+              <h3 className="font-semibold mb-2">Email Settings</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li>
+                  <span className="font-semibold">From Name</span>, <span className="font-semibold">Reply-To</span>,
+                  <span className="font-semibold">Test Email</span>, <span className="font-semibold">Test Phone</span>,
+                  <span className="font-semibold">Test Carrier</span>, and <span className="font-semibold">Questionnaire URL</span>.
+                  Test contact is used by the Test recipient group.
+                </li>
+                <li>
+                  <span className="font-semibold">Daily game reminders</span> &mdash; see its own
+                  subsection below.
+                </li>
+              </ul>
 
               <h3 className="font-semibold mb-2">Compose</h3>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
-                  <span className="font-semibold">Email Settings</span> &mdash; Configure the From
-                  Name, Reply-To email, and Test email address. Save with the Save Settings button.
+                  <span className="font-semibold">Recipient Groups</span> &mdash; ALL, Contract
+                  Players, Subs, Owes Deposit (contract players whose deposits are below their
+                  tier&apos;s standard amount), Players (multi-select), or Test.
                 </li>
                 <li>
-                  <span className="font-semibold">Recipient Groups</span> &mdash; ALL (everyone with
-                  email), Contract Players (active non-subs), Subs (active substitutes), or Test
-                  (sends to test email only).
+                  <span className="font-semibold">Send Via</span> &mdash; four channel choices:
+                  <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
+                    <li><span className="font-semibold">Email + Text</span> &mdash; send to both channels for players who have both</li>
+                    <li><span className="font-semibold">Email only</span></li>
+                    <li><span className="font-semibold">Text only</span> &mdash; players without phone+carrier get email as fallback</li>
+                    <li><span className="font-semibold">Text → Email on failure</span> &mdash; try SMS first; if the SMS send returns an error, that recipient gets the message via email instead. Each recipient is delivered exactly once.</li>
+                  </ul>
                 </li>
                 <li>
-                  Click &ldquo;Show recipients&rdquo; to see who will receive the email.
+                  <span className="font-semibold">Mail-merge tokens</span> &mdash; type{" "}
+                  <code>{"{firstName}"}</code>, <code>{"{balance}"}</code>,{" "}
+                  <code>{"{depositDue}"}</code>, etc. in the subject or body and each recipient
+                  gets their own values substituted in. The Tip line below the Message textarea
+                  lists every available token.
                 </li>
                 <li>
-                  Optionally load a saved template to pre-fill subject and body.
+                  <span className="font-semibold">Conditional sections</span> &mdash; wrap text in{" "}
+                  <code>{"{#if extraFee}…{/if}"}</code> to hide that block for recipients whose
+                  value is zero or empty. Example:{" "}
+                  <code>{"{#if extraFee}You owe {extraFee} for extras.{/if}"}</code>.
                 </li>
                 <li>
-                  Click <span className="font-semibold">Send Email</span> to send. A confirmation
-                  dialog shows recipient count before sending.
+                  <span className="font-semibold">Include personal calendar link</span> &mdash;
+                  appends a per-recipient <code>webcal://</code> subscription link so the player
+                  can add a Brooklake Tennis calendar that auto-updates.
+                </li>
+                <li>
+                  Optionally attach files (email only). Size cap is 10&nbsp;MB total.
                 </li>
               </ul>
 
               <h3 className="font-semibold mb-2">Templates</h3>
-              <p className="text-sm leading-relaxed mb-4">
-                Create, edit, and delete reusable email templates with a name, subject, and body.
-                Load a template into the Compose tab with one click.
+              <p className="text-sm leading-relaxed mb-2">
+                Create, edit, and delete reusable templates with a name, subject, and body.
+                Templates are global (not per-season). The editor includes the same mail-merge
+                cheatsheet as Compose.
               </p>
+              <p className="text-sm leading-relaxed mb-4">
+                <span className="font-semibold">Load</span> drops a template into the Compose
+                tab&apos;s subject and body. The Daily Reminders section can also reference a
+                template by name.
+              </p>
+
+              <h3 className="font-semibold mb-2">Daily Game Reminders</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li>
+                  Once a day around <span className="font-semibold">6 PM Eastern</span>, every
+                  player who has a normal game tomorrow gets an automatic reminder. Send time is
+                  fixed at the cron level (Vercel Hobby plan only allows daily crons).
+                </li>
+                <li>
+                  <span className="font-semibold">Enable / disable</span> toggle in the Daily
+                  Reminders subsection of Email Settings.
+                </li>
+                <li>
+                  <span className="font-semibold">Channel</span> &mdash; same four options as
+                  Compose (Email+Text / Email only / Text only / Text → Email on failure).
+                </li>
+                <li>
+                  <span className="font-semibold">Template</span> &mdash; pick any saved template
+                  from the dropdown, or leave it on &ldquo;Built-in default&rdquo; and edit the
+                  inline textarea. Variables: <code>{"{firstName}"}</code>, <code>{"{date}"}</code>,
+                  <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>,
+                  <code>{"{group}"}</code>.
+                </li>
+                <li>
+                  <span className="font-semibold">Send test reminder</span> &mdash; pick a player
+                  and click &ldquo;Send test now&rdquo; to fire one reminder immediately using
+                  the same code path as the cron. If the player has any upcoming game, real
+                  game data is substituted; otherwise sample placeholders are used so you can
+                  preview formatting before the season starts.
+                </li>
+              </ul>
 
               <h3 className="font-semibold mb-2">History</h3>
               <p className="text-sm leading-relaxed">
-                View all sent emails with date, subject, group, recipient count, and from name.
+                View all sent emails / texts with date, subject, group, recipient count, and from
+                name. Daily-reminder runs appear as the &ldquo;Daily Reminder (auto)&rdquo; group.
                 Click any row to expand and see the full message body and recipient list.
               </p>
             </div>
@@ -1231,10 +1350,38 @@ export default function UserManualPage() {
                 queries the database directly via the application&apos;s database connection.
               </p>
 
+              <h3 className="font-semibold mb-2">Backup Destinations (in order tried)</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm ml-4 mb-4">
+                <li>
+                  <span className="font-semibold">Local filesystem</span> &mdash; works only when
+                  running the dev server from your laptop. Writes to the directories configured
+                  on Season Setup.
+                </li>
+                <li>
+                  <span className="font-semibold">Dropbox</span> &mdash; when the{" "}
+                  <code>DROPBOX_REFRESH_TOKEN</code>, <code>DROPBOX_APP_KEY</code>, and{" "}
+                  <code>DROPBOX_APP_SECRET</code> env vars are configured (in Vercel),
+                  every backup uploads to{" "}
+                  <code>/teich/tennis/&lt;season-label&gt;/scheduler/backup/&lt;folder&gt;/</code>.
+                  The season label (e.g. <code>2026-27</code>) is auto-derived from the
+                  season&apos;s start year. Older folders inside the season backup directory are
+                  auto-pruned so only the 3 most recent remain.
+                </li>
+                <li>
+                  <span className="font-semibold">ZIP download</span> &mdash; if neither
+                  destination above worked, the backup streams back to the browser as a ZIP that
+                  lands in your Downloads folder.
+                </li>
+              </ol>
+              <p className="text-sm leading-relaxed mb-4">
+                The result banner after Backup All lists every destination that succeeded,
+                including the Dropbox path, file count, and pruned-folder summary.
+              </p>
+
               <h3 className="font-semibold mb-2">Automatic Backup on Reset</h3>
               <p className="text-sm leading-relaxed mb-4">
-                When resetting the season, a backup ZIP is automatically downloaded before the
-                reset proceeds. If the backup fails, the reset is cancelled.
+                When resetting the season, a backup is automatically run before the reset
+                proceeds. If the backup fails completely, the reset is cancelled.
               </p>
 
               <h3 className="font-semibold mb-2">Restoring from Backup</h3>
