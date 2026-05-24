@@ -182,7 +182,15 @@ export function useBackup(options: UseBackupOptions = {}) {
       `✓ Backup saved (${totalRows} rows across ${Object.keys(counts).length} tables) to:\n` +
       lines.join("\n");
 
-    if (result.errors && result.errors.length > 0) {
+    // Only surface filesystem-failure noise if Dropbox didn't succeed.
+    // On Vercel the configured local paths can never be written anyway,
+    // and listing them as failures is misleading once Dropbox is the
+    // primary destination.
+    if (
+      !result.dropbox &&
+      result.errors &&
+      result.errors.length > 0
+    ) {
       summary +=
         "\n\nFailed locations:\n" +
         result.errors.map((e) => `  • ${e.baseDir}: ${e.error}`).join("\n");
