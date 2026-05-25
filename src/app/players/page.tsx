@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { formatPhone } from "@/lib/formatPhone";
-import { availableDays as availDays, canHaveExtras as canPlayerHaveExtras } from "@/lib/playerAvailability";
+import { availableDays as availDays, canHaveExtras as canPlayerHaveExtras, tennisDayNumbers } from "@/lib/playerAvailability";
 import { useBackup } from "@/lib/useBackup";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -914,18 +914,26 @@ export default function PlayersPage() {
             </div>
           </div>
 
-          {/* Blocked Days */}
+          {/* Blocked Days — only show day-of-week checkboxes that are part
+              of the configured tennis week (5/6/7 days). Non-tennis days
+              can't be "blocked" because the player wasn't going to play
+              that day anyway. */}
           <div className="mb-4">
-            <label className="block text-sm text-muted mb-2">Blocked Days</label>
+            <label className="block text-sm text-muted mb-2">
+              Blocked Days
+              <span className="ml-2 text-xs text-muted/70">
+                ({season?.daysPerWeek ?? 5}-day tennis week)
+              </span>
+            </label>
             <div className="flex gap-3">
-              {DAYS.map((day, i) => (
+              {tennisDayNumbers(season?.daysPerWeek ?? 5).map((i) => (
                 <label key={i} className="flex items-center gap-1 text-sm">
                   <input
                     type="checkbox"
                     checked={form.blockedDays.includes(i)}
                     onChange={() => toggleBlockedDay(i)}
                   />
-                  {day}
+                  {DAYS[i]}
                 </label>
               ))}
             </div>
