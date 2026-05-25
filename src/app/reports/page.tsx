@@ -234,22 +234,24 @@ export default function ReportsPage() {
           });
         }
 
-        // Composition violations: A+C without 2 B bridges
+        // Composition violations: any A+C combo (policy v1.122+ blocks all
+        // A+C compositions outright). Older games predating this policy
+        // may still contain A+C — those surface here so the admin can fix
+        // them manually.
         if (count === 4) {
           const levels = g.assignments.map((a: { playerId: number }) => playerMap.get(a.playerId)?.skillLevel ?? "B");
           const aCount = levels.filter((l: string) => l === "A").length;
-          const bCount = levels.filter((l: string) => l === "B").length;
           const cCount = levels.filter((l: string) => l === "C").length;
-          if (aCount > 0 && cCount > 0 && bCount < 2) {
+          if (aCount > 0 && cCount > 0) {
             const composition = levels.sort().join("");
             allViolations.push({
               rule: "Composition",
-              severity: "warning",
+              severity: "error",
               gameId: g.id,
               gameNumber: g.gameNumber,
               date: g.date,
               playerName: "",
-              detail: `A+C without 2B bridge (${composition})`,
+              detail: `A+C combo not allowed (${composition})`,
             });
           }
         }

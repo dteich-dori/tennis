@@ -576,26 +576,21 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // A+C frequency limit: check if player has had a recent A+C game within their interval
-        // cGamesOk players use their per-player cGamesLimit (weeks between A+C games)
-        // Non-cGamesOk A players use the season-level 1x/2x frequency settings
-        if (p.skillLevel === "A" && p.cGamesOk) {
-          const interval = p.cGamesLimit ?? Infinity;
-          const lastWeek = lastCGameWeek.get(p.id) ?? 0;
-          if (lastWeek > 0 && weekNumber - lastWeek < interval) {
-            for (const assignedId of assignedInGame) {
-              const ap = playerData.find((pl) => pl.id === assignedId);
-              if (ap?.skillLevel === "C") return false;
-            }
+        // ===== HARD A+C BLOCK =====
+        // Auto-assign never produces a game with BOTH an A and a C player.
+        // This eliminates AAAC, AABC, ABBC, ABCC, AACC, ACCC compositions.
+        // Slots may be left empty when no alternative exists — better empty
+        // than an A+C combo per the policy.
+        if (p.skillLevel === "A") {
+          for (const assignedId of assignedInGame) {
+            const ap = playerData.find((pl) => pl.id === assignedId);
+            if (ap?.skillLevel === "C") return false;
           }
         }
         if (p.skillLevel === "C") {
           for (const assignedId of assignedInGame) {
             const ap = playerData.find((pl) => pl.id === assignedId);
-            if (!ap || ap.skillLevel !== "A" || !ap.cGamesOk) continue;
-            const interval = ap.cGamesLimit ?? Infinity;
-            const lastWeek = lastCGameWeek.get(ap.id) ?? 0;
-            if (lastWeek > 0 && weekNumber - lastWeek < interval) return false;
+            if (ap?.skillLevel === "A") return false;
           }
         }
 
@@ -812,12 +807,15 @@ export async function POST(request: NextRequest) {
       return surplusA - surplusB; // tightest first
     });
 
-    // Composition quality score (0-4, higher is better):
+    // Composition quality score (0-4, higher is better). After v1.122 the
+    // 0-2 buckets are unreachable because A+C combos are hard-blocked at
+    // assignment time — kept here as defense-in-depth and for any legacy
+    // games loaded from older data that may still contain A+C combos.
     //   4 = all same level (AAAA, BBBB, CCCC)
     //   3 = adjacent levels only (AABB, ABBB, BBBC, BBCC)
-    //   2 = A+C with good bridge (2+ B's — e.g., ABBC)
-    //   1 = A+C with weak bridge (1 B — e.g., ABAC)
-    //   0 = A+C with no bridge (e.g., AACC, ACCC)
+    //   2 = A+C with good bridge (2+ B's — e.g., ABBC)        ← blocked
+    //   1 = A+C with weak bridge (1 B — e.g., AABC)            ← blocked
+    //   0 = A+C with no bridge (e.g., AAAC, AACC, ACCC, ABCC) ← blocked
     function getCompositionScore(pids: number[]): number {
       const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
       const aCount = levels.filter((l) => l === "A").length;
@@ -835,19 +833,14 @@ export async function POST(request: NextRequest) {
       return 0;
     }
 
-    // Check if a game has an A player (without cGamesOk) paired with a C player
-    // Check if a game roster has an A player at their A+C season cap paired with a C player
-    // Check if a game roster has a cGamesOk A player who recently had an A+C game (within their interval)
+    // Hard A+C policy: any 4-player roster that contains both an A and
+    // a C player is rejected. The day-level swap optimizer uses this to
+    // refuse any swap that would create such a combination.
     function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
+      const hasA = pls.some((p) => p?.skillLevel === "A");
       const hasC = pls.some((p) => p?.skillLevel === "C");
-      if (!hasC) return false;
-      return pls.some((p) => {
-        if (!p || p.skillLevel !== "A" || !p.cGamesOk) return false;
-        const interval = p.cGamesLimit ?? Infinity;
-        const lastWeek = lastCGameWeek.get(p.id) ?? 0;
-        return lastWeek > 0 && weekNumber - lastWeek < interval;
-      });
+      return hasA && hasC;
     }
 
     for (const [date, dateGames] of dayEntries) {
