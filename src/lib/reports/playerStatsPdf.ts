@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
 import { stampScheduleMark } from "./scheduleMark";
+import { contractLabel } from "@/lib/contractFrequency";
 
 interface PlayerStat {
   playerId: number;
@@ -196,9 +197,16 @@ export function generatePlayerStatsPdf(
       const deficit = Math.max(0, contractTotal36 - stat.std);
       const extra = Math.max(0, stat.std - (freq * Math.min(currentMaxWeek, 36)));
 
+      // For Don's group, append the contract tier inline to the name so it's
+      // visible at a glance (in addition to the Contract column).
+      const displayName =
+        group === "dons"
+          ? `${stat.lastName} (${contractLabel(stat.frequency)})`
+          : stat.lastName;
+
       const values = group === "dons"
         ? [
-            stat.lastName,
+            displayName,
             contractValue,
             String(stat.std),
             freq > 0 && deficit > 0 ? String(deficit) : "—",
