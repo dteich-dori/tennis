@@ -12,7 +12,7 @@ const links = [
   { href: "/schedule", label: "Schedule" },
   { href: "/re-assign", label: "Re-Assign" },
   { href: "/reports", label: "Reports" },
-  { href: "/budget", label: "Budget" },
+  { href: "/budget", label: "Bookkeeping" },
   { href: "/communications", label: "Communications" },
   { href: "/online-schedule", label: "Online Display" },
   { href: "/user-manual", label: "User Manual" },

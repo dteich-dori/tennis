@@ -460,6 +460,14 @@ export default function AccountsTab({ season, params }: Props) {
 
   return (
     <div>
+      <p className="text-xs text-muted mb-3">
+        <strong>Tip:</strong> click any player row to expand and see their
+        individual deposits. Each row is editable inline — change the amount,
+        date, or note and tab away to save. Use the red ✕ to delete a payment
+        outright (e.g. a bounced check). To partial-reverse a payment, add a
+        new row with a negative amount and a note like &ldquo;Check #123
+        bounced&rdquo;.
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="text-sm text-muted">
           <strong>Rates:</strong> 1x {fmt(params.priceDons1)} · 2x {fmt(params.priceDons2)} · Per extra game {fmt(params.priceExtraHour)} · Sub per game {fmt(params.priceSubs)}{" "}
