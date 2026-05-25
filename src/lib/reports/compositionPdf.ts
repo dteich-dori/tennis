@@ -315,14 +315,50 @@ export function generateCompositionPdf(
         doc.text(game.composition, compX, currentY + 11);
       }
 
-      // Truncate player text if too long
+      // Render players in the same level-order as the Comp column
+      // (playerDetails is already sorted A→B→C→D server-side). A-level
+      // names are bold so they pop out at a glance.
       const playersX = marginLeft + detailCols[0].width + detailCols[1].width + detailCols[2].width + 4;
       const maxPlayerWidth = detailCols[3].width - 8;
-      let playerText = game.players;
-      while (doc.getTextWidth(playerText) > maxPlayerWidth && playerText.length > 10) {
-        playerText = playerText.substring(0, playerText.length - 4) + "...";
+      if (game.playerDetails && game.playerDetails.length > 0) {
+        let px = playersX;
+        const baseY = currentY + 11;
+        const separator = ", ";
+        for (let pi = 0; pi < game.playerDetails.length; pi++) {
+          const pd = game.playerDetails[pi];
+          const isLast = pi === game.playerDetails.length - 1;
+          const label = `${pd.name} (${pd.level})`;
+          // Stop drawing if we'd overflow the column; let the last bit get
+          // an ellipsis approximation.
+          if (px - playersX > maxPlayerWidth - 10) {
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            doc.text("...", px, baseY);
+            break;
+          }
+          if (pd.level === "A") {
+            doc.setFont("helvetica", "bold");
+          } else {
+            doc.setFont("helvetica", "normal");
+          }
+          doc.setTextColor(0, 0, 0);
+          doc.text(label, px, baseY);
+          px += doc.getTextWidth(label);
+          if (!isLast) {
+            doc.setFont("helvetica", "normal");
+            doc.text(separator, px, baseY);
+            px += doc.getTextWidth(separator);
+          }
+        }
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+      } else {
+        let playerText = game.players;
+        while (doc.getTextWidth(playerText) > maxPlayerWidth && playerText.length > 10) {
+          playerText = playerText.substring(0, playerText.length - 4) + "...";
+        }
+        doc.text(playerText, playersX, currentY + 11);
       }
-      doc.text(playerText, playersX, currentY + 11);
       currentY += rowHeight;
     }
   }
