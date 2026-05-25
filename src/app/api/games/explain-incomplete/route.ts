@@ -328,11 +328,11 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     .join("");
   const hasA = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "A");
   const hasC = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "C");
-  const bCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "B").length;
-  const aCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "A").length;
-  const cCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "C").length;
-  const blockA = hasC && (bCount < 2 || aCount >= 1);
-  const blockC = hasA && (bCount < 2 || cCount >= 1);
+  // Policy v1.122+: A+C combos are HARD-BLOCKED. Any A is rejected when the
+  // game already has a C, and vice versa. The old soft "needs 2 B bridge"
+  // rule no longer applies.
+  const blockA = hasC;
+  const blockC = hasA;
 
   // Analyze each contracted player
   interface PlayerType {
@@ -427,11 +427,13 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     }
 
     // A/C composition penalty (soft — deprioritized, not blocked)
-    if (blockA && p.skillLevel === "A" && !p.cGamesOk) {
-      reasons.push("Composition penalty: A+C without 2B buffer (deprioritized, not blocked)");
+    // Hard A+C block — any A player rejected from a game that already has
+    // a C, and vice versa. No bridge counts, no cGamesOk override.
+    if (blockA && p.skillLevel === "A") {
+      reasons.push("A+C block: game already has a C player — A players are not allowed in this game.");
     }
     if (blockC && p.skillLevel === "C") {
-      reasons.push("Composition penalty: A+C without 2B buffer (deprioritized, not blocked)");
+      reasons.push("A+C block: game already has an A player — C players are not allowed in this game.");
     }
 
     // Do-not-pair with currently assigned players
