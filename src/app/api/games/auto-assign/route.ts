@@ -969,7 +969,31 @@ export async function POST(request: NextRequest) {
 
       // --- Unified assignment: all games treated equally, B and C in one pool ---
 
-      for (const game of openGames) {
+      // Sort openGames so "AACC-completion candidates" (games that already
+      // have exactly 2 C's + 0 B's + 0 A's, with 2 open slots) are filled
+      // FIRST. Otherwise the available must-play A players get consumed by
+      // other games on the same day before this game has a chance to claim
+      // them, leaving the C-only game incomplete.
+      const orderedGames = [...openGames].sort((g1, g2) => {
+        const score = (g: typeof g1) => {
+          const ids = gameAssignmentState.get(g.id) ?? [];
+          const levels = ids.map((id) => playerData.find((p) => p.id === id)?.skillLevel);
+          const a = levels.filter((l) => l === "A").length;
+          const b = levels.filter((l) => l === "B").length;
+          const c = levels.filter((l) => l === "C").length;
+          // Highest priority: needs exactly 2 A's to complete AACC
+          if (a === 0 && b === 0 && c === 2) return 0;
+          // Next priority: needs 1 more A (already has 1A, 0B, 2C)
+          if (a === 1 && b === 0 && c === 2) return 1;
+          // And the mirror: 2A 0B already and needs 2 C's
+          if (a === 2 && b === 0 && c === 0) return 2;
+          if (a === 2 && b === 0 && c === 1) return 3;
+          return 9;
+        };
+        return score(g1) - score(g2);
+      });
+
+      for (const game of orderedGames) {
         const existingCount = (gameAssignmentState.get(game.id) ?? []).length;
         for (let slot = existingCount + 1; slot <= 4; slot++) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
