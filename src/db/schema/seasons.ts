@@ -18,4 +18,10 @@ export const seasons = sqliteTable("seasons", {
   // Bumped by every /api/players POST / PUT / DELETE. Used together with
   // lastAutoAssignAt to detect "schedule may be stale" situations.
   lastPlayerChangeAt: text("last_player_change_at"),
+  // Monotonic counter that bumps every time the schedule changes
+  // (assignment add/remove, auto-assign, holiday toggle, ball balance,
+  // pairing balance, etc.). Stamped on every report PDF so the admin can
+  // tell at a glance whether two reports were generated against the same
+  // schedule snapshot.
+  scheduleVersion: integer("schedule_version").notNull().default(1),
 });

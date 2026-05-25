@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface PlayerStat {
   playerId: number;
@@ -29,7 +30,8 @@ export function generatePlayerStatsPdf(
   currentMaxWeek: number,
   group: "dons" | "solo",
   totalWeeks = 36,
-  incompleteGameCount = 0
+  incompleteGameCount = 0,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -52,6 +54,7 @@ export function generatePlayerStatsPdf(
   const title = `Player Statistics \u2014 Brooklake ${groupLabel} ${startYear} - ${endYear}`;
 
   function drawPageHeader() {
+    stampScheduleMark(doc, scheduleMark);
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);

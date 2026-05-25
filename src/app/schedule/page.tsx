@@ -23,6 +23,7 @@ interface Season {
   maxDeratedPerWeek: number | null;
   lastAutoAssignAt: string | null;
   lastPlayerChangeAt: string | null;
+  scheduleVersion?: number;
 }
 
 interface Assignment {
@@ -1015,7 +1016,17 @@ export default function SchedulePage() {
     <div className="flex gap-4">
       <div className="flex-1 min-w-0 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Schedule</h1>
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-2xl font-bold">Schedule</h1>
+          {season?.scheduleVersion != null && (
+            <span
+              className="text-xs text-muted font-mono"
+              title="Monotonic counter that bumps every time the schedule changes. Stamped on every report PDF so you can tell at a glance whether two reports were generated against the same snapshot."
+            >
+              Mark #{season.scheduleVersion}
+            </span>
+          )}
+        </div>
         <button
           onClick={backup.runBackup}
           disabled={backup.busy}
@@ -2135,7 +2146,8 @@ export default function SchedulePage() {
                         })),
                         season,
                         extraGamesData.currentMaxWeek,
-                        season.totalWeeks ?? 36
+                        season.totalWeeks ?? 36,
+                        (season as { scheduleVersion?: number }).scheduleVersion
                       );
                     }
                   }}

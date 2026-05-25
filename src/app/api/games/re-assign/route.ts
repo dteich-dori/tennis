@@ -159,6 +159,8 @@ export async function POST(request: NextRequest) {
     const filled = perWeekResults.reduce((s, r) => s + r.assignedCount, 0);
     const stillEmpty = perWeekResults.reduce((s, r) => s + r.unfilled, 0);
 
+    const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+    await bumpScheduleVersion(seasonId);
     return NextResponse.json({
       success: true,
       cleared,

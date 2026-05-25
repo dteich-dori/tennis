@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { formatPhone } from "@/lib/formatPhone";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface Player {
   firstName: string;
@@ -18,13 +19,15 @@ interface Season {
 
 export function generatePlayersListPdf(
   players: Player[],
-  season: Season
+  season: Season,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const startYear = season.startDate.substring(0, 4);
   const endYear = season.endDate.substring(0, 4);

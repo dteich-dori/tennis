@@ -284,6 +284,9 @@ export async function POST(request: NextRequest) {
       .set({ playerId: playerAId })
       .where(eq(gameAssignments.id, assignB.id));
 
+    const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+    await bumpScheduleVersion(gameA.seasonId);
+
     return NextResponse.json({
       success: true,
       swap: {

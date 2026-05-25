@@ -260,6 +260,8 @@ export async function DELETE(request: NextRequest) {
       deletedCount += result.length;
     }
 
+    const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+    await bumpScheduleVersion(seasonId);
     return NextResponse.json({ success: true, deletedCount });
   } catch (err) {
     console.error("[auto-assign-all DELETE] error:", err);

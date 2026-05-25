@@ -17,6 +17,7 @@ interface Season {
   startDate: string;
   endDate: string;
   totalWeeks: number;
+  scheduleVersion?: number;
 }
 
 interface Player {
@@ -100,7 +101,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePlayersListPdf(activePlayers, season);
+      generatePlayersListPdf(activePlayers, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Players List report.");
     }
@@ -128,7 +129,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group, season.totalWeeks ?? 36, data.incompleteGameCount ?? 0);
+      generatePlayerStatsPdf(data.stats as Parameters<typeof generatePlayerStatsPdf>[0], season, data.currentMaxWeek, group, season.totalWeeks ?? 36, data.incompleteGameCount ?? 0, season.scheduleVersion);
     } catch {
       setError("Failed to generate Player Statistics report.");
     }
@@ -167,9 +168,9 @@ export default function ReportsPage() {
       const allPlayers = (await playersRes.json()) as Player[];
 
       if (variant === "compact") {
-        generateGamesByDatePdf(allGames, allPlayers, season, gamesWeekStart, gamesWeekEnd);
+        generateGamesByDatePdf(allGames, allPlayers, season, gamesWeekStart, gamesWeekEnd, season.scheduleVersion);
       } else {
-        generateGamesByDateWorksheetPdf(allGames, allPlayers, season, gamesWeekStart, gamesWeekEnd);
+        generateGamesByDateWorksheetPdf(allGames, allPlayers, season, gamesWeekStart, gamesWeekEnd, season.scheduleVersion);
       }
     } catch {
       setError("Failed to generate Games By Date report.");
@@ -260,7 +261,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateExceptionsPdf(allGames, allPlayers, allViolations, season, totalWeeks);
+      generateExceptionsPdf(allGames, allPlayers, allViolations, season, totalWeeks, season.scheduleVersion);
     } catch {
       setError("Failed to generate exceptions report.");
     }
@@ -316,7 +317,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateSoloGamesByDatePdf(allGames, allPlayers, season);
+      generateSoloGamesByDatePdf(allGames, allPlayers, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Solo Games By Date report.");
     }
@@ -348,7 +349,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season);
+      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Pairing Matrix report.");
     }
@@ -385,7 +386,7 @@ export default function ReportsPage() {
         ? ((await courtsRes.json()) as { dayOfWeek: number; isSolo: boolean }[])
         : [];
 
-      generatePotentialPlayersPdf(activePlayers, season, courtSlots);
+      generatePotentialPlayersPdf(activePlayers, season, courtSlots, season.scheduleVersion);
     } catch {
       setError("Failed to generate Player List Internal report.");
     }
@@ -413,7 +414,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateCourtSchedulePdf(courts, season);
+      generateCourtSchedulePdf(courts, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Court Schedule report.");
     }
@@ -451,7 +452,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateGamesByPlayerPdf(activePlayers, allPlayers, normalGames, season);
+      generateGamesByPlayerPdf(activePlayers, allPlayers, normalGames, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Games By Player report.");
     }
@@ -500,7 +501,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateWeeklyGameCountsPdf(allPlayers, allGames, season);
+      generateWeeklyGameCountsPdf(allPlayers, allGames, season, season.scheduleVersion);
     } catch {
       setError("Failed to generate Weekly Game Counts report.");
     }
@@ -528,7 +529,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generateCompositionPdf(data);
+      generateCompositionPdf(data, season.scheduleVersion);
     } catch {
       setError("Failed to generate Composition Analysis report.");
     }

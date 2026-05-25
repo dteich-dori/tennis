@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface PlayerInfo {
   id: number;
@@ -29,13 +30,15 @@ export function generatePairingMatrixPdf(
   players: PlayerInfo[],
   pairings: Pairing[],
   doNotPairs: DoNotPair[],
-  season: Season
+  season: Season,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

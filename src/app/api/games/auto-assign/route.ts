@@ -1777,12 +1777,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Stamp the season so the Schedule page knows when auto-assign last ran
-    // and can warn if any player change happened after this moment.
+    // and can warn if any player change happened after this moment. Also
+    // bump the schedule_version counter so reports stamped after this run
+    // are clearly marked as a newer snapshot.
     try {
       const { seasons } = await import("@/db/schema");
+      const { sql: sqlTpl } = await import("drizzle-orm");
       await database
         .update(seasons)
-        .set({ lastAutoAssignAt: new Date().toISOString() })
+        .set({
+          lastAutoAssignAt: new Date().toISOString(),
+          scheduleVersion: sqlTpl`schedule_version + 1`,
+        })
         .where(eq(seasons.id, seasonId));
     } catch (stampErr) {
       console.error("[auto-assign] failed to stamp lastAutoAssignAt:", stampErr);

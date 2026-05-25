@@ -754,6 +754,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+    await bumpScheduleVersion(seasonId);
     return NextResponse.json({
       success: true,
       assignedCount: totalAssigned,

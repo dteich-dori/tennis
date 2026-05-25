@@ -236,6 +236,21 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "schedule-version",
+    description: "seasons: add schedule_version column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE seasons ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

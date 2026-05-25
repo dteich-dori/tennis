@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { gameAssignments } from "@/db/schema";
+import { gameAssignments, games } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
+
+/** Look up the seasonId for a given game id; null if game not found. */
+async function seasonIdForGame(
+  database: Awaited<ReturnType<typeof db>>,
+  gameId: number
+): Promise<number | null> {
+  const [row] = await database
+    .select({ seasonId: games.seasonId })
+    .from(games)
+    .where(eq(games.id, gameId));
+  return row?.seasonId ?? null;
+}
 
 /**
  * POST /api/games/assign
@@ -37,6 +50,8 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
+    const sid = await seasonIdForGame(database, gameId);
+    if (sid) await bumpScheduleVersion(sid);
     return NextResponse.json(result[0], { status: 201 });
   } catch (err) {
     console.error("[games/assign POST] error:", err);
@@ -62,18 +77,29 @@ export async function DELETE(request: NextRequest) {
 
     const database = await db();
 
+    let touchedSeasonId: number | null = null;
+
     if (gameId) {
       // Clear all assignments for the game
+      const gid = parseInt(gameId);
+      touchedSeasonId = await seasonIdForGame(database, gid);
       await database
         .delete(gameAssignments)
-        .where(eq(gameAssignments.gameId, parseInt(gameId)));
+        .where(eq(gameAssignments.gameId, gid));
     } else {
-      // Remove a single assignment
+      // Remove a single assignment — look up its game first
+      const aid = parseInt(id!);
+      const [assignment] = await database
+        .select({ gameId: gameAssignments.gameId })
+        .from(gameAssignments)
+        .where(eq(gameAssignments.id, aid));
+      if (assignment) touchedSeasonId = await seasonIdForGame(database, assignment.gameId);
       await database
         .delete(gameAssignments)
-        .where(eq(gameAssignments.id, parseInt(id!)));
+        .where(eq(gameAssignments.id, aid));
     }
 
+    if (touchedSeasonId) await bumpScheduleVersion(touchedSeasonId);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[games/assign DELETE] error:", err);

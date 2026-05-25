@@ -443,7 +443,8 @@ export default function AccountsTab({ season, params }: Props) {
         priceDons2: params.priceDons2,
         priceExtraHour: params.priceExtraHour,
         priceSubs: params.priceSubs,
-      }
+      },
+      (season as { scheduleVersion?: number }).scheduleVersion
     );
   };
 

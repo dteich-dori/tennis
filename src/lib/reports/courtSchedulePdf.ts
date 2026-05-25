@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface CourtSchedule {
   id: number;
@@ -30,13 +31,15 @@ function formatTime(time: string): string {
 
 export function generateCourtSchedulePdf(
   courts: CourtSchedule[],
-  season: Season
+  season: Season,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

@@ -331,6 +331,12 @@ export async function POST(request: NextRequest) {
       playerSummary.sort((a, b) => a.playerId - b.playerId);
     }
 
+    // Only counts as a schedule mutation when we actually applied swaps.
+    if ((shouldApply ?? false) && netSwaps.length > 0) {
+      const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+      await bumpScheduleVersion(seasonId);
+    }
+
     return NextResponse.json({
       swaps: netSwaps.length,
       applied: shouldApply ?? false,

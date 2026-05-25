@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface Assignment {
   id: number;
@@ -61,7 +62,8 @@ export function generateGamesByDatePdf(
   players: Player[],
   season: Season,
   weekStart: number,
-  weekEnd: number
+  weekEnd: number,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -81,6 +83,7 @@ export function generateGamesByDatePdf(
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
   function drawPageHeader() {
+    stampScheduleMark(doc, scheduleMark);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -361,7 +364,8 @@ export function generateGamesByDatePdf(
 export function generateSoloGamesByDatePdf(
   games: Game[],
   players: Player[],
-  season: Season
+  season: Season,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -381,6 +385,7 @@ export function generateSoloGamesByDatePdf(
   const title = `Games By Date \u2014 Brooklake Solo Group ${startYear} - ${endYear}`;
 
   function drawPageHeader() {
+    stampScheduleMark(doc, scheduleMark);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -553,7 +558,8 @@ export function generateGamesByDateWorksheetPdf(
   players: Player[],
   season: Season,
   weekStart: number,
-  weekEnd: number
+  weekEnd: number,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -573,6 +579,7 @@ export function generateGamesByDateWorksheetPdf(
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
   function drawPageHeader(weekNum: number) {
+    stampScheduleMark(doc, scheduleMark);
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);

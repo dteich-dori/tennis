@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
+import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
 
 /**
  * DELETE /api/games/clear-assignments
@@ -45,6 +46,7 @@ export async function DELETE(request: NextRequest) {
       deletedCount += result.length;
     }
 
+    await bumpScheduleVersion(seasonId);
     return NextResponse.json({ success: true, deletedCount });
   } catch (err) {
     console.error("[clear-assignments DELETE] error:", err);

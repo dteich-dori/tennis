@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 import { weeklyContractedGames, contractLabel } from "@/lib/contractFrequency";
 
 interface PlayerInfo {
@@ -38,9 +39,11 @@ interface Season {
 export function generateWeeklyGameCountsPdf(
   players: PlayerInfo[],
   games: GameLite[],
-  season: Season
+  season: Season,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+  stampScheduleMark(doc, scheduleMark);
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -98,6 +101,7 @@ export function generateWeeklyGameCountsPdf(
   const headerRowHeight = 14;
 
   const drawHeader = (y: number, pageLabel: string): number => {
+    stampScheduleMark(doc, scheduleMark);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.text(

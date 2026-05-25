@@ -86,6 +86,8 @@ export async function POST(request: NextRequest) {
         .where(and(eq(holidays.seasonId, seasonId), eq(holidays.date, date)));
     }
 
+    const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+    await bumpScheduleVersion(seasonId);
     return NextResponse.json({
       success: true,
       date,

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -24,13 +25,15 @@ interface CourtSlot {
 export function generatePotentialPlayersPdf(
   players: Player[],
   season: Season,
-  courtSlots: CourtSlot[]
+  courtSlots: CourtSlot[],
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   // Page dimensions
   const pageWidth = doc.internal.pageSize.getWidth(); // 612

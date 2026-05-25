@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface AccountRow {
   lastName: string;
@@ -37,13 +38,15 @@ const fmt$ = (n: number): string => {
 export function generateAccountsSummaryPdf(
   rows: AccountRow[],
   season: Season,
-  rates: RatesSummary
+  rates: RatesSummary,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const startYear = season.startDate.substring(0, 4);
   const endYear = season.endDate.substring(0, 4);

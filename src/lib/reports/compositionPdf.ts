@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface CompositionRow {
   compType: string;
@@ -25,12 +26,16 @@ interface CompositionData {
   playerCounts: { level: string; count: number }[];
 }
 
-export function generateCompositionPdf(data: CompositionData): void {
+export function generateCompositionPdf(
+  data: CompositionData,
+  scheduleMark?: number
+): void {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

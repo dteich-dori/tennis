@@ -173,6 +173,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (result.mutations.length > 0) {
+      const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
+      await bumpScheduleVersion(seasonId);
+    }
     return NextResponse.json({
       swaps: result.swaps,
       mutations: result.mutations.length,

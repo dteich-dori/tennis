@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
+import { stampScheduleMark } from "./scheduleMark";
 
 interface ExtraGameRow {
   playerName: string;
@@ -20,13 +21,15 @@ export function generateExtraGamesPdf(
   rows: ExtraGameRow[],
   season: Season,
   currentMaxWeek: number,
-  totalWeeks = 36
+  totalWeeks = 36,
+  scheduleMark?: number
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "pt",
     format: "letter",
   });
+  stampScheduleMark(doc, scheduleMark);
 
   const startYear = season.startDate.substring(0, 4);
   const endYear = season.endDate.substring(0, 4);
