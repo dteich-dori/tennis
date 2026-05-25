@@ -341,7 +341,10 @@ export async function POST(request: NextRequest) {
     for (const p of contractedPlayers) {
       const freq = weeklyContractedGames(p.contractedFrequency);
       if (freq === 0) continue;
-      if (p.skillLevel === "C") continue; // no vacation makeup for C players
+      // (Previously skipped C players here. Removed in v1.124: a C player
+      // with vacation absences still needs makeup games, and the new
+      // no-A+C policy means their makeup slots are always C+C+C or
+      // C+C+B+B — no compositional reason to exclude them.)
 
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
       const totalTarget = freq * contractWeeks;
