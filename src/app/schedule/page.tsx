@@ -2340,7 +2340,7 @@ export default function SchedulePage() {
                             {isCompositionViolation ? (
                               <>A+C without 2 B-level bridges — need to swap an <span className="font-semibold">{comp.includes("A") && (comp.match(/A/g) ?? []).length > 1 ? "A" : comp.includes("C") && (comp.match(/C/g) ?? []).length > 1 ? "C" : "A or C"}</span> player for a <span className="font-semibold">B</span> player.</>
                             ) : (
-                              <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} who owe{data.emptySlots === 1 ? "s" : ""} games this week.</>
+                              <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} that {data.emptySlots === 1 ? "is" : "are"} owed games this week.</>
                             )}
                           </div>
                         </div>
@@ -2358,10 +2358,10 @@ export default function SchedulePage() {
                           return (
                             <div className="px-3 py-3 text-xs text-muted text-center">
                               {isCompositionViolation
-                                ? "No B players owe games this week — no swap available."
+                                ? "No B players are owed games this week — no swap available."
                                 : hiddenCount > 0
-                                  ? `No eligible players (${hiddenCount} owed games but blocked by vacation, A+C, weekly quota, etc.)`
-                                  : "No players owe games this week."}
+                                  ? `No eligible players (${hiddenCount} are owed games but blocked by vacation, A+C, weekly quota, etc.)`
+                                  : "No players are owed games this week."}
                             </div>
                           );
                         }
@@ -2369,7 +2369,7 @@ export default function SchedulePage() {
                           <div>
                             <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
                               <span>
-                                {isCompositionViolation ? "B Players Who Owe Games" : "Players Who Owe Games"} ({eligibleOnly.length})
+                                {isCompositionViolation ? "B Players Who Are Owed Games" : "Players Who Are Owed Games"} ({eligibleOnly.length})
                               </span>
                               {hiddenCount > 0 && (
                                 <span className="text-[9px] text-muted/70 font-normal normal-case tracking-normal">
