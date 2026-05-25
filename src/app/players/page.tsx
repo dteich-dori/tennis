@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { formatPhone } from "@/lib/formatPhone";
+import { availableDays as availDays, canHaveExtras as canPlayerHaveExtras } from "@/lib/playerAvailability";
 import { useBackup } from "@/lib/useBackup";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -255,6 +256,18 @@ export default function PlayersPage() {
         const err = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
         setFormError(err.error || "Failed to save player");
         return;
+      }
+
+      // Inspect response for auto-downgrade notice from the server.
+      const data = (await res.json().catch(() => ({}))) as {
+        autoDowngraded?: boolean;
+        originalContract?: string;
+        finalContract?: string;
+      };
+      if (data.autoDowngraded) {
+        alert(
+          `Contract auto-downgraded from ${data.originalContract} to ${data.finalContract ?? data.originalContract} — the player's available days don't leave room for extras. Update their blocked days first if you want to keep them at "+".`
+        );
       }
 
       resetForm();
@@ -716,10 +729,38 @@ export default function PlayersPage() {
               >
                 <option value="0">Sub</option>
                 <option value="1">1x/week</option>
-                <option value="1+">1+/week (also subs)</option>
+                <option
+                  value="1+"
+                  disabled={!canPlayerHaveExtras("1+", form.blockedDays.length)}
+                >
+                  1+/week (also subs)
+                </option>
                 <option value="2">2x/week</option>
-                <option value="2+">2+/week</option>
+                <option
+                  value="2+"
+                  disabled={!canPlayerHaveExtras("2+", form.blockedDays.length)}
+                >
+                  2+/week
+                </option>
               </select>
+              {!canPlayerHaveExtras(form.contractedFrequency, form.blockedDays.length) && (
+                <p className="text-xs text-amber-700 mt-1">
+                  ⚠ Only {availDays(form.blockedDays.length)} day(s) available
+                  — no room for extras. Save will auto-downgrade to{" "}
+                  {form.contractedFrequency === "1+" ? "1x" : "2x"}.
+                </p>
+              )}
+              {(form.contractedFrequency === "1+" ||
+                form.contractedFrequency === "2+") &&
+                canPlayerHaveExtras(
+                  form.contractedFrequency,
+                  form.blockedDays.length
+                ) && (
+                  <p className="text-xs text-muted mt-1">
+                    Available days/week: {availDays(form.blockedDays.length)}{" "}
+                    (room for extras).
+                  </p>
+                )}
             </div>
             <div>
               <label className="block text-sm text-muted mb-1">Skill Level</label>

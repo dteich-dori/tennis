@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
+import { downgradeContractIfNeeded } from "@/lib/playerAvailability";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PlayerBody = any;
@@ -223,6 +224,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Auto-downgrade "+ tier" contracts when the player's availability
+    // (blockedDays) leaves no room for extras. E.g. a 2+ player who's only
+    // available 2 days/week becomes "2" automatically.
+    const incomingFreq = contractedFrequency ?? "1";
+    const blockedDaysCount = Array.isArray(blockedDays) ? blockedDays.length : 0;
+    const effectiveFreq = downgradeContractIfNeeded(incomingFreq, blockedDaysCount);
+    const autoDowngraded = effectiveFreq !== incomingFreq;
+
     const result = await database
       .insert(players)
       .values({
@@ -234,7 +243,7 @@ export async function POST(request: NextRequest) {
         email,
         carrier: carrier || null,
         isActive: isActive ?? true,
-        contractedFrequency: contractedFrequency ?? "1",
+        contractedFrequency: effectiveFreq,
         skillLevel: skillLevel ?? "C",
         noConsecutiveDays: noConsecutiveDays ?? false,
         isDerated: isDerated ?? false,
@@ -293,7 +302,16 @@ export async function POST(request: NextRequest) {
     }
 
     await markPlayerChange(database, seasonId);
-    return NextResponse.json(newPlayer, { status: 201 });
+    return NextResponse.json(
+      autoDowngraded
+        ? {
+            ...newPlayer,
+            autoDowngraded: true,
+            originalContract: incomingFreq,
+          }
+        : newPlayer,
+      { status: 201 }
+    );
   } catch (err) {
     console.error("[players POST] error:", err);
     return NextResponse.json(
@@ -380,6 +398,27 @@ export async function PUT(request: NextRequest) {
           ? excludedFromAutoAssign
           : currentPlayer.excludedFromAutoAssign,
     };
+
+    // Auto-downgrade "+ tier" when the resulting blocked-day set leaves no
+    // room for extras. blockedDays may be the incoming request value OR
+    // the current DB value if the update didn't touch them.
+    let effectiveBlockedCount: number;
+    if (Array.isArray(blockedDays)) {
+      effectiveBlockedCount = blockedDays.length;
+    } else {
+      const existingBlocked = await database
+        .select({ dayOfWeek: playerBlockedDays.dayOfWeek })
+        .from(playerBlockedDays)
+        .where(eq(playerBlockedDays.playerId, id));
+      effectiveBlockedCount = existingBlocked.length;
+    }
+    const requestedFreq = merged.contractedFrequency;
+    const finalFreq = downgradeContractIfNeeded(
+      requestedFreq,
+      effectiveBlockedCount
+    );
+    const autoDowngraded = finalFreq !== requestedFreq;
+    merged.contractedFrequency = finalFreq;
 
     // Check for duplicate name (excluding this player, scoped to season)
     const nameDup = await database
@@ -470,7 +509,12 @@ export async function PUT(request: NextRequest) {
     }
 
     await markPlayerChange(database, currentPlayer.seasonId);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      ...(autoDowngraded
+        ? { autoDowngraded: true, originalContract: requestedFreq, finalContract: finalFreq }
+        : {}),
+    });
   } catch (err) {
     console.error("[players PUT] error:", err);
     return NextResponse.json(
