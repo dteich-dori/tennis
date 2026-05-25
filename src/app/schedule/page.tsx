@@ -2346,41 +2346,54 @@ export default function SchedulePage() {
                         </div>
                       )}
 
-                      {/* Candidates — only shown when there are issues */}
-                      {(isIncomplete || isCompositionViolation) && (candidates.length > 0 ? (
-                        <div>
-                          <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                            {isCompositionViolation ? "B Players Who Owe Games" : "Players Who Owe Games"} ({candidates.length})
-                          </div>
-                          <div className="divide-y divide-border max-h-56 overflow-y-auto">
-                            {candidates.map((p, i) => (
-                              <div key={i} className="px-3 py-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`font-mono font-bold text-[10px] ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
-                                    {p.skillLevel ?? "?"}
-                                  </span>
-                                  <span className="text-xs font-medium">{p.name}</span>
-                                  <span className="text-[10px] text-muted ml-auto">is owed {p.owed}</span>
-                                </div>
-                                {p.reasons.filter((r) => !r.startsWith("Eligible")).map((reason, j) => (
-                                  <div key={j} className={`text-[11px] ml-4 ${p.eligible ? "text-green-600" : "text-red-500"}`}>
-                                    {p.eligible ? "✓ Eligible" : reason}
+                      {/* Candidates — only eligible players shown (blocked
+                          ones suppressed to keep the list focused on who
+                          could actually fill the slot). hiddenCount surfaces
+                          the count of suppressed entries so the admin knows
+                          there were "owed but blocked" players. */}
+                      {(isIncomplete || isCompositionViolation) && (() => {
+                        const eligibleOnly = candidates.filter((p) => p.eligible);
+                        const hiddenCount = candidates.length - eligibleOnly.length;
+                        if (eligibleOnly.length === 0) {
+                          return (
+                            <div className="px-3 py-3 text-xs text-muted text-center">
+                              {isCompositionViolation
+                                ? "No B players owe games this week — no swap available."
+                                : hiddenCount > 0
+                                  ? `No eligible players (${hiddenCount} owed games but blocked by vacation, A+C, weekly quota, etc.)`
+                                  : "No players owe games this week."}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div>
+                            <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
+                              <span>
+                                {isCompositionViolation ? "B Players Who Owe Games" : "Players Who Owe Games"} ({eligibleOnly.length})
+                              </span>
+                              {hiddenCount > 0 && (
+                                <span className="text-[9px] text-muted/70 font-normal normal-case tracking-normal">
+                                  + {hiddenCount} blocked (hidden)
+                                </span>
+                              )}
+                            </div>
+                            <div className="divide-y divide-border max-h-56 overflow-y-auto">
+                              {eligibleOnly.map((p, i) => (
+                                <div key={i} className="px-3 py-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-mono font-bold text-[10px] ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
+                                      {p.skillLevel ?? "?"}
+                                    </span>
+                                    <span className="text-xs font-medium">{p.name}</span>
+                                    <span className="text-[10px] text-muted ml-auto">is owed {p.owed}</span>
                                   </div>
-                                ))}
-                                {p.eligible && (
-                                  <div className="text-[11px] ml-4 text-green-600">✓ Eligible — no blocking constraint</div>
-                                )}
-                              </div>
-                            ))}
+                                  <div className="text-[11px] ml-4 text-green-600">✓ Eligible</div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="px-3 py-3 text-xs text-muted text-center">
-                          {isCompositionViolation
-                            ? "No B players owe games this week — no swap available."
-                            : "No players owe games this week."}
-                        </div>
-                      ))}
+                        );
+                      })()}
 
                       {/* No issues — compact confirmation */}
                       {!isIncomplete && !isCompositionViolation && (
