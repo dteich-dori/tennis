@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id: number; startDate: string; maxDeratedPerWeek?: number | null; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null };
-    const { id, startDate, maxDeratedPerWeek, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason } = body;
+    const body = (await request.json()) as { id: number; startDate: string; maxDeratedPerWeek?: number | null; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number };
+    const { id, startDate, maxDeratedPerWeek, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek } = body;
 
     const date = new Date(startDate + "T00:00:00");
     if (date.getDay() !== 1) {
@@ -90,6 +90,10 @@ export async function PUT(request: NextRequest) {
         maxCGamesPerWeek: maxCGamesPerWeek !== undefined ? maxCGamesPerWeek : undefined,
         maxCGamesPerWeek1x: maxCGamesPerWeek1x !== undefined ? maxCGamesPerWeek1x : undefined,
         maxACGamesPerSeason: maxACGamesPerSeason !== undefined ? maxACGamesPerSeason : undefined,
+        daysPerWeek:
+          daysPerWeek !== undefined
+            ? (daysPerWeek === 7 ? 7 : daysPerWeek === 6 ? 6 : 5)
+            : undefined,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(seasons.id, id))

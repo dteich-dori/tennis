@@ -24,4 +24,8 @@ export const seasons = sqliteTable("seasons", {
   // tell at a glance whether two reports were generated against the same
   // schedule snapshot.
   scheduleVersion: integer("schedule_version").notNull().default(1),
+  // Number of days per tennis week. Default 5 = Mon–Fri (weekend excluded).
+  // 6 = Mon–Sat, 7 = Sun–Sat. Used to compute "available days/week" for the
+  // contract-vs-availability reconciliation (see lib/playerAvailability.ts).
+  daysPerWeek: integer("days_per_week").notNull().default(5),
 });

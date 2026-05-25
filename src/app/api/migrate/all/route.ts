@@ -251,6 +251,21 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "days-per-week",
+    description: "seasons: add days_per_week column (default 5 = Mon-Fri)",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE seasons ADD COLUMN days_per_week INTEGER NOT NULL DEFAULT 5`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
 ];
 
 export async function GET() {

@@ -3,7 +3,7 @@ import { db } from "@/db/getDb";
 import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
-import { downgradeContractIfNeeded } from "@/lib/playerAvailability";
+import { downgradeContractIfNeeded, clampDaysPerWeek } from "@/lib/playerAvailability";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PlayerBody = any;
@@ -225,11 +225,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-downgrade "+ tier" contracts when the player's availability
-    // (blockedDays) leaves no room for extras. E.g. a 2+ player who's only
-    // available 2 days/week becomes "2" automatically.
+    // (blockedDays vs season.daysPerWeek) leaves no room for extras.
     const incomingFreq = contractedFrequency ?? "1";
-    const blockedDaysCount = Array.isArray(blockedDays) ? blockedDays.length : 0;
-    const effectiveFreq = downgradeContractIfNeeded(incomingFreq, blockedDaysCount);
+    const blockedDayList: number[] = Array.isArray(blockedDays) ? blockedDays : [];
+    const [seasonRow] = await database
+      .select({ daysPerWeek: seasons.daysPerWeek })
+      .from(seasons)
+      .where(eq(seasons.id, seasonId));
+    const daysPerWeek = clampDaysPerWeek(seasonRow?.daysPerWeek ?? 5);
+    const effectiveFreq = downgradeContractIfNeeded(
+      incomingFreq,
+      blockedDayList,
+      daysPerWeek
+    );
     const autoDowngraded = effectiveFreq !== incomingFreq;
 
     const result = await database
@@ -402,20 +410,26 @@ export async function PUT(request: NextRequest) {
     // Auto-downgrade "+ tier" when the resulting blocked-day set leaves no
     // room for extras. blockedDays may be the incoming request value OR
     // the current DB value if the update didn't touch them.
-    let effectiveBlockedCount: number;
+    let effectiveBlockedDays: number[];
     if (Array.isArray(blockedDays)) {
-      effectiveBlockedCount = blockedDays.length;
+      effectiveBlockedDays = blockedDays;
     } else {
       const existingBlocked = await database
         .select({ dayOfWeek: playerBlockedDays.dayOfWeek })
         .from(playerBlockedDays)
         .where(eq(playerBlockedDays.playerId, id));
-      effectiveBlockedCount = existingBlocked.length;
+      effectiveBlockedDays = existingBlocked.map((b) => b.dayOfWeek);
     }
+    const [seasonRowPut] = await database
+      .select({ daysPerWeek: seasons.daysPerWeek })
+      .from(seasons)
+      .where(eq(seasons.id, currentPlayer.seasonId));
+    const daysPerWeekPut = clampDaysPerWeek(seasonRowPut?.daysPerWeek ?? 5);
     const requestedFreq = merged.contractedFrequency;
     const finalFreq = downgradeContractIfNeeded(
       requestedFreq,
-      effectiveBlockedCount
+      effectiveBlockedDays,
+      daysPerWeekPut
     );
     const autoDowngraded = finalFreq !== requestedFreq;
     merged.contractedFrequency = finalFreq;

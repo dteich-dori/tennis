@@ -13,6 +13,7 @@ interface Season {
   maxCGamesPerWeek: number | null;
   maxCGamesPerWeek1x: number | null;
   maxACGamesPerSeason: number | null;
+  daysPerWeek?: number;
 }
 
 interface Holiday {
@@ -54,6 +55,7 @@ export default function SeasonPage() {
   const [maxCGamesPerWeek, setMaxCGamesPerWeek] = useState<string>("1");
   const [maxCGamesPerWeek1x, setMaxCGamesPerWeek1x] = useState<string>("4");
   const [maxACGamesPerSeason, setMaxACGamesPerSeason] = useState<string>("1");
+  const [daysPerWeek, setDaysPerWeek] = useState<number>(5);
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -131,6 +133,7 @@ export default function SeasonPage() {
       setMaxCGamesPerWeek(latest.maxCGamesPerWeek != null ? String(latest.maxCGamesPerWeek) : "none");
       setMaxCGamesPerWeek1x(latest.maxCGamesPerWeek1x != null ? String(latest.maxCGamesPerWeek1x) : "none");
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
+      setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
     }
   }, []);
 
@@ -379,13 +382,13 @@ export default function SeasonPage() {
       await fetch("/api/seasons", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: activeSeason.id, startDate, maxDeratedPerWeek: deratedValue }),
+        body: JSON.stringify({ id: activeSeason.id, startDate, maxDeratedPerWeek: deratedValue, daysPerWeek }),
       });
     } else {
       await fetch("/api/seasons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate, maxDeratedPerWeek: deratedValue }),
+        body: JSON.stringify({ startDate, maxDeratedPerWeek: deratedValue, daysPerWeek }),
       });
     }
     await loadSeasons();
@@ -1222,6 +1225,31 @@ export default function SeasonPage() {
             Total Don weekly contracts sold: {weeklyContractsSold} ({weeklyGamesNeeded} games) &nbsp;&nbsp; Total weekly games available (w/o Solo): {weeklyGamesAvailable}
           </div>
         )}
+
+        {/* Tennis-week length picker */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
+          <div className="flex gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                Tennis week length
+              </label>
+              <select
+                value={daysPerWeek}
+                onChange={(e) => setDaysPerWeek(parseInt(e.target.value))}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Number of days per week tennis is played. Default 5 = Mon–Fri (weekend excluded). Used by the contract vs availability check on the Players page."
+              >
+                <option value={5}>5 days (Mon–Fri)</option>
+                <option value={6}>6 days (Mon–Sat)</option>
+                <option value={7}>7 days (Sun–Sat)</option>
+              </select>
+              <p className="text-xs text-blue-700 mt-1">
+                Used to decide whether a player&apos;s blocked days leave room
+                for a &quot;+&quot; contract tier. Save (button at top) to apply.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Derated Player Settings - highlighted box */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">

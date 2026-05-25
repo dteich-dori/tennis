@@ -56,6 +56,7 @@ interface Season {
   id: number;
   startDate: string;
   endDate: string;
+  daysPerWeek?: number;
 }
 
 interface VacationRange {
@@ -731,22 +732,23 @@ export default function PlayersPage() {
                 <option value="1">1x/week</option>
                 <option
                   value="1+"
-                  disabled={!canPlayerHaveExtras("1+", form.blockedDays.length)}
+                  disabled={!canPlayerHaveExtras("1+", form.blockedDays, season?.daysPerWeek ?? 5)}
                 >
                   1+/week (also subs)
                 </option>
                 <option value="2">2x/week</option>
                 <option
                   value="2+"
-                  disabled={!canPlayerHaveExtras("2+", form.blockedDays.length)}
+                  disabled={!canPlayerHaveExtras("2+", form.blockedDays, season?.daysPerWeek ?? 5)}
                 >
                   2+/week
                 </option>
               </select>
-              {!canPlayerHaveExtras(form.contractedFrequency, form.blockedDays.length) && (
+              {!canPlayerHaveExtras(form.contractedFrequency, form.blockedDays, season?.daysPerWeek ?? 5) && (
                 <p className="text-xs text-amber-700 mt-1">
-                  ⚠ Only {availDays(form.blockedDays.length)} day(s) available
-                  — no room for extras. Save will auto-downgrade to{" "}
+                  ⚠ Only {availDays(form.blockedDays, season?.daysPerWeek ?? 5)} day(s)
+                  available in the {season?.daysPerWeek ?? 5}-day tennis week —
+                  no room for extras. Save will auto-downgrade to{" "}
                   {form.contractedFrequency === "1+" ? "1x" : "2x"}.
                 </p>
               )}
@@ -754,11 +756,12 @@ export default function PlayersPage() {
                 form.contractedFrequency === "2+") &&
                 canPlayerHaveExtras(
                   form.contractedFrequency,
-                  form.blockedDays.length
+                  form.blockedDays,
+                  season?.daysPerWeek ?? 5
                 ) && (
                   <p className="text-xs text-muted mt-1">
-                    Available days/week: {availDays(form.blockedDays.length)}{" "}
-                    (room for extras).
+                    Available days/week: {availDays(form.blockedDays, season?.daysPerWeek ?? 5)}{" "}
+                    of {season?.daysPerWeek ?? 5} (room for extras).
                   </p>
                 )}
             </div>
