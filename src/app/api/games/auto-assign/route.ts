@@ -579,21 +579,28 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // ===== HARD A+C BLOCK =====
-        // Auto-assign never produces a game with BOTH an A and a C player.
-        // This eliminates AAAC, AABC, ABBC, ABCC, AACC, ACCC compositions.
-        // Slots may be left empty when no alternative exists — better empty
-        // than an A+C combo per the policy.
-        if (p.skillLevel === "A") {
-          for (const assignedId of assignedInGame) {
-            const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "C") return false;
+        // ===== A+C COMPOSITION RULE =====
+        // The only allowed A+C composition is AACC (2 A's + 2 C's + 0 B's).
+        // Every other A+C variant — AAAC, AABC, ABBC, ABCC, ACCC — stays
+        // blocked. Slots may be left empty when no valid alternative exists.
+        {
+          const assignedLevels = assignedInGame.map(
+            (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
+          );
+          const sa = assignedLevels.filter((l) => l === "A").length;
+          const sb = assignedLevels.filter((l) => l === "B").length;
+          const sc = assignedLevels.filter((l) => l === "C").length;
+          if (p.skillLevel === "A" && sc > 0) {
+            // Only allow adding an A to a C-containing game if it can still
+            // resolve to AACC: no B's already, exactly 2 C's, < 2 A's.
+            if (!(sb === 0 && sc === 2 && sa < 2)) return false;
           }
-        }
-        if (p.skillLevel === "C") {
-          for (const assignedId of assignedInGame) {
-            const ap = playerData.find((pl) => pl.id === assignedId);
-            if (ap?.skillLevel === "A") return false;
+          if (p.skillLevel === "C" && sa > 0) {
+            if (!(sb === 0 && sa === 2 && sc < 2)) return false;
+          }
+          if (p.skillLevel === "B" && sa > 0 && sc > 0) {
+            // A B would ruin the AACC trajectory.
+            return false;
           }
         }
 
@@ -836,14 +843,18 @@ export async function POST(request: NextRequest) {
       return 0;
     }
 
-    // Hard A+C policy: any 4-player roster that contains both an A and
-    // a C player is rejected. The day-level swap optimizer uses this to
-    // refuse any swap that would create such a combination.
+    // A+C policy: AACC (2A + 2C + 0B) is the only allowed mixed-comp;
+    // every other A+C variant is a violation. Day-level swap optimizer
+    // refuses any swap that would create a non-AACC A+C combo.
     function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
-      const hasA = pls.some((p) => p?.skillLevel === "A");
-      const hasC = pls.some((p) => p?.skillLevel === "C");
-      return hasA && hasC;
+      const aCount = pls.filter((p) => p?.skillLevel === "A").length;
+      const bCount = pls.filter((p) => p?.skillLevel === "B").length;
+      const cCount = pls.filter((p) => p?.skillLevel === "C").length;
+      if (aCount === 0 || cCount === 0) return false;
+      // AACC exception
+      if (aCount === 2 && bCount === 0 && cCount === 2) return false;
+      return true;
     }
 
     for (const [date, dateGames] of dayEntries) {

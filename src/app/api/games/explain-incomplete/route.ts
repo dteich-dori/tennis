@@ -326,13 +326,21 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     .map((p: { skillLevel: string } | undefined) => p?.skillLevel ?? "?")
     .sort()
     .join("");
-  const hasA = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "A");
-  const hasC = assignedPlayerData.some((p: { skillLevel: string } | undefined) => p?.skillLevel === "C");
-  // Policy v1.122+: A+C combos are HARD-BLOCKED. Any A is rejected when the
-  // game already has a C, and vice versa. The old soft "needs 2 B bridge"
-  // rule no longer applies.
-  const blockA = hasC;
-  const blockC = hasA;
+  const aCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "A").length;
+  const bCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "B").length;
+  const cCount = assignedPlayerData.filter((p: { skillLevel: string } | undefined) => p?.skillLevel === "C").length;
+  // Policy v1.127: AACC (2A + 2C + 0B) is allowed; every other A+C combo
+  // is hard-blocked.
+  // - An A candidate is blocked when the game already has a C, UNLESS
+  //   adding it keeps an AACC trajectory (bCount=0, cCount=2, aCount<2).
+  // - Similarly for C candidates: allowed only when (bCount=0, aCount=2,
+  //   cCount<2).
+  // - A B candidate is blocked whenever the game already mixes A and C.
+  const aFitsAACC = bCount === 0 && cCount === 2 && aCount < 2;
+  const cFitsAACC = bCount === 0 && aCount === 2 && cCount < 2;
+  const blockA = cCount > 0 && !aFitsAACC;
+  const blockC = aCount > 0 && !cFitsAACC;
+  const blockB = aCount > 0 && cCount > 0;
 
   // Analyze each contracted player
   interface PlayerType {
@@ -427,13 +435,21 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     }
 
     // A/C composition penalty (soft — deprioritized, not blocked)
-    // Hard A+C block — any A player rejected from a game that already has
-    // a C, and vice versa. No bridge counts, no cGamesOk override.
+    // A+C policy: AACC allowed; other A+C combos blocked.
     if (blockA && p.skillLevel === "A") {
-      reasons.push("A+C block: game already has a C player — A players are not allowed in this game.");
+      reasons.push(
+        `A+C block: game has ${cCount} C player(s) and ${aCount} A — adding this A wouldn't complete an AACC composition.`
+      );
     }
     if (blockC && p.skillLevel === "C") {
-      reasons.push("A+C block: game already has an A player — C players are not allowed in this game.");
+      reasons.push(
+        `A+C block: game has ${aCount} A player(s) and ${cCount} C — adding this C wouldn't complete an AACC composition.`
+      );
+    }
+    if (blockB && p.skillLevel === "B") {
+      reasons.push(
+        "A+C block: game has both A and C players; a B would prevent the AACC composition."
+      );
     }
 
     // Do-not-pair with currently assigned players

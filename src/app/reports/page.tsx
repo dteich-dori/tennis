@@ -234,15 +234,16 @@ export default function ReportsPage() {
           });
         }
 
-        // Composition violations: any A+C combo (policy v1.122+ blocks all
-        // A+C compositions outright). Older games predating this policy
-        // may still contain A+C — those surface here so the admin can fix
-        // them manually.
+        // Composition violations: any A+C combo other than AACC.
+        // Policy v1.127: AACC (2A + 2C + 0B) is allowed; AAAC, AABC, ABBC,
+        // ABCC, ACCC are not.
         if (count === 4) {
           const levels = g.assignments.map((a: { playerId: number }) => playerMap.get(a.playerId)?.skillLevel ?? "B");
           const aCount = levels.filter((l: string) => l === "A").length;
+          const bCount = levels.filter((l: string) => l === "B").length;
           const cCount = levels.filter((l: string) => l === "C").length;
-          if (aCount > 0 && cCount > 0) {
+          const isAACC = aCount === 2 && bCount === 0 && cCount === 2;
+          if (aCount > 0 && cCount > 0 && !isAACC) {
             const composition = levels.sort().join("");
             allViolations.push({
               rule: "Composition",
@@ -251,7 +252,7 @@ export default function ReportsPage() {
               gameNumber: g.gameNumber,
               date: g.date,
               playerName: "",
-              detail: `A+C combo not allowed (${composition})`,
+              detail: `A+C combo not allowed (${composition}). Only AACC is permitted.`,
             });
           }
         }
