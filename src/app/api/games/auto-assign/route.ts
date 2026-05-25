@@ -584,7 +584,7 @@ export async function POST(request: NextRequest) {
         // Every other A+C variant — AAAC, AABC, ABBC, ABCC, ACCC — stays
         // blocked. Slots may be left empty when no valid alternative exists.
         {
-          const assignedLevels = assignedInGame.map(
+          const assignedLevels = [...assignedInGame].map(
             (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
           );
           const sa = assignedLevels.filter((l) => l === "A").length;
