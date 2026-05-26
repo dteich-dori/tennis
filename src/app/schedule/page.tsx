@@ -2278,11 +2278,16 @@ export default function SchedulePage() {
                         {explainModal.incompleteData.emptySlots} EMPTY SLOT{explainModal.incompleteData.emptySlots > 1 ? "S" : ""}
                       </span>
                     ) : (() => {
+                      // v1.127 policy: AACC (2A + 2C + 0B) is the only
+                      // allowed A+C composition. Every other A+C combo
+                      // (AAAC, AABC, ABBC, ABCC, ACCC) is a violation.
                       const comp = explainModal.incompleteData.composition ?? "";
-                      const compHasA = comp.includes("A");
-                      const compHasC = comp.includes("C");
+                      const compACount = (comp.match(/A/g) ?? []).length;
                       const compBCount = (comp.match(/B/g) ?? []).length;
-                      return compHasA && compHasC && compBCount < 2 ? (
+                      const compCCount = (comp.match(/C/g) ?? []).length;
+                      const hasMix = compACount > 0 && compCCount > 0;
+                      const isAACC = compACount === 2 && compBCount === 0 && compCCount === 2;
+                      return hasMix && !isAACC ? (
                         <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">
                           A+C VIOLATION
                         </span>
@@ -2295,18 +2300,23 @@ export default function SchedulePage() {
                   const data = explainModal.incompleteData!;
                   const assigned = data.playerAnalysis.filter((p) => p.assigned);
                   const comp = data.composition ?? "";
-                  const compHasA = comp.includes("A");
-                  const compHasC = comp.includes("C");
+                  const compACount = (comp.match(/A/g) ?? []).length;
                   const compBCount = (comp.match(/B/g) ?? []).length;
-                  const isCompositionViolation = data.emptySlots === 0 && compHasA && compHasC && compBCount < 2;
+                  const compCCount = (comp.match(/C/g) ?? []).length;
+                  const hasMix = compACount > 0 && compCCount > 0;
+                  const isAACC = compACount === 2 && compBCount === 0 && compCCount === 2;
+                  const isCompositionViolation = data.emptySlots === 0 && hasMix && !isAACC;
                   const isIncomplete = data.emptySlots > 0;
 
-                  // For composition violations: show B players who owe games as potential swaps
-                  // For incomplete: show all players who owe games
+                  // For incomplete games: show all players who owe games.
+                  // For composition violations: show all owed players — the
+                  // admin will pick the appropriate swap (drop A→add C to
+                  // reach AACC, or drop A/C entirely for a single-level
+                  // game).
                   const candidates = data.playerAnalysis.filter((p) => {
                     if (p.assigned) return false;
                     if ((p.owed ?? 0) <= 0) return false;
-                    if (isCompositionViolation) return p.skillLevel === "B";
+                    if (isCompositionViolation) return true;
                     return true;
                   });
 
@@ -2338,7 +2348,7 @@ export default function SchedulePage() {
                         <div className="px-3 py-2 border-b border-border bg-amber-50/50">
                           <div className="text-xs text-gray-700">
                             {isCompositionViolation ? (
-                              <>A+C without 2 B-level bridges — need to swap an <span className="font-semibold">{comp.includes("A") && (comp.match(/A/g) ?? []).length > 1 ? "A" : comp.includes("C") && (comp.match(/C/g) ?? []).length > 1 ? "C" : "A or C"}</span> player for a <span className="font-semibold">B</span> player.</>
+                              <>A+C combo not allowed ({comp}). The only allowed mixed composition is <span className="font-semibold">AACC</span> (2 A&apos;s + 2 C&apos;s + 0 B&apos;s). Swap a player to reach AACC, or remove the A or C entirely (all-B/all-C/etc.).</>
                             ) : (
                               <>{data.emptySlots} open slot{data.emptySlots > 1 ? "s" : ""} — need {data.emptySlots} more player{data.emptySlots > 1 ? "s" : ""} that {data.emptySlots === 1 ? "is" : "are"} owed games this week.</>
                             )}
@@ -2357,11 +2367,9 @@ export default function SchedulePage() {
                         if (eligibleOnly.length === 0) {
                           return (
                             <div className="px-3 py-3 text-xs text-muted text-center">
-                              {isCompositionViolation
-                                ? "No B players are owed games this week — no swap available."
-                                : hiddenCount > 0
-                                  ? `No eligible players (${hiddenCount} are owed games but blocked by vacation, A+C, weekly quota, etc.)`
-                                  : "No players are owed games this week."}
+                              {hiddenCount > 0
+                                ? `No eligible players (${hiddenCount} are owed games but blocked by vacation, A+C, weekly quota, etc.)`
+                                : "No players are owed games this week — no swap available."}
                             </div>
                           );
                         }
@@ -2369,7 +2377,7 @@ export default function SchedulePage() {
                           <div>
                             <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
                               <span>
-                                {isCompositionViolation ? "B Players Who Are Owed Games" : "Players Who Are Owed Games"} ({eligibleOnly.length})
+                                Players Who Are Owed Games ({eligibleOnly.length})
                               </span>
                               {hiddenCount > 0 && (
                                 <span className="text-[9px] text-muted/70 font-normal normal-case tracking-normal">
