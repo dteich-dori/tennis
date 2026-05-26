@@ -8,7 +8,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // plain-text payload our sendEmail helper produces.
 const SMS_GATEWAYS: Record<string, string> = {
   verizon: "vtext.com",
-  att: "mms.att.net",
+  att: "txt.att.net",
   tmobile: "tmomail.net",
   sprint: "messaging.sprintpcs.com",
   uscellular: "email.uscc.net",
