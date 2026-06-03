@@ -267,21 +267,26 @@ export async function GET(request: NextRequest) {
           wednesdayCount: wednesdayMap.get(p.id) ?? 0,
           vacationGamesLost: vacationGamesLostMap.get(p.id) ?? 0,
           madeUpVac: (() => {
-            // "Made Up Vac" represents vacation games the player has
-            // recovered via surplus weekly games. A player with no vacation
-            // absences can't have anything to make up, even if they're
-            // playing extras for other reasons (group anchor, bonus games,
-            // 2+ extras, etc.). So we cap surplus at vacationGamesLost.
+            // "Made Up Vac" = vacation games the player has recovered.
+            //
+            // A player with N vacation games lost would have played
+            // (freq×36 − N) games if no makeup occurred. Their actual STD
+            // minus that baseline is the makeup. Capped at N (extras
+            // beyond N are unrelated to vacation makeup — anchor/bonus
+            // games, 2+ extras, etc.).
+            //
+            // This catches BOTH explicit surplus weeks (e.g. 3 games when
+            // contract is 2) AND partial-vacation weeks where the player
+            // squeezed in a non-blocked day — situations the per-week
+            // surplus calc missed.
             const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
             if (freq === 0) return 0;
             const vacLost = vacationGamesLostMap.get(p.id) ?? 0;
             if (vacLost === 0) return 0;
-            const weekly = weeklyMap.get(p.id) ?? {};
-            let surplus = 0;
-            for (const count of Object.values(weekly)) {
-              if (count > freq) surplus += count - freq;
-            }
-            return Math.min(surplus, vacLost);
+            const baselineWithoutMakeup = freq * 36 - vacLost;
+            const extrasPlayed = std - baselineWithoutMakeup;
+            if (extrasPlayed <= 0) return 0;
+            return Math.min(extrasPlayed, vacLost);
           })(),
         };
       });
