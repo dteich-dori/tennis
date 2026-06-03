@@ -1113,11 +1113,19 @@ export default function PlayersPage() {
             </div>
           )}
 
-          {(form.skillLevel === "A" || form.skillLevel === "B") &&
-            form.cGamesOk && (
+          {(() => {
+            // v1.134: any C player OR any A/B player with cGamesOk can join
+            // a C anchor's group. C players can both anchor (above) AND join
+            // another C's group (here).
+            const eligibleToJoin =
+              form.skillLevel === "C" ||
+              ((form.skillLevel === "A" || form.skillLevel === "B") &&
+                form.cGamesOk);
+            if (!eligibleToJoin) return null;
+            return (
               <div className="mb-4">
                 <label className="block text-sm text-muted mb-1">
-                  Group anchor (a C player you want to play with)
+                  Join a group — pick a C player as anchor
                 </label>
                 <div className="flex items-center gap-2 mb-1">
                   <select
@@ -1164,12 +1172,13 @@ export default function PlayersPage() {
                   )}
                 </div>
                 <p className="text-xs text-muted mt-1">
-                  If you uncheck &quot;C games OK&quot; the group anchor is
-                  cleared automatically on save (a new auto-assign will be
-                  needed).
+                  {form.skillLevel === "C"
+                    ? "C players can also join another C's group, and their own group runs in parallel."
+                    : 'If you uncheck "C games OK" the group anchor is cleared on save (a new auto-assign will be needed).'}
                 </p>
               </div>
-            )}
+            );
+          })()}
 
           {(form.groupPct > 0 || form.groupMembers.length > 0) && (
             <div className={`mb-4${form.groupPct === 0 ? " opacity-60" : ""}`}>

@@ -869,6 +869,166 @@ export async function POST(request: NextRequest) {
       return true;
     }
 
+    // ===== Pass 0: Anchor games =====
+    // Before the day-by-day loop, place each C anchor (with members +
+    // groupPct > 0) in a game on one of their available days, and pre-fill
+    // that game with eligible group members. Cross-week scope: a Wednesday
+    // anchor's game gets filled before any Tuesday non-anchor game even
+    // if the day-tightness sort would otherwise prefer Tuesday first.
+    //
+    // Anchor placement is greedy: pick the first compatible day, the
+    // first compatible game, and the highest-pct members. The remaining
+    // slots on the anchor's day (and other days) are then filled by the
+    // normal Pass 1-4 below.
+    {
+      const cAnchors = contractedPlayers.filter(
+        (p) =>
+          p.skillLevel === "C" &&
+          p.groupMembers.length > 0 &&
+          p.groupPct > 0
+      );
+      // Sort anchors: most-constrained (fewest playable days this week) first
+      const countPlayableDates = (anchor: PlayerData): number => {
+        let n = 0;
+        for (const [date, dgs] of gamesByDate) {
+          const dow = dgs[0]?.dayOfWeek ?? -1;
+          if (anchor.blockedDays.includes(dow)) continue;
+          if (anchor.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
+          n++;
+        }
+        return n;
+      };
+      cAnchors.sort((a, b) => countPlayableDates(a) - countPlayableDates(b));
+
+      // Helper: assign a player directly (outer scope; updates everything
+      // assignPlayer does except usedOnDay which is per-day-scoped).
+      const passZeroAssign = async (
+        game: GameData,
+        playerId: number,
+        slotPos: number
+      ): Promise<boolean> => {
+        try {
+          const result = await database
+            .insert(gameAssignments)
+            .values({ gameId: game.id, slotPosition: slotPos, playerId, isPrefill: false })
+            .returning();
+          createdAssignmentIds.push(result[0].id);
+          const state = gameAssignmentState.get(game.id) ?? [];
+          recordPairings(playerId, state);
+          state.push(playerId);
+          gameAssignmentState.set(game.id, state);
+          wtdDonsCounts.set(playerId, (wtdDonsCounts.get(playerId) ?? 0) + 1);
+          const dates = assignedDates.get(playerId) ?? new Set<string>();
+          dates.add(game.date);
+          assignedDates.set(playerId, dates);
+          const ytdEntry = ytdCounts.get(playerId) ?? { ytdDons: 0, ytdSolo: 0 };
+          ytdEntry.ytdDons += 1;
+          ytdCounts.set(playerId, ytdEntry);
+          stdDonsCounts.set(playerId, (stdDonsCounts.get(playerId) ?? 0) + 1);
+          return true;
+        } catch (err) {
+          log.push({
+            type: "error",
+            message: `[Pass 0] Failed to place player ${playerId} in game #${game.gameNumber}: ${err}`,
+          });
+          return false;
+        }
+      };
+
+      // Helper: is `candidate` eligible to join `game` given current roster?
+      // Pure-in-memory check (no DB hits). Excludes DNP, same-date conflicts,
+      // blocked days, vacations, and A+C composition violations.
+      const isEligibleForGame = (
+        candidate: PlayerData,
+        game: GameData
+      ): boolean => {
+        if (candidate.blockedDays.includes(game.dayOfWeek)) return false;
+        if (candidate.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
+        if (assignedDates.get(candidate.id)?.has(game.date)) return false;
+        if (candidate.noEarlyGames && game.startTime < "10:00") return false;
+        const currentIds = gameAssignmentState.get(game.id) ?? [];
+        if (currentIds.length >= 4) return false;
+        if (currentIds.includes(candidate.id)) return false;
+        // DNP both directions
+        for (const aid of currentIds) {
+          if (candidate.doNotPair.includes(aid)) return false;
+          const ap = playerData.find((pl) => pl.id === aid);
+          if (ap?.doNotPair.includes(candidate.id)) return false;
+        }
+        // A+C compositional check — only AACC permitted
+        const levels = currentIds.map(
+          (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
+        );
+        const sa = levels.filter((l) => l === "A").length;
+        const sb = levels.filter((l) => l === "B").length;
+        const sc = levels.filter((l) => l === "C").length;
+        if (candidate.skillLevel === "A" && sc > 0) {
+          if (!(sb === 0 && sc === 2 && sa < 2)) return false;
+        }
+        if (candidate.skillLevel === "C" && sa > 0) {
+          if (!(sb === 0 && sa === 2 && sc < 2)) return false;
+        }
+        if (candidate.skillLevel === "B" && sa > 0 && sc > 0) return false;
+        return true;
+      };
+
+      for (const anchor of cAnchors) {
+        const baseFreq = weeklyContractedGames(anchor.contractedFrequency);
+        const adjFreq = adjustedFreqMap.get(anchor.id) ?? baseFreq;
+        const placeUpTo = Math.max(baseFreq, adjFreq);
+        // Look at each playable date for the anchor and try to place them
+        for (const [date, dgs] of gamesByDate) {
+          const wtd = wtdDonsCounts.get(anchor.id) ?? 0;
+          if (wtd >= placeUpTo) break;
+          const dow = dgs[0]?.dayOfWeek ?? -1;
+          if (anchor.blockedDays.includes(dow)) continue;
+          if (anchor.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
+          if (assignedDates.get(anchor.id)?.has(date)) continue;
+          // Find an open game on this date that the anchor is eligible for
+          for (const game of dgs) {
+            if (!isEligibleForGame(anchor, game)) continue;
+            // Skip games that already have an A — anchor (C) wouldn't fit
+            // unless the game can reach AACC, which would require existing
+            // composition to be a=2 b=0 c<2 — extremely unlikely at Pass 0.
+            const currentIds = gameAssignmentState.get(game.id) ?? [];
+            const levels = currentIds.map(
+              (id) => playerData.find((pl) => pl.id === id)?.skillLevel
+            );
+            if (levels.some((l) => l === "A")) continue;
+            const nextSlot = currentIds.length + 1;
+            const ok = await passZeroAssign(game, anchor.id, nextSlot);
+            if (!ok) continue;
+            log.push({
+              type: "info",
+              day: DAYS[dow],
+              message: `[Pass 0] Game #${game.gameNumber} slot ${nextSlot}: ${anchor.lastName} placed as anchor`,
+            });
+
+            // Fill remaining slots with anchor's members, highest pct first
+            const members = anchor.groupMembers
+              .map((mid) => playerData.find((p) => p.id === mid))
+              .filter((m): m is PlayerData => m != null)
+              .sort((a, b) => (b.groupPct ?? 0) - (a.groupPct ?? 0));
+            for (const member of members) {
+              const stateNow = gameAssignmentState.get(game.id) ?? [];
+              if (stateNow.length >= 4) break;
+              if (!isEligibleForGame(member, game)) continue;
+              const ms = stateNow.length + 1;
+              const ok2 = await passZeroAssign(game, member.id, ms);
+              if (ok2) {
+                log.push({
+                  type: "info",
+                  day: DAYS[dow],
+                  message: `[Pass 0] Game #${game.gameNumber} slot ${ms}: ${member.lastName} placed as group member of ${anchor.lastName} (pct ${member.groupPct})`,
+                });
+              }
+            }
+            break; // anchor placed for this date; move to next date
+          }
+        }
+      }
+    }
+
     for (const [date, dateGames] of dayEntries) {
       const dow = dateGames[0].dayOfWeek;
 

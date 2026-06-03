@@ -11,22 +11,30 @@ type PlayerBody = any;
 /**
  * Resolve / sanitise the incoming groupAnchorId value.
  *
- * Rules (v1.132):
- *   - Only A/B players with cGamesOk=true may have a non-null anchor.
- *   - Anchor must point to a C-level player.
- *   - Anything that fails either rule is forced to null silently.
+ * Rules (v1.134):
+ *   - Anchor must be a C-level player.
+ *   - A member may be: any C player, OR an A/B player with cGamesOk=true.
+ *   - A player can't be their own anchor.
+ *   - Anything that fails the rules is forced to null silently.
  */
 async function validatedGroupAnchor(
   database: Awaited<ReturnType<typeof db>>,
   incoming: unknown,
   skillLevel: string | null | undefined,
-  cGamesOk: boolean | null | undefined
+  cGamesOk: boolean | null | undefined,
+  selfPlayerId?: number
 ): Promise<number | null> {
   if (incoming == null) return null;
   const anchorId = Number(incoming);
   if (!Number.isInteger(anchorId) || anchorId <= 0) return null;
-  if (skillLevel !== "A" && skillLevel !== "B") return null;
-  if (!cGamesOk) return null;
+  if (selfPlayerId != null && anchorId === selfPlayerId) return null;
+  // Eligibility to be a MEMBER:
+  //   - C players: always
+  //   - A/B players: must have cGamesOk
+  //   - Subs/other: never
+  const isC = skillLevel === "C";
+  const isAB = skillLevel === "A" || skillLevel === "B";
+  if (!isC && !(isAB && cGamesOk)) return null;
   const [anchor] = await database
     .select({ id: players.id, skillLevel: players.skillLevel })
     .from(players)
@@ -300,7 +308,8 @@ export async function POST(request: NextRequest) {
           database,
           groupAnchorId,
           skillLevel,
-          cGamesOk
+          cGamesOk,
+          undefined
         ),
       })
       .returning();
@@ -452,7 +461,8 @@ export async function PUT(request: NextRequest) {
         database,
         groupAnchorId !== undefined ? groupAnchorId : currentPlayer.groupAnchorId,
         skillLevel ?? currentPlayer.skillLevel,
-        cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk
+        cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
+        id
       ),
     };
 
