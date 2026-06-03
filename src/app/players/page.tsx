@@ -613,6 +613,30 @@ export default function PlayersPage() {
             {backup.busy ? "Backing up..." : "Backup All"}
           </button>
           <button
+            onClick={async () => {
+              const ok = window.confirm(
+                "Clear ALL group memberships?\n\nThis nulls every player's group anchor and wipes the legacy player_group_members table. You'll need to rebuild groups from scratch."
+              );
+              if (!ok) return;
+              try {
+                const res = await fetch("/api/players/clear-all-groups", { method: "POST" });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                  alert(`✓ ${data.message}`);
+                  if (season) await loadPlayers(season.id);
+                } else {
+                  alert(`Failed: ${data.error ?? "unknown error"}`);
+                }
+              } catch (err) {
+                alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }}
+            className="border border-red-300 text-red-600 px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors"
+            title="One-time wipe — clears all group anchors. Use after rolling out the new C-anchor model."
+          >
+            Clear All Groups
+          </button>
+          <button
             onClick={() => {
               resetForm();
               setShowForm(true);
