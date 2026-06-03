@@ -922,12 +922,12 @@ export default function PlayersPage() {
               </label>
               {form.cGamesOk && (
                 <label className="flex items-center gap-2 text-sm ml-6">
-                  <span>Frequency:</span>
+                  <span>C-games frequency:</span>
                   <select
                     value={form.cGamesLimit ?? 4}
                     onChange={(e) => setForm({ ...form, cGamesLimit: parseInt(e.target.value) })}
-                    className="border border-border rounded px-2 py-1 text-sm w-32"
-                    title="Weeks between A+C games for this cGamesOk player"
+                    className="border border-border rounded px-2 py-1 text-sm w-36"
+                    title="Minimum weeks between A+C games for this cGamesOk player"
                   >
                     <option value={1}>Every week</option>
                     <option value={2}>Every 2 weeks</option>
