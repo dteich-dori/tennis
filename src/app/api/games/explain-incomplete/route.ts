@@ -587,6 +587,12 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
         if (played.has(d)) continue;
         remaining++;
       }
+      // A player with 0 remaining playable days (entire week blocked,
+      // on vacation, or already played every eligible day) cannot
+      // actually gate the extras passes — the auto-assign's
+      // anyContractedUnmetWithRoom() also ignores them. Skip them
+      // from the panel so they aren't shown as a fake blocker.
+      if (remaining === 0) continue;
       gatingPlayers.push({
         name: `${p.lastName}, ${p.firstName}`,
         owed: freq - wtd,
