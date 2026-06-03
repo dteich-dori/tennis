@@ -1101,11 +1101,13 @@ export default function PlayersPage() {
                 <select
                   value={form.groupPct}
                   onChange={(e) =>
-                    setForm({ ...form, groupPct: parseInt(e.target.value) })
+                    setForm({ ...form, groupPct: parseFloat(e.target.value) })
                   }
                   className="border border-border rounded px-3 py-1.5 text-sm w-56"
                 >
                   <option value={0}>Inactive (0%)</option>
+                  <option value={9}>9% (≈3 of 36)</option>
+                  <option value={12.5}>12.5% (≈4-5 of 36)</option>
                   <option value={25}>25%</option>
                   <option value={50}>50%</option>
                   <option value={75}>75%</option>
@@ -1183,11 +1185,13 @@ export default function PlayersPage() {
                     <select
                       value={form.groupPct || 50}
                       onChange={(e) =>
-                        setForm({ ...form, groupPct: parseInt(e.target.value) })
+                        setForm({ ...form, groupPct: parseFloat(e.target.value) })
                       }
-                      className="border border-border rounded px-3 py-2 text-sm w-32"
+                      className="border border-border rounded px-3 py-2 text-sm w-36"
                       title="% of your games to play with this anchor"
                     >
+                      <option value={9}>9%</option>
+                      <option value={12.5}>12.5%</option>
                       <option value={25}>25%</option>
                       <option value={50}>50%</option>
                       <option value={75}>75%</option>
