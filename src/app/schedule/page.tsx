@@ -2352,7 +2352,7 @@ export default function SchedulePage() {
                       {/* Explanation — only shown when there are issues */}
                       {(isIncomplete || isCompositionViolation) && (
                         <div className="px-3 py-2 border-b border-border bg-amber-50/50">
-                          <div className="text-xs text-gray-700">
+                          <div className="text-sm text-gray-700">
                             {isCompositionViolation ? (
                               <>A+C combo not allowed ({comp}). The only allowed mixed composition is <span className="font-semibold">AACC</span> (2 A&apos;s + 2 C&apos;s + 0 B&apos;s). Swap a player to reach AACC, or remove the A or C entirely (all-B/all-C/etc.).</>
                             ) : (
@@ -2370,16 +2370,16 @@ export default function SchedulePage() {
                         explainModal.incompleteData.gatingPlayers &&
                         explainModal.incompleteData.gatingPlayers.length > 0 && (
                           <div className="px-3 py-2 border-b border-border bg-orange-50/50">
-                            <div className="text-[11px] font-semibold text-orange-900 uppercase tracking-wide mb-1">
+                            <div className="text-[13px] font-semibold text-orange-900 uppercase tracking-wide mb-1">
                               ⚠ Gating Players (Rule R13)
                             </div>
-                            <p className="text-[11px] text-orange-900/90 mb-1">
+                            <p className="text-[13px] text-orange-900/90 mb-1">
                               The extras passes (R13 — Pass 2.5 / 3 / 3.5)
                               won&apos;t fire while any of these contracted
                               players still has an unmet weekly contract AND
                               remaining playable days this week:
                             </p>
-                            <ul className="text-[11px] text-orange-900 space-y-0.5 ml-3 list-disc">
+                            <ul className="text-[13px] text-orange-900 space-y-0.5 ml-3 list-disc">
                               {explainModal.incompleteData.gatingPlayers.map((g, i) => (
                                 <li key={i}>
                                   <span className="font-medium">{g.name}</span>
@@ -2389,7 +2389,7 @@ export default function SchedulePage() {
                                 </li>
                               ))}
                             </ul>
-                            <p className="text-[11px] text-orange-900/80 mt-1.5 italic">
+                            <p className="text-[13px] text-orange-900/80 mt-1.5 italic">
                               Manually assign one of these players to this
                               slot, or to fill them on their own days first,
                               to unblock the extras passes.
@@ -2407,7 +2407,7 @@ export default function SchedulePage() {
                         const hiddenCount = candidates.length - eligibleOnly.length;
                         if (eligibleOnly.length === 0) {
                           return (
-                            <div className="px-3 py-3 text-xs text-muted text-center">
+                            <div className="px-3 py-3 text-sm text-muted text-center">
                               {hiddenCount > 0
                                 ? `No eligible players (${hiddenCount} are owed games but blocked by vacation, A+C, weekly quota, etc.)`
                                 : "No players are owed games this week — no swap available."}
@@ -2416,12 +2416,12 @@ export default function SchedulePage() {
                         }
                         return (
                           <div>
-                            <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
+                            <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
                               <span>
                                 Players Who Are Owed Games ({eligibleOnly.length})
                               </span>
                               {hiddenCount > 0 && (
-                                <span className="text-[9px] text-muted/70 font-normal normal-case tracking-normal">
+                                <span className="text-[11px] text-muted/70 font-normal normal-case tracking-normal">
                                   + {hiddenCount} blocked (hidden)
                                 </span>
                               )}
@@ -2430,13 +2430,13 @@ export default function SchedulePage() {
                               {eligibleOnly.map((p, i) => (
                                 <div key={i} className="px-3 py-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className={`font-mono font-bold text-[10px] ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
+                                    <span className={`font-mono font-bold text-xs ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
                                       {p.skillLevel ?? "?"}
                                     </span>
-                                    <span className="text-xs font-medium">{p.name}</span>
-                                    <span className="text-[10px] text-muted ml-auto">is owed {p.owed}</span>
+                                    <span className="text-sm font-medium">{p.name}</span>
+                                    <span className="text-xs text-muted ml-auto">is owed {p.owed}</span>
                                   </div>
-                                  <div className="text-[11px] ml-4 text-green-600">✓ Eligible</div>
+                                  <div className="text-[13px] ml-4 text-green-600">✓ Eligible</div>
                                 </div>
                               ))}
                             </div>
@@ -2446,7 +2446,7 @@ export default function SchedulePage() {
 
                       {/* No issues — compact confirmation */}
                       {!isIncomplete && !isCompositionViolation && (
-                        <div className="px-3 py-2 text-xs text-green-600 text-center">
+                        <div className="px-3 py-2 text-sm text-green-600 text-center">
                           ✓ No issues
                         </div>
                       )}
