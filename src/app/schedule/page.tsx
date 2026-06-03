@@ -918,7 +918,7 @@ export default function SchedulePage() {
   };
 
   // Check if a player MUST be assigned to this specific game's date
-  // (i.e., it's their only remaining playable day this week and they still owe games)
+  // (i.e., it's their only remaining playable day this week and they are still owed games)
   const isMustPlay = (player: Player, game: Game): boolean => {
     const counts = playerCounts[player.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
     // MUST play uses BASE frequency — front-loaded extras don't trigger MUST
@@ -928,7 +928,7 @@ export default function SchedulePage() {
     const groupWtd = game.group === "solo" ? counts.wtdSolo : counts.wtdDons;
     const remaining = baseFreq - groupWtd;
 
-    // Player doesn't owe any more games this week at base contract
+    // Player isn't owed any more games this week at base contract
     if (remaining <= 0) return false;
 
     // Get all unique dates this week that have open slots for this game's group
@@ -1855,7 +1855,7 @@ export default function SchedulePage() {
                                                 if (!adj) return false;
                                                 const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
                                                 const baseFreq = weeklyContractedGames(p.contractedFrequency);
-                                                // Met base contract but still owe front-loaded games
+                                                // Met base contract but are still owed front-loaded games
                                                 return counts.wtdDons >= baseFreq && counts.wtdDons < adj;
                                               })
                                             : [];
@@ -2314,7 +2314,7 @@ export default function SchedulePage() {
                   const isCompositionViolation = data.emptySlots === 0 && hasMix && !isAACC;
                   const isIncomplete = data.emptySlots > 0;
 
-                  // For incomplete games: show all players who owe games.
+                  // For incomplete games: show all players who are owed games.
                   // For composition violations: show all owed players — the
                   // admin will pick the appropriate swap (drop A→add C to
                   // reach AACC, or drop A/C entirely for a single-level
@@ -2383,7 +2383,7 @@ export default function SchedulePage() {
                               {explainModal.incompleteData.gatingPlayers.map((g, i) => (
                                 <li key={i}>
                                   <span className="font-medium">{g.name}</span>
-                                  : owes {g.owed} of {g.target} this week,{" "}
+                                  : owed {g.owed} of {g.target} this week,{" "}
                                   {g.remaining} playable day
                                   {g.remaining !== 1 ? "s" : ""} remaining
                                 </li>

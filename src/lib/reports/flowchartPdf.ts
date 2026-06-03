@@ -97,7 +97,7 @@ export function generateFlowchartPdf(): void {
 
   const passes: [string, number, number, number, string][] = [
     ["Pass 1: First-Game-Only", 34, 197, 94, "Players with WTD = 0 (no games yet this week)"],
-    ["Pass 2: Base-Owed", 34, 197, 94, "Players with freq - WTD > 0 (still owe games)"],
+    ["Pass 2: Base-Owed", 34, 197, 94, "Players with freq - WTD > 0 (are still owed games)"],
     ["Pass 2.5: Front-Loading", 20, 184, 166, "Vacation makeup: adjustedFreq > baseFreq, base contract met"],
     ["Pass 2.8: cGamesOk", 20, 184, 166, "A/B players willing to play in C-player games (freq-limited)"],
     ["Pass 3: Extras (checkbox)", 249, 115, 22, "2+ players beyond weekly minimum of 2 games"],
@@ -189,7 +189,7 @@ export function generateFlowchartPdf(): void {
   doc.text("Player Priority Scoring (highest to lowest)", 57, y + 16);
 
   const priorities: [string, string][] = [
-    ["1. Must-Play", "Only 1 playable day left this week and still owes games"],
+    ["1. Must-Play", "Only 1 playable day left this week and is still owed games"],
     ["2. Composition", "Avoid creating A+C games without B bridges"],
     ["3. Pairing Diversity", "Prefer players paired LESS with current game members"],
     ["4. Games Owed (WTD)", "More games owed this week = higher priority"],

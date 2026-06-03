@@ -594,7 +594,7 @@ export default function UserManualPage() {
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-3">
                 <li>
                   <span className="font-semibold text-red-600">MUST</span> &mdash; Players who have
-                  only one remaining playable day this week and still owe games. Assign these first.
+                  only one remaining playable day this week and are still owed games. Assign these first.
                 </li>
                 <li>
                   The dropdown header shows four sortable columns: <span className="font-semibold">Lvl</span> (skill level),{" "}
@@ -641,7 +641,7 @@ export default function UserManualPage() {
               <p className="text-sm leading-relaxed mb-4">
                 Click <span className="font-semibold">Player Info</span> to toggle a compact card
                 grid showing all Don&apos;s group players with their: contracted frequency, WTD owed
-                (green = owes games), YTD owed, blocked days, and a red &ldquo;V&rdquo; if on
+                (green = owed games), YTD owed, blocked days, and a red &ldquo;V&rdquo; if on
                 vacation this week.
               </p>
 
@@ -809,7 +809,7 @@ export default function UserManualPage() {
               <ol className="list-decimal list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>Not already in this game</li>
                 <li>Not already assigned to another game on the same date (including Solo)</li>
-                <li>Still owes games this week (WTD frequency &minus; games assigned &gt; 0), or is a 2+ player</li>
+                <li>Still owed games this week (WTD frequency &minus; games assigned &gt; 0), or is a 2+ player</li>
                 <li>Not on a blocked day of the week</li>
                 <li>Not on vacation during the game date</li>
                 <li>No consecutive days conflict (if flagged &mdash; checks day before and day after)</li>
@@ -824,7 +824,7 @@ export default function UserManualPage() {
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>
                   <span className="font-semibold">Must Play</span> (highest priority) &mdash; The
-                  player still owes games AND this is their only remaining playable day this week.
+                  player is still owed games AND this is their only remaining playable day this week.
                 </li>
                 <li>
                   <span className="font-semibold">Games Owed</span> &mdash; Higher owed count =
@@ -900,7 +900,7 @@ export default function UserManualPage() {
                 </li>
                 <li>
                   <span className="font-semibold">Pass 2: Base-owed</span> &mdash; Players who still
-                  owe games (frequency &minus; WTD &gt; 0). 2+ players capped at 2 games per week.
+                  are owed games (frequency &minus; WTD &gt; 0). 2+ players capped at 2 games per week.
                 </li>
                 <li>
                   <span className="font-semibold">Pass 2.5: Front-loading</span> &mdash; Players with

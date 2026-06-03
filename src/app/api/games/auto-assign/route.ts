@@ -490,7 +490,7 @@ export async function POST(request: NextRequest) {
     // Get available players for a specific game considering all constraints
     // firstGameOnly: if true, only include players with ZERO Don's games this week
     //   (ensures every contracted player gets at least 1 game before anyone gets a 2nd).
-    //   If false, include all players who still owe games or are 2+ eligible for extras.
+    //   If false, include all players who are still owed games or are 2+ eligible for extras.
     // options.allowExtras: if true, 2+ players are not capped at 2 games/week (for Pass 3)
     // options.playerPool: custom player pool to search (e.g. subPlayers for Pass 4)
     function getAvailablePlayers(
@@ -708,7 +708,7 @@ export async function POST(request: NextRequest) {
         if (hasOpen) playableDates.push(date);
       }
 
-      // Must-play: only one playable date left this week and they still owe
+      // Must-play: only one playable date left this week and they are still owed
       const mustPlay = owed > 0 && playableDates.length === 1 && playableDates[0] === game.date;
 
       return { mustPlay, owed, ytdDeficit, stdDeficit, playableDaysLeft: playableDates.length };
@@ -1046,7 +1046,7 @@ export async function POST(request: NextRequest) {
       const openGames = dateGames.filter((g) => (gameAssignmentState.get(g.id) ?? []).length < 4);
 
       // Sort players by priority:
-      //   1. mustPlay (critical — only 1 day left and still owe)
+      //   1. mustPlay (critical — only 1 day left and still owed)
       //   2. owed (more owed = higher priority)
       //   3. pairing diversity (fewer prior pairings with game members = higher priority)
       //   4. playableDaysLeft (fewer = higher priority)
@@ -1240,7 +1240,7 @@ export async function POST(request: NextRequest) {
             if (usedOnDay.has(p.id)) return false;
             return true;
           });
-          // Second pass: players who still owe games (freq - wtd > 0), including 2+ players
+          // Second pass: players who are still owed games (freq - wtd > 0), including 2+ players
           // who haven't hit their minimum of 2 yet. Does NOT include 2+ extras beyond minimum.
           if (eligible.length === 0) {
             passUsed = 2;
@@ -1279,7 +1279,7 @@ export async function POST(request: NextRequest) {
           };
 
           // Pass 2.5: front-loading — players whose adjustedFreq > base freq and
-          // who've met their base contract but still owe front-loaded games.
+          // who've met their base contract but are still owed front-loaded games.
           // GATED by anyContractedUnmetWithRoom: no front-load extras while
           // anyone else can still hit their weekly contract.
           if (eligible.length === 0 && !anyContractedUnmetWithRoom()) {
@@ -1579,7 +1579,7 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Under-assigned repair: DNP-unblock swaps ---
-      // For players who still owe games and were available today but couldn't be placed
+      // For players who are still owed games and were available today but couldn't be placed
       // due to DNP conflicts: find a game where the DNP blocker can be swapped to another
       // same-day game, AND that game has an over-assigned same-level player who can be replaced
       // by the owed player.
