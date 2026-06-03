@@ -7,7 +7,7 @@ import { eq, and, inArray } from "drizzle-orm";
  * GET /api/games/find-problem?seasonId=1&startWeek=1&totalWeeks=36&afterGameId=123&type=all
  * Scans games starting from startWeek (wrapping around) to find the next problem:
  *   - Incomplete: normal game with < 4 players assigned
- *   - Composition: A+C mix without 2 B bridges
+ *   - Composition: any A+C combo other than AACC (2A + 2C + 0B)
  * type: "all" (default) checks both, "incomplete" checks only incomplete games
  * afterGameId (optional): skip games up to and including this game in startWeek
  */
@@ -101,20 +101,23 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        // Check 2: A+C composition violation (skip if type=incomplete)
+        // Check 2: A+C composition violation. Policy v1.127+ allows AACC
+        // (2A + 2C + 0B); every other A+C combo is a violation.
         if (type !== "incomplete") {
         const levels = pids.map((id) => playerMap.get(id) ?? "?");
-        const hasA = levels.includes("A");
-        const hasC = levels.includes("C");
+        const aCount = levels.filter((s) => s === "A").length;
         const bCount = levels.filter((s) => s === "B").length;
-        if (hasA && hasC && bCount < 2) {
+        const cCount = levels.filter((s) => s === "C").length;
+        const hasMix = aCount > 0 && cCount > 0;
+        const isAACC = aCount === 2 && bCount === 0 && cCount === 2;
+        if (hasMix && !isAACC) {
           return NextResponse.json({
             found: true,
             weekNumber: week,
             gameId: game.id,
             gameNumber: game.gameNumber,
             problemType: "composition",
-            problemDescription: `A+C without 2B bridges (${levels.sort().join("")})`,
+            problemDescription: `A+C combo not allowed (${levels.sort().join("")}) — only AACC is permitted`,
           });
         }
         }

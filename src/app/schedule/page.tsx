@@ -1231,7 +1231,7 @@ export default function SchedulePage() {
               onClick={handleFindProblem}
               disabled={findingProblem || totalGames === 0}
               className="px-4 py-2 bg-rose-500 text-white font-semibold rounded-lg shadow-sm hover:bg-rose-600 active:bg-rose-700 disabled:opacity-40 transition-colors text-sm"
-              title="Find next game with a problem (incomplete or A+C composition violation)"
+              title="Find next game with a problem (incomplete, or a non-AACC A+C composition)"
             >
               {findingProblem ? "Searching..." : "Find Problem"}
             </button>
