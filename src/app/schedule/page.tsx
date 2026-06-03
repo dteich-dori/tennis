@@ -2404,13 +2404,39 @@ export default function SchedulePage() {
                           there were "owed but blocked" players. */}
                       {(isIncomplete || isCompositionViolation) && (() => {
                         const eligibleOnly = candidates.filter((p) => p.eligible);
-                        const hiddenCount = candidates.length - eligibleOnly.length;
+                        const blockedOnly = candidates.filter((p) => !p.eligible);
+                        const hiddenCount = blockedOnly.length;
                         if (eligibleOnly.length === 0) {
+                          // No eligible candidates — show the blocked ones
+                          // inline so the admin can see exactly WHO was owed
+                          // games and WHICH rules blocked them.
                           return (
-                            <div className="px-3 py-3 text-sm text-muted text-center">
-                              {hiddenCount > 0
-                                ? `No eligible players (${hiddenCount} are owed games but blocked by vacation, A+C, weekly quota, etc.)`
-                                : "No players are owed games this week — no swap available."}
+                            <div>
+                              <div className="px-3 py-2 text-sm text-muted text-center">
+                                {hiddenCount > 0
+                                  ? `No eligible players. ${hiddenCount} ${hiddenCount === 1 ? "is" : "are"} owed games but blocked:`
+                                  : "No players are owed games this week — no swap available."}
+                              </div>
+                              {hiddenCount > 0 && (
+                                <div className="divide-y divide-border max-h-72 overflow-y-auto">
+                                  {blockedOnly.map((p, i) => (
+                                    <div key={i} className="px-3 py-1.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`font-mono font-bold text-xs ${p.skillLevel === "A" ? "text-red-600" : p.skillLevel === "B" ? "text-blue-600" : p.skillLevel === "C" ? "text-green-600" : "text-gray-500"}`}>
+                                          {p.skillLevel ?? "?"}
+                                        </span>
+                                        <span className="text-sm font-medium">{p.name}</span>
+                                        <span className="text-xs text-muted ml-auto">is owed {p.owed}</span>
+                                      </div>
+                                      {p.reasons.filter((r) => !r.startsWith("Eligible") && !r.startsWith("WTD:")).map((r, j) => (
+                                        <div key={j} className="text-[13px] ml-4 text-red-600">
+                                          {r}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         }
