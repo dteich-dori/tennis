@@ -267,15 +267,21 @@ export async function GET(request: NextRequest) {
           wednesdayCount: wednesdayMap.get(p.id) ?? 0,
           vacationGamesLost: vacationGamesLostMap.get(p.id) ?? 0,
           madeUpVac: (() => {
-            // Count weeks where assigned games exceed contracted frequency
+            // "Made Up Vac" represents vacation games the player has
+            // recovered via surplus weekly games. A player with no vacation
+            // absences can't have anything to make up, even if they're
+            // playing extras for other reasons (group anchor, bonus games,
+            // 2+ extras, etc.). So we cap surplus at vacationGamesLost.
             const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
             if (freq === 0) return 0;
+            const vacLost = vacationGamesLostMap.get(p.id) ?? 0;
+            if (vacLost === 0) return 0;
             const weekly = weeklyMap.get(p.id) ?? {};
             let surplus = 0;
             for (const count of Object.values(weekly)) {
               if (count > freq) surplus += count - freq;
             }
-            return surplus;
+            return Math.min(surplus, vacLost);
           })(),
         };
       });
