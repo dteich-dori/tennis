@@ -33,6 +33,11 @@ export const players = sqliteTable("players", {
   excludedFromAutoAssign: integer("excluded_from_auto_assign", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Group anchor: FK to a C-level player whose "group" this player has
+  // opted into. Only A/B players with cGamesOk=true may have a non-null
+  // anchor. NULL = not in any group. The anchor player has groupPct
+  // applied to their own games; each member has their own groupPct.
+  groupAnchorId: integer("group_anchor_id"),
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {

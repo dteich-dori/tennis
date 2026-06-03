@@ -46,6 +46,7 @@ interface Player {
   groupPct: number;
   preassignedGamesWanted: number | null;
   excludedFromAutoAssign: boolean;
+  groupAnchorId: number | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -83,6 +84,7 @@ const emptyPlayer = {
   groupPct: 0,
   preassignedGamesWanted: null as number | null,
   excludedFromAutoAssign: false,
+  groupAnchorId: null as number | null,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -174,6 +176,7 @@ export default function PlayersPage() {
       cGamesLimit: player.cGamesLimit ?? 1,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
+      groupAnchorId: player.groupAnchorId ?? null,
       preassignedGamesWanted: player.preassignedGamesWanted ?? null,
       excludedFromAutoAssign: player.excludedFromAutoAssign ?? false,
       blockedDays: player.blockedDays,
@@ -1059,25 +1062,114 @@ export default function PlayersPage() {
             </select>
           </div>
 
-          {/* Player Group — head configuration */}
-          <div className="mb-4">
-            <label className="block text-sm text-muted mb-1">Group Leader — % of games from preferred group</label>
-            <div className="flex items-center gap-2 mb-1">
-              <select
-                value={form.groupPct}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  setForm({ ...form, groupPct: val });
-                }}
-                className="border border-border rounded px-3 py-1.5 text-sm w-48"
-              >
-                <option value={0}>Inactive (0%)</option>
-                <option value={25}>25% group games</option>
-                <option value={50}>50% group games</option>
-                <option value={100}>100% group games</option>
-              </select>
+          {/* C-Anchor Group — new model (v1.132)
+              - C players: act as anchors. Their groupPct = % of THEIR
+                games where the algorithm tries to include a member.
+              - A/B players with cGamesOk: can pick a C anchor. Their
+                groupPct = % of THEIR games to play with that anchor.
+              - Other players: hidden. */}
+          {form.skillLevel === "C" && (
+            <div className="mb-4">
+              <label className="block text-sm text-muted mb-1">
+                Group anchor — % of your games where auto-assign should try to include a group member
+              </label>
+              <div className="flex items-center gap-2 mb-1">
+                <select
+                  value={form.groupPct}
+                  onChange={(e) =>
+                    setForm({ ...form, groupPct: parseInt(e.target.value) })
+                  }
+                  className="border border-border rounded px-3 py-1.5 text-sm w-56"
+                >
+                  <option value={0}>Inactive (0%)</option>
+                  <option value={25}>25%</option>
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={100}>100%</option>
+                </select>
+                {editingId && (() => {
+                  const members = players.filter((p) => p.groupAnchorId === editingId);
+                  return (
+                    <span className="text-xs text-muted">
+                      {members.length} member{members.length !== 1 ? "s" : ""}
+                      {members.length > 0 && (
+                        <span className="ml-1">
+                          (
+                          {members
+                            .map((m) => `${m.lastName} ${m.groupPct}%`)
+                            .join(", ")}
+                          )
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
+              </div>
+              <p className="text-xs text-muted mt-1">
+                Group members are players who have set you as their anchor on
+                their own player record (visible to A/B players with C games
+                OK).
+              </p>
             </div>
-          </div>
+          )}
+
+          {(form.skillLevel === "A" || form.skillLevel === "B") &&
+            form.cGamesOk && (
+              <div className="mb-4">
+                <label className="block text-sm text-muted mb-1">
+                  Group anchor (a C player you want to play with)
+                </label>
+                <div className="flex items-center gap-2 mb-1">
+                  <select
+                    value={form.groupAnchorId ?? ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        groupAnchorId: e.target.value
+                          ? parseInt(e.target.value)
+                          : null,
+                      })
+                    }
+                    className="border border-border rounded px-3 py-2 text-sm w-56"
+                  >
+                    <option value="">— No group —</option>
+                    {players
+                      .filter(
+                        (p) =>
+                          p.skillLevel === "C" &&
+                          p.isActive &&
+                          p.id !== editingId
+                      )
+                      .sort((a, b) => a.lastName.localeCompare(b.lastName))
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.lastName}, {c.firstName}
+                        </option>
+                      ))}
+                  </select>
+                  {form.groupAnchorId != null && (
+                    <select
+                      value={form.groupPct || 50}
+                      onChange={(e) =>
+                        setForm({ ...form, groupPct: parseInt(e.target.value) })
+                      }
+                      className="border border-border rounded px-3 py-2 text-sm w-32"
+                      title="% of your games to play with this anchor"
+                    >
+                      <option value={25}>25%</option>
+                      <option value={50}>50%</option>
+                      <option value={75}>75%</option>
+                      <option value={100}>100%</option>
+                    </select>
+                  )}
+                </div>
+                <p className="text-xs text-muted mt-1">
+                  If you uncheck &quot;C games OK&quot; the group anchor is
+                  cleared automatically on save (a new auto-assign will be
+                  needed).
+                </p>
+              </div>
+            )}
 
           {(form.groupPct > 0 || form.groupMembers.length > 0) && (
             <div className={`mb-4${form.groupPct === 0 ? " opacity-60" : ""}`}>

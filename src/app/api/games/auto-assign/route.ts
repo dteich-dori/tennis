@@ -163,12 +163,24 @@ export async function POST(request: NextRequest) {
       arr.push(d.pairedPlayerId);
       dnpByPlayer.set(d.playerId, arr);
     }
+    // Group member lists for C anchors (v1.132+). Each C player's
+    // groupMembers[] is built from the inverse FK: any A/B player whose
+    // groupAnchorId points to them. cGamesOk and skill constraints are
+    // already enforced at write time, so we can trust the column. The
+    // legacy player_group_members table is no longer consulted for new
+    // assignments — keep gmByPlayer only as a fallback for non-C
+    // players who still have legacy rows (we ignore them).
     const gmByPlayer = new Map<number, number[]>();
-    for (const gm of groupMemberRows) {
-      const arr = gmByPlayer.get(gm.playerId) ?? [];
-      arr.push(gm.memberId);
-      gmByPlayer.set(gm.playerId, arr);
+    for (const p of allPlayers) {
+      if (p.skillLevel !== "C") continue;
+      const members = allPlayers
+        .filter((m) => m.groupAnchorId === p.id)
+        .map((m) => m.id);
+      gmByPlayer.set(p.id, members);
     }
+    // Suppress lint: groupMemberRows is still loaded for future
+    // archive/cleanup use but not consulted here.
+    void groupMemberRows;
 
     const playerData: PlayerData[] = allPlayers.map((p) => ({
       ...p,

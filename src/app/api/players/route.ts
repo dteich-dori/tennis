@@ -9,6 +9,33 @@ import { downgradeContractIfNeeded, clampDaysPerWeek } from "@/lib/playerAvailab
 type PlayerBody = any;
 
 /**
+ * Resolve / sanitise the incoming groupAnchorId value.
+ *
+ * Rules (v1.132):
+ *   - Only A/B players with cGamesOk=true may have a non-null anchor.
+ *   - Anchor must point to a C-level player.
+ *   - Anything that fails either rule is forced to null silently.
+ */
+async function validatedGroupAnchor(
+  database: Awaited<ReturnType<typeof db>>,
+  incoming: unknown,
+  skillLevel: string | null | undefined,
+  cGamesOk: boolean | null | undefined
+): Promise<number | null> {
+  if (incoming == null) return null;
+  const anchorId = Number(incoming);
+  if (!Number.isInteger(anchorId) || anchorId <= 0) return null;
+  if (skillLevel !== "A" && skillLevel !== "B") return null;
+  if (!cGamesOk) return null;
+  const [anchor] = await database
+    .select({ id: players.id, skillLevel: players.skillLevel })
+    .from(players)
+    .where(eq(players.id, anchorId));
+  if (!anchor || anchor.skillLevel !== "C") return null;
+  return anchor.id;
+}
+
+/**
  * Bump seasons.lastPlayerChangeAt — called after every successful player
  * add / update / delete. Lets the Schedule page warn when the schedule is
  * potentially stale relative to the current player roster.
@@ -178,6 +205,7 @@ export async function POST(request: NextRequest) {
       preassignedGamesWanted,
       lockedExtraGames,
       excludedFromAutoAssign,
+      groupAnchorId,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -263,6 +291,17 @@ export async function POST(request: NextRequest) {
         preassignedGamesWanted: preassignedGamesWanted || null,
         lockedExtraGames: lockedExtraGames ?? null,
         excludedFromAutoAssign: excludedFromAutoAssign ?? false,
+        // Group anchor: enforce eligibility rules at write time.
+        // - A/B players with cGamesOk=true may have an anchor pointing
+        //   to a C player.
+        // - Anyone else (subs, non-cGamesOk, C players themselves) gets
+        //   their anchor forced to null.
+        groupAnchorId: await validatedGroupAnchor(
+          database,
+          groupAnchorId,
+          skillLevel,
+          cGamesOk
+        ),
       })
       .returning();
 
@@ -357,6 +396,7 @@ export async function PUT(request: NextRequest) {
       preassignedGamesWanted,
       lockedExtraGames,
       excludedFromAutoAssign,
+      groupAnchorId,
     } = body;
 
     if (!id) {
@@ -405,6 +445,15 @@ export async function PUT(request: NextRequest) {
         excludedFromAutoAssign !== undefined
           ? excludedFromAutoAssign
           : currentPlayer.excludedFromAutoAssign,
+      // Group anchor — same eligibility rule as on POST. Note that any
+      // edit that flips cGamesOk to false (or changes skill away from
+      // A/B) auto-clears the anchor.
+      groupAnchorId: await validatedGroupAnchor(
+        database,
+        groupAnchorId !== undefined ? groupAnchorId : currentPlayer.groupAnchorId,
+        skillLevel ?? currentPlayer.skillLevel,
+        cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk
+      ),
     };
 
     // Auto-downgrade "+ tier" when the resulting blocked-day set leaves no
@@ -561,6 +610,11 @@ export async function DELETE(request: NextRequest) {
     await database.delete(playerDoNotPair).where(eq(playerDoNotPair.playerId, playerId));
     await database.delete(playerGroupMembers).where(eq(playerGroupMembers.playerId, playerId));
     await database.delete(playerGroupMembers).where(eq(playerGroupMembers.memberId, playerId));
+    // Clear group_anchor_id from anyone who had this player as their anchor
+    await database
+      .update(players)
+      .set({ groupAnchorId: null })
+      .where(eq(players.groupAnchorId, playerId));
     await database.delete(players).where(eq(players.id, playerId));
 
     if (doomed) await markPlayerChange(database, doomed.seasonId);

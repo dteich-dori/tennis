@@ -266,6 +266,54 @@ See you on the courts!'`
       }
     },
   },
+  {
+    name: "group-anchor-id",
+    description: "players: add group_anchor_id column",
+    run: async (database) => {
+      try {
+        await database.run(
+          sql`ALTER TABLE players ADD COLUMN group_anchor_id INTEGER`
+        );
+        return "applied";
+      } catch (err) {
+        if (isColumnAlreadyExists(err)) return "already";
+        throw err;
+      }
+    },
+  },
+  {
+    name: "migrate-group-members-to-anchor",
+    description:
+      "data: convert existing player_group_members rows to players.group_anchor_id when leader is C and member is A/B with cGamesOk",
+    run: async (database) => {
+      // Idempotent: only sets the anchor when it's currently NULL.
+      // Skips rows where the leader isn't a C player, or where the
+      // member doesn't have cGamesOk, or where the member is a C player
+      // themselves (C players are anchors, not members).
+      const result = await database.run(
+        sql`UPDATE players
+            SET group_anchor_id = (
+              SELECT pgm.player_id
+              FROM player_group_members pgm
+              JOIN players leader ON leader.id = pgm.player_id
+              WHERE pgm.member_id = players.id
+                AND leader.skill_level = 'C'
+              LIMIT 1
+            )
+            WHERE group_anchor_id IS NULL
+              AND c_games_ok = 1
+              AND skill_level IN ('A', 'B')
+              AND EXISTS (
+                SELECT 1 FROM player_group_members pgm
+                JOIN players leader ON leader.id = pgm.player_id
+                WHERE pgm.member_id = players.id
+                  AND leader.skill_level = 'C'
+              )`
+      );
+      const rowsChanged = (result as { rowsAffected?: number }).rowsAffected ?? 0;
+      return rowsChanged > 0 ? "applied" : "already";
+    },
+  },
 ];
 
 export async function GET() {
