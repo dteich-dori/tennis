@@ -974,8 +974,11 @@ export async function POST(request: NextRequest) {
 
       for (const anchor of cAnchors) {
         const baseFreq = weeklyContractedGames(anchor.contractedFrequency);
-        const adjFreq = adjustedFreqMap.get(anchor.id) ?? baseFreq;
-        const placeUpTo = Math.max(baseFreq, adjFreq);
+        // Pass 0 only places the anchor up to their BASE weekly contract.
+        // Front-load / makeup extras are handled by the gated Pass 2.5
+        // after all base contracts are settled, per the user's rule:
+        // "no extras while any contracted player has unmet weekly contract".
+        const placeUpTo = baseFreq;
         // Look at each playable date for the anchor and try to place them
         for (const [date, dgs] of gamesByDate) {
           const wtd = wtdDonsCounts.get(anchor.id) ?? 0;
@@ -1013,6 +1016,14 @@ export async function POST(request: NextRequest) {
               const stateNow = gameAssignmentState.get(game.id) ?? [];
               if (stateNow.length >= 4) break;
               if (!isEligibleForGame(member, game)) continue;
+              // Don't over-assign members: only place if this member is
+              // still under their own base weekly contract. Extras come
+              // through the gated Pass 2.5+ if appropriate.
+              const memberBase = weeklyContractedGames(member.contractedFrequency);
+              if (memberBase > 0) {
+                const memberWtd = wtdDonsCounts.get(member.id) ?? 0;
+                if (memberWtd >= memberBase) continue;
+              }
               const ms = stateNow.length + 1;
               const ok2 = await passZeroAssign(game, member.id, ms);
               if (ok2) {
