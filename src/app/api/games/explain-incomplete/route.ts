@@ -382,94 +382,94 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
       };
     }
 
-    // Blocked day
+    // Rule numbers — see user manual § Assignment Rules
+    // R3: Blocked day
     const blocked = blockedByPlayer.get(p.id) ?? [];
     if (blocked.includes(game.dayOfWeek)) {
-      reasons.push(`Blocked on ${DAYS[game.dayOfWeek]}`);
+      reasons.push(`[R3] Blocked on ${DAYS[game.dayOfWeek]}`);
       eligible = false;
     }
 
-    // No early games
+    // R9: No early games
     if (p.noEarlyGames && game.startTime < "10:00") {
-      reasons.push(`No early games — this game starts at ${game.startTime}`);
+      reasons.push(`[R9] No early games — this game starts at ${game.startTime}`);
       eligible = false;
     }
 
-    // Vacation
+    // R4: Vacation
     const vacs = vacsByPlayer.get(p.id) ?? [];
     const onVacation = vacs.find(
       (v: { startDate: string; endDate: string }) => game.date >= v.startDate && game.date <= v.endDate
     );
     if (onVacation) {
-      reasons.push(`On vacation (${onVacation.startDate} to ${onVacation.endDate})`);
+      reasons.push(`[R4] On vacation (${onVacation.startDate} to ${onVacation.endDate})`);
       eligible = false;
     }
 
-    // Weekly quota met
+    // R7: Weekly quota met
     if (wtd >= freq) {
-      reasons.push(`Weekly quota met (${wtd}/${freq} games this week)`);
+      reasons.push(`[R7] Weekly contract met (${wtd}/${freq} this week — would need an extras pass to get more)`);
       eligible = false;
     }
 
-    // 2+ cap
+    // R7: 2+ cap
     if (p.contractedFrequency === "2+" && wtd >= 2) {
-      reasons.push(`2+ player capped at 2 games/week (${wtd} assigned)`);
+      reasons.push(`[R7] 2+ player at their weekly 2 (${wtd} assigned — would need an extras pass)`);
       eligible = false;
     }
 
-    // Already playing on same date
+    // R5: Already playing on same date
     if (playersOnThisDate.has(p.id)) {
-      reasons.push(`Already playing another game on ${game.date}`);
+      reasons.push(`[R5] Already playing another game on ${game.date}`);
       eligible = false;
     }
 
-    // No consecutive days
+    // R10: No consecutive days
     if (p.noConsecutiveDays) {
       const adjDates = playersOnAdjacentDates.get(p.id) ?? [];
       const playedPrev = adjDates.includes(prevStr);
       const playedNext = adjDates.includes(nextStr);
       if (playedPrev || playedNext) {
-        reasons.push(`No-consecutive-days — plays ${playedPrev ? "day before" : ""}${playedPrev && playedNext ? " and " : ""}${playedNext ? "day after" : ""}`);
+        reasons.push(`[R10] No-consecutive-days — plays ${playedPrev ? "day before" : ""}${playedPrev && playedNext ? " and " : ""}${playedNext ? "day after" : ""}`);
         eligible = false;
       }
     }
 
-    // A/C composition penalty (soft — deprioritized, not blocked)
-    // A+C policy: AACC allowed; other A+C combos blocked.
+    // R8: A+C composition — AACC is the only allowed mixed composition
     if (blockA && p.skillLevel === "A") {
       reasons.push(
-        `A+C block: game has ${cCount} C player(s) and ${aCount} A — adding this A wouldn't complete an AACC composition.`
+        `[R8] A+C block: game has ${cCount} C player(s) and ${aCount} A — adding this A wouldn't complete an AACC composition.`
       );
     }
     if (blockC && p.skillLevel === "C") {
       reasons.push(
-        `A+C block: game has ${aCount} A player(s) and ${cCount} C — adding this C wouldn't complete an AACC composition.`
+        `[R8] A+C block: game has ${aCount} A player(s) and ${cCount} C — adding this C wouldn't complete an AACC composition.`
       );
     }
     if (blockB && p.skillLevel === "B") {
       reasons.push(
-        "A+C block: game has both A and C players; a B would prevent the AACC composition."
+        "[R8] A+C block: game has both A and C players; a B would prevent the AACC composition."
       );
     }
 
-    // Do-not-pair with currently assigned players
+    // R6: Do-not-pair with currently assigned players
     const dnp = dnpByPlayer.get(p.id) ?? [];
     for (const assignedId of assignedPlayerIds) {
       if (dnp.includes(assignedId)) {
         const other = contractedPlayers.find((sp: { id: number }) => sp.id === assignedId) ??
                       allPlayers.find((sp: { id: number }) => sp.id === assignedId);
-        reasons.push(`Do-not-pair with ${other?.lastName ?? `#${assignedId}`}`);
+        reasons.push(`[R6] Do-not-pair with ${other?.lastName ?? `#${assignedId}`}`);
         eligible = false;
       }
     }
-    // Reverse DNP check
+    // R6: Reverse DNP check
     for (const assignedId of assignedPlayerIds) {
       const revDnp = dnpByPlayer.get(assignedId) ?? [];
       if (revDnp.includes(p.id)) {
         const other = contractedPlayers.find((sp: { id: number }) => sp.id === assignedId) ??
                       allPlayers.find((sp: { id: number }) => sp.id === assignedId);
         if (!reasons.some((r) => r.includes("Do-not-pair"))) {
-          reasons.push(`Do-not-pair with ${other?.lastName ?? `#${assignedId}`} (reverse)`);
+          reasons.push(`[R6] Do-not-pair with ${other?.lastName ?? `#${assignedId}`} (reverse)`);
           eligible = false;
         }
       }
@@ -532,6 +532,73 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     (p: { eligible: boolean; assigned: boolean }) => p.eligible && !p.assigned
   ).length;
 
+  // ===== Gating players (R13) =====
+  // Players who still have an unmet weekly contract for THIS week and have
+  // remaining playable days. While this list is non-empty, Passes 2.5 / 3 /
+  // 3.5 (the "extras" passes) are suppressed by the auto-assign rule
+  // "no extras while any contracted player is unmet". This list explains
+  // why an over-contract player isn't picking up a 2nd weekly game.
+  const gatingPlayers: { name: string; owed: number; target: number; remaining: number }[] = [];
+  try {
+    // All games this week + which dates this player has already played
+    const weekGames = await database
+      .select({
+        gameId: games.id,
+        date: games.date,
+        dayOfWeek: games.dayOfWeek,
+      })
+      .from(games)
+      .where(and(eq(games.seasonId, season.id), eq(games.weekNumber, game.weekNumber)));
+    const seenDates = new Map<string, number>();
+    for (const g of weekGames) seenDates.set(g.date, g.dayOfWeek);
+
+    const weekGameIds = weekGames.map((g: { gameId: number }) => g.gameId);
+    let playerDateRows: { playerId: number; date: string }[] = [];
+    if (weekGameIds.length > 0) {
+      for (let i = 0; i < weekGameIds.length; i += BATCH) {
+        const batch = weekGameIds.slice(i, i + BATCH);
+        const rows = await database
+          .select({ playerId: gameAssignments.playerId, date: games.date })
+          .from(gameAssignments)
+          .innerJoin(games, eq(games.id, gameAssignments.gameId))
+          .where(inArray(gameAssignments.gameId, batch));
+        playerDateRows.push(...rows);
+      }
+    }
+    const playedDatesByPlayer = new Map<number, Set<string>>();
+    for (const r of playerDateRows) {
+      const s = playedDatesByPlayer.get(r.playerId) ?? new Set<string>();
+      s.add(r.date);
+      playedDatesByPlayer.set(r.playerId, s);
+    }
+
+    for (const p of contractedPlayers as PlayerType[]) {
+      const freq = weeklyContractedGames(p.contractedFrequency);
+      if (freq === 0) continue;
+      const wtd = wtdCounts.get(p.id) ?? 0;
+      if (wtd >= freq) continue;
+      const blocked = blockedByPlayer.get(p.id) ?? [];
+      const vacs = vacsByPlayer.get(p.id) ?? [];
+      const played = playedDatesByPlayer.get(p.id) ?? new Set<string>();
+      let remaining = 0;
+      for (const [d, dow] of seenDates) {
+        if (blocked.includes(dow)) continue;
+        if (vacs.some((v: { startDate: string; endDate: string }) => d >= v.startDate && d <= v.endDate)) continue;
+        if (played.has(d)) continue;
+        remaining++;
+      }
+      gatingPlayers.push({
+        name: `${p.lastName}, ${p.firstName}`,
+        owed: freq - wtd,
+        target: freq,
+        remaining,
+      });
+    }
+    gatingPlayers.sort((a, b) => b.owed - a.owed || a.name.localeCompare(b.name));
+  } catch (gateErr) {
+    console.error("[explain-incomplete] gating players calc failed:", gateErr);
+  }
+
   return NextResponse.json({
     game: formatGame(game),
     filledSlots,
@@ -543,6 +610,7 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
         ? `${4 - filledSlots} of 4 slots are empty. ${eligibleCount} player(s) are still eligible.`
         : `All 4 slots filled. ${eligibleCount} other player(s) were eligible.`,
     playerAnalysis,
+    gatingPlayers,
   });
 }
 

@@ -133,6 +133,12 @@ export default function SchedulePage() {
         dayActual: number;
         reasons: string[];
       }[];
+      gatingPlayers?: {
+        name: string;
+        owed: number;
+        target: number;
+        remaining: number;
+      }[];
     } | null;
   } | null>(null);
 
@@ -2355,6 +2361,41 @@ export default function SchedulePage() {
                           </div>
                         </div>
                       )}
+
+                      {/* Gating players (R13) — unmet contracts elsewhere this
+                          week that block the extras passes from filling this
+                          slot. Shown only when the slot is incomplete AND at
+                          least one player is gating. */}
+                      {isIncomplete &&
+                        explainModal.incompleteData.gatingPlayers &&
+                        explainModal.incompleteData.gatingPlayers.length > 0 && (
+                          <div className="px-3 py-2 border-b border-border bg-orange-50/50">
+                            <div className="text-[11px] font-semibold text-orange-900 uppercase tracking-wide mb-1">
+                              ⚠ Gating Players (Rule R13)
+                            </div>
+                            <p className="text-[11px] text-orange-900/90 mb-1">
+                              The extras passes (R13 — Pass 2.5 / 3 / 3.5)
+                              won&apos;t fire while any of these contracted
+                              players still has an unmet weekly contract AND
+                              remaining playable days this week:
+                            </p>
+                            <ul className="text-[11px] text-orange-900 space-y-0.5 ml-3 list-disc">
+                              {explainModal.incompleteData.gatingPlayers.map((g, i) => (
+                                <li key={i}>
+                                  <span className="font-medium">{g.name}</span>
+                                  : owes {g.owed} of {g.target} this week,{" "}
+                                  {g.remaining} playable day
+                                  {g.remaining !== 1 ? "s" : ""} remaining
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="text-[11px] text-orange-900/80 mt-1.5 italic">
+                              Manually assign one of these players to this
+                              slot, or to fill them on their own days first,
+                              to unblock the extras passes.
+                            </p>
+                          </div>
+                        )}
 
                       {/* Candidates — only eligible players shown (blocked
                           ones suppressed to keep the list focused on who

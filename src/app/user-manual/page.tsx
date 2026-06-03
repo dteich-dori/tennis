@@ -688,6 +688,87 @@ export default function UserManualPage() {
                 YTD counts accumulate naturally.
               </p>
 
+              <h3 className="font-semibold mb-2">Assignment Rules (numbered)</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                Every candidate player is checked against this rule list. Block reasons in the
+                empty-slot panel reference these rule numbers (e.g. <code>[R7]</code>).
+              </p>
+              <table className="w-full text-sm mb-4 border border-border">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-2 py-1 font-medium">Rule</th>
+                    <th className="text-left px-2 py-1 font-medium">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R1</td>
+                    <td className="px-2 py-1">Player must be active (<code>isActive=true</code>).</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R2</td>
+                    <td className="px-2 py-1">Player must not be flagged <em>Exclude from auto-assign</em>.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R3</td>
+                    <td className="px-2 py-1">Player must not have this day-of-week in their blocked-days list.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R4</td>
+                    <td className="px-2 py-1">Player must not have a vacation overlapping the game date.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R5</td>
+                    <td className="px-2 py-1">Player must not already be playing another game on the same date (one game per date).</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R6</td>
+                    <td className="px-2 py-1">Player must not have a do-not-pair conflict with anyone already in this game (either direction).</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R7</td>
+                    <td className="px-2 py-1">Player&apos;s weekly assignments must not exceed their contract: 1x→1, 1x+→1, 2x→2, 2x+→2 (extras allowed only via gated Passes 2.5/3/3.5).</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R8</td>
+                    <td className="px-2 py-1">Composition: A+C combos are blocked except <strong>AACC</strong> (2 A&apos;s + 2 C&apos;s + 0 B&apos;s). A B is blocked from a game that already has both A and C.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R9</td>
+                    <td className="px-2 py-1">If <em>No early games</em> is checked, player can&apos;t be put in a game starting before 10:00 AM.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R10</td>
+                    <td className="px-2 py-1">If <em>No consecutive days</em> is checked, player can&apos;t be put in a game on the day before or day after another game they&apos;re already in.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R11</td>
+                    <td className="px-2 py-1">Derated pairing limit: same two derated players can&apos;t be paired more than once per week (or per 2 weeks, configurable in Season Setup).</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R12</td>
+                    <td className="px-2 py-1">Season cap: non-2+ players can&apos;t exceed <code>freq × 36</code> total games for the season.</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R13</td>
+                    <td className="px-2 py-1">
+                      <strong>Extras gate</strong> — Passes 2.5 (vacation makeup), 3 (2+ extras), and 3.5 (STD catch-up) will not fire while <em>any</em> contracted player still has an unmet weekly contract and a remaining playable day in the same week. The empty-slot panel shows the &ldquo;Gating Players&rdquo; list when this rule is active.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3 className="font-semibold mb-2">Empty-slot panel</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                Click any empty slot on the Schedule page to open the diagnostic panel. It shows:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li><strong>Lineup</strong> with current players + the empty placeholders.</li>
+                <li><strong>Gating Players</strong> section (orange) when R13 is active — lists who has unmet weekly contract and how many playable days they have left.</li>
+                <li><strong>Players Who Are Owed Games</strong> — eligible candidates only; blocked candidates are summarised as &ldquo;+ N hidden&rdquo; in the header.</li>
+                <li>Each blocked candidate&apos;s reason text includes the rule number, e.g. <code>[R8] A+C block: …</code> or <code>[R7] Weekly contract met …</code>.</li>
+              </ul>
+
               <h3 className="font-semibold mb-2">Prerequisites</h3>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
                 <li>All Solo games for the week must be fully assigned (4 players each).</li>
