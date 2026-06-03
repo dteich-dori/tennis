@@ -1243,10 +1243,35 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
+          // Helper: any contracted player still owed games this week AND
+          // has a remaining playable day where an open game exists? If so,
+          // we hold off on the "extras" passes (2.5, 3, 3.5) for this slot
+          // so they don't get an over-assignment ahead of someone who's
+          // still under their weekly contract.
+          const anyContractedUnmetWithRoom = (): boolean => {
+            for (const p of contractedPlayers) {
+              const freq = weeklyContractedGames(p.contractedFrequency);
+              if (freq === 0) continue;
+              const wtd = wtdDonsCounts.get(p.id) ?? 0;
+              if (wtd >= freq) continue;
+              const pDates = assignedDates.get(p.id) ?? new Set<string>();
+              for (const [d, dgs] of gamesByDate) {
+                const dDow = dgs[0]?.dayOfWeek ?? -1;
+                if (p.blockedDays.includes(dDow)) continue;
+                if (p.vacations.some((v) => d >= v.startDate && d <= v.endDate)) continue;
+                if (pDates.has(d)) continue;
+                const hasOpen = dgs.some((gg) => (gameAssignmentState.get(gg.id) ?? []).length < 4);
+                if (hasOpen) return true;
+              }
+            }
+            return false;
+          };
+
           // Pass 2.5: front-loading — players whose adjustedFreq > base freq and
           // who've met their base contract but still owe front-loaded games.
-          // Runs AFTER base-frequency assignments so it never steals from contracted games.
-          if (eligible.length === 0) {
+          // GATED by anyContractedUnmetWithRoom: no front-load extras while
+          // anyone else can still hit their weekly contract.
+          if (eligible.length === 0 && !anyContractedUnmetWithRoom()) {
             const frontLoadEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               const freq = weeklyContractedGames(p.contractedFrequency);
@@ -1296,16 +1321,19 @@ export async function POST(request: NextRequest) {
               }
             }
           }
-          // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2
-          if (eligible.length === 0 && assignExtra) {
+          // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2.
+          // GATED: no extras while any contracted player still has unmet
+          // weekly contract AND remaining playable days.
+          if (eligible.length === 0 && assignExtra && !anyContractedUnmetWithRoom()) {
             passUsed = 3;
             eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               return true;
             });
           }
-          // Pass 3.5: STD catchup — contracted players with season-total deficit
-          if (eligible.length === 0 && assignStdCatchup) {
+          // Pass 3.5: STD catchup — contracted players with season-total deficit.
+          // Same gating as Pass 3.
+          if (eligible.length === 0 && assignStdCatchup && !anyContractedUnmetWithRoom()) {
             const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               if (p.contractedFrequency === "0") return false; // not subs
