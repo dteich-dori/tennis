@@ -1183,13 +1183,14 @@ export default function PlayersPage() {
                   </select>
                   {form.groupAnchorId != null && (
                     <select
-                      value={form.groupPct || 50}
+                      value={form.groupPct ?? 0}
                       onChange={(e) =>
                         setForm({ ...form, groupPct: parseFloat(e.target.value) })
                       }
                       className="border border-border rounded px-3 py-2 text-sm w-36"
                       title="% of your games to play with this anchor"
                     >
+                      <option value={0}>0% (inactive)</option>
                       <option value={9}>9%</option>
                       <option value={12.5}>12.5%</option>
                       <option value={25}>25%</option>
