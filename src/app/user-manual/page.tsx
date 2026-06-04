@@ -707,7 +707,14 @@ export default function UserManualPage() {
                   </tr>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R2</td>
-                    <td className="px-2 py-1">Player must not be flagged <em>Exclude from auto-assign</em>.</td>
+                    <td className="px-2 py-1">
+                      Player must not be flagged <em>Exclude from auto-assign</em> on their player record.
+                      This check happens at player-load time — flagged players are filtered out of
+                      both the contracted-pool and the sub-pool before any rule below is evaluated,
+                      so they never appear in the eligibility lists or the diagnostic panel.
+                      Use this to keep a player on the roster (visible in dropdowns, communications,
+                      reports, Accounts) but invisible to the scheduler.
+                    </td>
                   </tr>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R3</td>
@@ -747,12 +754,33 @@ export default function UserManualPage() {
                   </tr>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R12</td>
-                    <td className="px-2 py-1">Season cap: non-2+ players can&apos;t exceed <code>freq × 36</code> total games for the season.</td>
+                    <td className="px-2 py-1">
+                      Season cap: only the <strong>base-tier</strong> contracts (1x, 2x) are capped at{" "}
+                      <code>freq × 36</code> total games for the season. The &ldquo;+&rdquo; tiers
+                      (1x+, 2x+) are <em>uncapped by design</em> — the +&apos;s whole point is to
+                      allow sub-style or extras-style play above the base contract, so the algorithm
+                      doesn&apos;t apply this hard cap to them. Subs (0) are also uncapped (they
+                      have no contract to compare against).
+                    </td>
                   </tr>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R13</td>
                     <td className="px-2 py-1">
                       <strong>Extras gate</strong> — Passes 2.5 (vacation makeup), 3 (2+ extras), and 3.5 (STD catch-up) will not fire while <em>any</em> contracted player still has an unmet weekly contract and a remaining playable day in the same week. The empty-slot panel shows the &ldquo;Gating Players&rdquo; list when this rule is active.
+                    </td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-1 font-mono">R14</td>
+                    <td className="px-2 py-1">
+                      <strong>cGamesOk (C-games OK)</strong> — checkbox on the player record.
+                      Today its role is to <em>gate group membership</em>: an A or B player may
+                      join a C anchor&apos;s group only if their cGamesOk checkbox is on. C
+                      players can always join (no cGamesOk requirement for them). If a member
+                      unchecks cGamesOk, their group anchor is auto-cleared on save and a new
+                      auto-assign run is needed. The per-player C-games frequency (weeks between
+                      A+C games) only applies to AACC compositions; with the v1.127 hard A+C
+                      rule, this gate mostly serves the group-membership filter rather than
+                      composition selection.
                     </td>
                   </tr>
                 </tbody>
