@@ -617,6 +617,51 @@ export async function POST(request: NextRequest) {
             // A B would ruin the AACC trajectory.
             return false;
           }
+
+          // R8 look-ahead (v1.154): if placing this player would commit
+          // the game to an AACC trajectory but the remaining capacity
+          // can't complete it, reject. Prevents week-7 game-#116-style
+          // deadlocks where a 2A+1C state is reached with no more C
+          // available to fill the 4th slot.
+          const postSa = sa + (p.skillLevel === "A" ? 1 : 0);
+          const postSb = sb + (p.skillLevel === "B" ? 1 : 0);
+          const postSc = sc + (p.skillLevel === "C" ? 1 : 0);
+          const postFilled = postSa + postSb + postSc;
+          // Only check when we've created a mixed A+C state AND there are
+          // still open slots in this game.
+          if (postSa > 0 && postSc > 0 && postFilled < 4) {
+            // Required to complete as AACC
+            const needMoreA = 2 - postSa;
+            const needMoreC = 2 - postSc;
+            const slotsLeft = 4 - postFilled;
+            if (
+              needMoreA < 0 ||
+              needMoreC < 0 ||
+              postSb > 0 ||
+              needMoreA + needMoreC > slotsLeft
+            ) {
+              // Can't even reach AACC arithmetically
+              return false;
+            }
+            // Count A and C bodies available for this day's remaining slots:
+            // not in this game, not blocked, not on vacation, not already
+            // playing on this date.
+            const inGameSet = new Set([...assignedInGame, p.id]);
+            let availableA = 0;
+            let availableC = 0;
+            for (const pp of playerData) {
+              if (inGameSet.has(pp.id)) continue;
+              if (pp.skillLevel !== "A" && pp.skillLevel !== "C") continue;
+              if (pp.blockedDays.includes(game.dayOfWeek)) continue;
+              if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
+              if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
+              if (pp.skillLevel === "A") availableA++;
+              else availableC++;
+            }
+            if (availableA < needMoreA || availableC < needMoreC) {
+              return false;
+            }
+          }
         }
 
         // Derated pairing limit: check both directions
