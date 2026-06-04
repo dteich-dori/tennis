@@ -848,41 +848,41 @@ export default function UserManualPage() {
                 do-not-pair lists, and cumulative YTD assignment counts through the current week.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 2: Build Availability Maps</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+              <h3 className="font-semibold mb-2">Step 2: Player Availability &amp; Filtering</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                The algorithm pre-computes two things before filtering, then applies a per-slot
+                eligibility filter using the numbered Assignment Rules above.
+              </p>
+              <p className="text-sm leading-relaxed mb-1"><strong>Pre-computed inputs:</strong></p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-3">
                 <li>
                   <span className="font-semibold">Solo exclusion</span> &mdash; Players already
-                  assigned to a Solo game on a given date are excluded from Don&apos;s games on that
-                  same date (one game per day rule).
+                  assigned to a Solo game on a given date are excluded from Don&apos;s games on
+                  that same date (one game per day rule, R5).
                 </li>
                 <li>
-                  <span className="font-semibold">Derated pairing history</span> &mdash; If the season
-                  has a &ldquo;once per two weeks&rdquo; derated cap, the previous week&apos;s games
-                  are also loaded to check cross-week derated pairings.
-                </li>
-                <li>
-                  <span className="font-semibold">Per-day surplus check</span> &mdash; For each day
-                  with games, the algorithm counts eligible players vs. slots needed and logs warnings
-                  if a day is tight.
+                  <span className="font-semibold">Per-day surplus check</span> &mdash; For each
+                  day with games, the algorithm counts eligible players vs. slots needed and
+                  logs a warning when a day is tight.
                 </li>
               </ul>
-
-              <h3 className="font-semibold mb-2">Step 3: Player Filtering</h3>
-              <p className="text-sm leading-relaxed mb-2">
-                For each game slot, the algorithm determines available players by checking:
-              </p>
+              <p className="text-sm leading-relaxed mb-1"><strong>Per-slot filter</strong> (applied for every empty slot):</p>
               <ol className="list-decimal list-inside space-y-1 text-sm ml-4 mb-4">
-                <li>Not already in this game</li>
-                <li>Not already assigned to another game on the same date (including Solo)</li>
-                <li>Still owed games this week (WTD frequency &minus; games assigned &gt; 0), or is a 2+ player</li>
-                <li>Not on a blocked day of the week</li>
-                <li>Not on vacation during the game date</li>
-                <li>No consecutive days conflict (if flagged &mdash; checks day before and day after)</li>
-                <li>No do-not-pair conflict with any player already assigned to this game (bidirectional)</li>
-                <li>Derated pairing cap not exceeded (checks same-week and optionally previous-week pairings)</li>
+                <li>Player must pass <code>R1</code> (active) and <code>R2</code> (not excluded from auto-assign).</li>
+                <li>Not already in this game.</li>
+                <li><code>R5</code> &mdash; not already assigned to another game on the same date (including Solo).</li>
+                <li><code>R7</code> &mdash; still owed games this week (<code>freq &minus; wtd &gt; 0</code>), or is a 2+ player.</li>
+                <li><code>R3</code> &mdash; not on a blocked day of the week.</li>
+                <li><code>R4</code> &mdash; not on vacation during the game date.</li>
+                <li><code>R9</code> &mdash; not in an early game if their &ldquo;no early games&rdquo; flag is on.</li>
+                <li><code>R10</code> &mdash; no consecutive-days conflict (if flagged &mdash; checks day before and day after).</li>
+                <li><code>R6</code> &mdash; no do-not-pair conflict with any player already assigned to this game (bidirectional).</li>
+                <li><code>R8</code> &mdash; A+C composition rule: only AACC is allowed; an A or C candidate is rejected when the game can&apos;t still resolve to AACC, and a B is rejected when the game already has both an A and a C.</li>
+                <li><code>R12</code> &mdash; season cap (1x / 2x base contracts only).</li>
+                <li><code>R13</code> &mdash; if the candidate would be an &ldquo;extras&rdquo; placement (Pass 2.5 / 3 / 3.5), it&apos;s gated when any other contracted player still has an unmet weekly contract with remaining playable days.</li>
               </ol>
 
-              <h3 className="font-semibold mb-2">Step 4: Player Priority Scoring</h3>
+              <h3 className="font-semibold mb-2">Step 3: Player Priority Scoring</h3>
               <p className="text-sm leading-relaxed mb-2">
                 Each eligible player receives a priority score used for sorting (in this order):
               </p>
@@ -916,7 +916,7 @@ export default function UserManualPage() {
                 </li>
               </ul>
 
-              <h3 className="font-semibold mb-2">Step 5: Day Ordering (Tightest First)</h3>
+              <h3 className="font-semibold mb-2">Step 4: Day Ordering (Tightest First)</h3>
               <p className="text-sm leading-relaxed mb-4">
                 Days are processed in order of <span className="font-semibold">tightest surplus
                 first</span> &mdash; the day with the smallest difference between available players
@@ -924,7 +924,7 @@ export default function UserManualPage() {
                 where most needed before less constrained days.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 6: Skill-Level Composition Rules</h3>
+              <h3 className="font-semibold mb-2">Step 5: Skill-Level Composition Rules</h3>
               <p className="text-sm leading-relaxed mb-2">
                 As each game slot is filled, the algorithm checks the current game composition
                 and applies A/C protection rules to maintain balanced skill levels:
@@ -953,7 +953,7 @@ export default function UserManualPage() {
                 least 2 B players provide a buffer.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 7: Multi-Pass Assignment</h3>
+              <h3 className="font-semibold mb-2">Step 6: Multi-Pass Assignment</h3>
               <p className="text-sm leading-relaxed mb-2">
                 For each game slot, the algorithm runs a series of passes. Each pass only fires if the previous one found no eligible players:
               </p>
@@ -999,7 +999,7 @@ export default function UserManualPage() {
                 passes if slots remain unfilled.
               </p>
 
-              <h3 className="font-semibold mb-2">Step 8: Summary &amp; Logging</h3>
+              <h3 className="font-semibold mb-2">Step 7: Summary &amp; Logging</h3>
               <p className="text-sm leading-relaxed">
                 After processing all games, the algorithm reports total slots filled, unfilled slots,
                 the last pass used, and a per-day log of warnings. Each special-pass assignment is
