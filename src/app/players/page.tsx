@@ -885,14 +885,9 @@ export default function PlayersPage() {
                 />
                 No consecutive days
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.isDerated}
-                  onChange={(e) => setForm({ ...form, isDerated: e.target.checked })}
-                />
-                Derated
-              </label>
+              {/* Derated checkbox removed in v1.151 — concept retired.
+                  The isDerated field stays in the database for backward
+                  compatibility but auto-assign no longer enforces R11. */}
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"

@@ -288,10 +288,13 @@ export async function POST(request: NextRequest) {
       soloAssignedByDate.set(g.date, set);
     }
 
-    // Load previous week games for derated pairing check (maxDeratedPerWeek)
     const { seasons } = await import("@/db/schema");
     const [seasonRecord] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
-    const maxDeratedPerWeek = seasonRecord?.maxDeratedPerWeek;
+    // Derated pairing rule retired in v1.151. Forced to null so the
+    // existing R11 check sites short-circuit. The column remains in
+    // seasons for backward compatibility but is no longer consulted.
+    const maxDeratedPerWeek: number | null = null;
+    void seasonRecord?.maxDeratedPerWeek; // intentional: ignored
     const maxCGamesPerWeek = seasonRecord?.maxCGamesPerWeek ?? 1;
     const maxCGamesPerWeek1x = seasonRecord?.maxCGamesPerWeek1x ?? 4; // weeks between C games for 1x players
     // maxACGamesPerSeason removed — non-cGamesOk A players hard-blocked (cap=0), cGamesOk use player-level cGamesLimit

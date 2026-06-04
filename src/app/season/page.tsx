@@ -1251,23 +1251,11 @@ export default function SeasonPage() {
           </div>
         </div>
 
-        {/* Derated Player Settings - highlighted box */}
+        {/* C Games Settings — highlighted box. Derated picker removed in
+            v1.151 (concept retired); maxDeratedPerWeek column kept for
+            backward compatibility but auto-assign no longer enforces it. */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
           <div className="flex gap-4 items-end">
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                Same Derated Player Pairing Frequency
-              </label>
-              <select
-                value={maxDeratedPerWeek}
-                onChange={(e) => setMaxDeratedPerWeek(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-              >
-                <option value="none">No limit</option>
-                <option value="1">Once per week</option>
-                <option value="2">Once per two weeks</option>
-              </select>
-            </div>
             <div>
               <label className="block text-sm font-medium text-blue-800 mb-1">
                 C Games — 2x Players

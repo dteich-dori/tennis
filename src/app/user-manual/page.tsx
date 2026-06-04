@@ -200,16 +200,6 @@ export default function UserManualPage() {
                 </li>
               </ul>
 
-              <h3 className="font-semibold mb-2">Derated Pairing Frequency</h3>
-              <p className="text-sm leading-relaxed mb-2">
-                Controls how often a derated player can be paired with the same non-derated player:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
-                <li><span className="font-semibold">No limit</span> &mdash; No restriction.</li>
-                <li><span className="font-semibold">Once per week</span> &mdash; A non-derated player can only play with the same derated player once per week.</li>
-                <li><span className="font-semibold">Once per two weeks</span> &mdash; Same restriction but spanning two consecutive weeks.</li>
-              </ul>
-
               <h3 className="font-semibold mb-2">C Games Frequency for cGamesOk Players</h3>
               <p className="text-sm leading-relaxed mb-2">
                 Some A/B players are willing to play in games alongside C players (marked &ldquo;C games OK&rdquo; on their profile).
@@ -448,10 +438,6 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">No Consecutive Days</span> &mdash; Prevents
                   scheduling on back-to-back calendar days.
-                </li>
-                <li>
-                  <span className="font-semibold">Derated</span> &mdash; Marks the player for
-                  derated pairing limits (see Season Setup &gt; Derated Pairing Frequency).
                 </li>
                 <li>
                   <span className="font-semibold">C Games OK</span> &mdash; Indicates the player is willing to play in games with C-level players.
@@ -749,8 +735,15 @@ export default function UserManualPage() {
                     <td className="px-2 py-1">If <em>No consecutive days</em> is checked, player can&apos;t be put in a game on the day before or day after another game they&apos;re already in.</td>
                   </tr>
                   <tr className="border-t border-border">
-                    <td className="px-2 py-1 font-mono">R11</td>
-                    <td className="px-2 py-1">Derated pairing limit: same two derated players can&apos;t be paired more than once per week (or per 2 weeks, configurable in Season Setup).</td>
+                    <td className="px-2 py-1 font-mono text-muted">R11</td>
+                    <td className="px-2 py-1 text-muted">
+                      <em>(retired in v1.151)</em> Derated pairing limit. The
+                      derated concept has been replaced by simpler tools:
+                      promote/demote a player&apos;s skill level (A → B → C) if
+                      they fall behind in capability, and use C-anchor groups
+                      plus <em>Exclude from auto-assign</em> to isolate
+                      specific players.
+                    </td>
                   </tr>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R12</td>
