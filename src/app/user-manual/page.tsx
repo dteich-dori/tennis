@@ -759,7 +759,7 @@ export default function UserManualPage() {
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R13</td>
                     <td className="px-2 py-1">
-                      <strong>Extras gate</strong> — Passes 2.5 (vacation makeup), 3 (2+ extras), and 3.5 (STD catch-up) will not fire while <em>any</em> contracted player still has an unmet weekly contract and a remaining playable day in the same week. The empty-slot panel shows the &ldquo;Gating Players&rdquo; list when this rule is active.
+                      <strong>Extras gate</strong> — Passes 2.5 (vacation makeup), 3 (2+ extras), and 3.5 (STD catch-up) will not fire while any contracted player with an unmet weekly contract <em>could play this specific game&apos;s day</em>. Refined in v1.153 from a global &ldquo;any day this week&rdquo; check — a gating player who is blocked on the current day, on vacation, or already playing that date doesn&apos;t block the extras passes for that day. This avoids leaving slots empty when the &ldquo;blocker&rdquo; couldn&apos;t fill them anyway.
                     </td>
                   </tr>
                   <tr className="border-t border-border">

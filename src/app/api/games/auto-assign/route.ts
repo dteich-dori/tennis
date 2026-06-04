@@ -1257,29 +1257,32 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
-          // Helper: any contracted player still owed games this week AND
-          // has a remaining playable day where an open game exists? If so,
-          // we hold off on the "extras" passes (2.5, 3, 3.5) for this slot
-          // so they don't get an over-assignment ahead of someone who's
-          // still under their weekly contract.
-          const anyContractedUnmetWithRoom = (): boolean => {
+          // R13: any contracted player still owed games this week who could
+          // actually play on THIS GAME'S DAY. We only gate the extras
+          // passes (2.5 / 3 / 3.5) when a gating player could reach the
+          // current slot — otherwise an extras-eligible player should be
+          // free to fill it (a gating player who can't play Thursday
+          // anyway shouldn't block Thursday's extras).
+          //
+          // The previous check was global ("any day this week"), which
+          // left slots empty unnecessarily when the gating player
+          // couldn't possibly reach the day in question.
+          const anyContractedUnmetForThisDay = (): boolean => {
             for (const p of contractedPlayers) {
               const freq = weeklyContractedGames(p.contractedFrequency);
               if (freq === 0) continue;
               const wtd = wtdDonsCounts.get(p.id) ?? 0;
               if (wtd >= freq) continue;
-              const pDates = assignedDates.get(p.id) ?? new Set<string>();
-              for (const [d, dgs] of gamesByDate) {
-                const dDow = dgs[0]?.dayOfWeek ?? -1;
-                if (p.blockedDays.includes(dDow)) continue;
-                if (p.vacations.some((v) => d >= v.startDate && d <= v.endDate)) continue;
-                if (pDates.has(d)) continue;
-                const hasOpen = dgs.some((gg) => (gameAssignmentState.get(gg.id) ?? []).length < 4);
-                if (hasOpen) return true;
-              }
+              if (p.blockedDays.includes(game.dayOfWeek)) continue;
+              if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
+              if ((assignedDates.get(p.id) ?? new Set()).has(game.date)) continue;
+              // This player is unmet AND could play today
+              return true;
             }
             return false;
           };
+          // Kept under the old name for clarity in the gate sites below.
+          const anyContractedUnmetWithRoom = anyContractedUnmetForThisDay;
 
           // Pass 2.5: front-loading — players whose adjustedFreq > base freq and
           // who've met their base contract but are still owed front-loaded games.
