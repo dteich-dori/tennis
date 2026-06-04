@@ -786,6 +786,50 @@ export default function UserManualPage() {
                 </tbody>
               </table>
 
+              <h3 className="font-semibold mb-2">WTD / YTD / STD metrics</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                Three running counts track how much each player has played:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-3">
+                <li>
+                  <strong>WTD</strong> (Week-to-Date) — games already assigned for the
+                  current week only. Used for eligibility (R7) and must-play (player has
+                  only 1 remaining playable day this week and still has games owed).
+                </li>
+                <li>
+                  <strong>YTD</strong> (Year-to-Date) — cumulative games from week 1
+                  through the current week. <code>ytdDeficit = freq × currentWeek − ytd</code>{" "}
+                  — positive means the player is behind pace.
+                </li>
+                <li>
+                  <strong>STD</strong> (Season Total) — cumulative games across the entire
+                  season (all 36+ weeks). <code>stdDeficit = freq × 36 − std</code> — positive
+                  means the player is behind on their full-season target. STD is also the
+                  gate for Pass 3.5 (STD catch-up).
+                </li>
+              </ul>
+              <p className="text-sm leading-relaxed mb-2">
+                <strong>Priority sort</strong> when choosing who fills a slot (highest to lowest):
+              </p>
+              <ol className="list-decimal list-inside space-y-1 text-sm ml-4 mb-4">
+                <li><strong>mustPlay</strong> (WTD-derived — only 1 playable day left and still owed)</li>
+                <li>Sub tier — 1+ outranks pure subs in the sub-fill pass</li>
+                <li>Composition penalty — avoid A+C violations</li>
+                <li>Pairing diversity — fewer repeat pairings is better</li>
+                <li><strong>owed</strong> (WTD-derived — <code>freq − wtd</code>)</li>
+                <li>playableDaysLeft — fewer remaining days = more constrained = higher</li>
+                <li><strong>ytdDeficit</strong> — more behind on year-to-date pace = higher</li>
+                <li><strong>stdDeficit</strong> — more behind on season target = higher</li>
+                <li>Random tiebreak</li>
+              </ol>
+              <p className="text-sm leading-relaxed mb-4">
+                In short: <strong>WTD comes first</strong> (must-play + owed), then constrained-day
+                tightness, then <strong>YTD</strong>, then <strong>STD</strong>. WTD answers
+                &ldquo;does this player need a game this week?&rdquo;, YTD answers &ldquo;is this
+                player keeping up so far?&rdquo;, and STD answers &ldquo;will this player finish
+                their contract by the end of the season?&rdquo;
+              </p>
+
               <h3 className="font-semibold mb-2">Empty-slot panel</h3>
               <p className="text-sm leading-relaxed mb-4">
                 Click any empty slot on the Schedule page to open the diagnostic panel. It shows:
