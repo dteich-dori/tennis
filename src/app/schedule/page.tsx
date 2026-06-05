@@ -185,8 +185,9 @@ export default function SchedulePage() {
   const [autoAssignLog, setAutoAssignLog] = useState<{ type: string; day?: string; message: string }[]>([]);
   const [autoAssignCount, setAutoAssignCount] = useState(0);
   const [autoAssignError, setAutoAssignError] = useState("");
-  const [assignExtra, setAssignExtra] = useState(false);
-  const [assignCSubs, setAssignCSubs] = useState(false);
+  // Defaults checked (v1.156) — match Season Setup behaviour
+  const [assignExtra, setAssignExtra] = useState(true);
+  const [assignCSubs, setAssignCSubs] = useState(true);
 
   // Run All Weeks state
   const [runAllLoading, setRunAllLoading] = useState(false);

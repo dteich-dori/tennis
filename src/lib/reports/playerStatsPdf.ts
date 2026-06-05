@@ -474,9 +474,20 @@ export function generatePlayerStatsPdf(
     // Group players by contract type
     const typeCounts: Record<string, { count: number; totalStd: number; totalExpected: number; totalExtra: number; totalBalls: number }> = {};
     for (const s of contractPlayers) {
-      const label = s.frequency === "2+" ? "2+" : `${parseInt(s.frequency) || 0}x`;
+      // Labels: "1x", "1x+", "2x", "2x+"
+      let label: string;
+      if (s.frequency === "2+") label = "2x+";
+      else if (s.frequency === "1+") label = "1x+";
+      else label = `${parseInt(s.frequency) || 0}x`;
       if (!typeCounts[label]) typeCounts[label] = { count: 0, totalStd: 0, totalExpected: 0, totalExtra: 0, totalBalls: 0 };
-      const freq = parseInt(s.frequency) || 0;
+      // Base weekly count for 1+ is 1 and for 2+ is 2 (parseInt would give NaN
+      // for "1+" / "2+" so handle explicitly)
+      const freq =
+        s.frequency === "1+" || s.frequency === "1"
+          ? 1
+          : s.frequency === "2+" || s.frequency === "2"
+            ? 2
+            : 0;
       const expected = freq * Math.min(currentMaxWeek, totalWeeks);
       const extra = Math.max(0, s.std - expected);
       typeCounts[label].count++;
@@ -486,7 +497,7 @@ export function generatePlayerStatsPdf(
       typeCounts[label].totalBalls += s.ballsBrought;
     }
 
-    const typeOrder = ["1x", "2x", "2+"];
+    const typeOrder = ["1x", "1x+", "2x", "2x+"];
     const sortedTypes = typeOrder.filter((k) => typeCounts[k]);
 
     // Table columns

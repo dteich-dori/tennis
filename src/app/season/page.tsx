@@ -75,8 +75,10 @@ export default function SeasonPage() {
   const [donsAssignLog, setDonsAssignLog] = useState<
     { type: string; week?: number; message: string }[]
   >([]);
-  const [donsAssignExtra, setDonsAssignExtra] = useState(false);
-  const [donsAssignCSubs, setDonsAssignCSubs] = useState(false);
+  // Defaults checked (v1.156) — most admins want extras + C subs available
+  // so the algorithm has room to fill empties after base contracts are met.
+  const [donsAssignExtra, setDonsAssignExtra] = useState(true);
+  const [donsAssignCSubs, setDonsAssignCSubs] = useState(true);
   const [donsAssignStdCatchup, setDonsAssignStdCatchup] = useState(true);
 
   // Solo auto-assign state

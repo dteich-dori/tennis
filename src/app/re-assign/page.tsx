@@ -116,8 +116,9 @@ export default function ReAssignPage() {
   });
   const [weekStart, setWeekStart] = useState<number>(1);
   const [weekEnd, setWeekEnd] = useState<number>(36);
-  const [assignExtra, setAssignExtra] = useState(false);
-  const [assignCSubs, setAssignCSubs] = useState(false);
+  // Defaults checked (v1.156) — match Season Setup behaviour
+  const [assignExtra, setAssignExtra] = useState(true);
+  const [assignCSubs, setAssignCSubs] = useState(true);
 
   // Scan results
   const [conflicts, setConflicts] = useState<ConflictRow[] | null>(null);
