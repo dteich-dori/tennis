@@ -11,7 +11,6 @@ interface PlayerData {
   lastName: string;
   contractedFrequency: string;
   skillLevel: string;
-  isDerated: boolean;
   noConsecutiveDays: boolean;
   noEarlyGames: boolean;
   cGamesOk: boolean;
@@ -290,37 +289,10 @@ export async function POST(request: NextRequest) {
 
     const { seasons } = await import("@/db/schema");
     const [seasonRecord] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
-    // Derated pairing rule retired in v1.151. Forced to null so the
-    // existing R11 check sites short-circuit. The column remains in
-    // seasons for backward compatibility but is no longer consulted.
-    const maxDeratedPerWeek: number | null = null;
-    void seasonRecord?.maxDeratedPerWeek; // intentional: ignored
     const maxCGamesPerWeek = seasonRecord?.maxCGamesPerWeek ?? 1;
     const maxCGamesPerWeek1x = seasonRecord?.maxCGamesPerWeek1x ?? 4; // weeks between C games for 1x players
-    // maxACGamesPerSeason removed — non-cGamesOk A players hard-blocked (cap=0), cGamesOk use player-level cGamesLimit
-
-    let prevWeekGamesData: GameData[] = [];
-    if (maxDeratedPerWeek === 2 && weekNumber > 1) {
-      const prevGames = await database.select().from(games)
-        .where(and(eq(games.seasonId, seasonId), eq(games.weekNumber, weekNumber - 1)));
-      const prevIds = prevGames.map((g) => g.id);
-      let prevAssignments: typeof allAssignments = [];
-      for (let i = 0; i < prevIds.length; i += BATCH) {
-        const batch = prevIds.slice(i, i + BATCH);
-        const rows = await database.select().from(gameAssignments).where(inArray(gameAssignments.gameId, batch));
-        prevAssignments.push(...rows);
-      }
-      const prevByGame = new Map<number, typeof prevAssignments>();
-      for (const a of prevAssignments) {
-        const arr = prevByGame.get(a.gameId) ?? [];
-        arr.push(a);
-        prevByGame.set(a.gameId, arr);
-      }
-      prevWeekGamesData = prevGames.map((g) => ({
-        ...g,
-        assignments: prevByGame.get(g.id) ?? [],
-      }));
-    }
+    // (R11 derated pairing rule + its previous-week game prefetch retired in
+    // v1.151 and fully removed in v1.155.)
 
     // 6a. Vacation-aware front-loading: compute adjusted weekly frequency per player
     // Players with upcoming vacations get a boosted weekly target (up to freq+1) so they
@@ -664,42 +636,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Derated pairing limit: check both directions
-        // - If candidate is derated, check if any assigned non-derated player already paired with them
-        // - If candidate is non-derated, check if any assigned derated player already paired with them
-        if (maxDeratedPerWeek != null) {
-          const gamesToCheck = [...donsGames.map((g) => ({
-            ...g,
-            assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
-          }))];
-          if (maxDeratedPerWeek === 2) {
-            gamesToCheck.push(...prevWeekGamesData.map((g) => ({
-              ...g,
-              assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
-            })));
-          }
-
-          for (const assignedId of assignedInGame) {
-            const assignedPlayer = playerData.find((pl) => pl.id === assignedId);
-            if (!assignedPlayer) continue;
-            // One must be derated, the other not — skip if both derated or both non-derated
-            const oneDerated = p.isDerated !== assignedPlayer.isDerated;
-            if (!oneDerated) continue;
-
-            let alreadyPaired = false;
-            for (const g of gamesToCheck) {
-              if (g.status !== "normal") continue;
-              if (g.id === game.id) continue;
-              const inGame = g.assignments.some((a) => a.playerId === assignedId);
-              if (!inGame) continue;
-              if (g.assignments.some((a) => a.playerId === p.id)) {
-                alreadyPaired = true;
-                break;
-              }
-            }
-            if (alreadyPaired) return false;
-          }
-        }
+        // (R11 derated pairing limit retired in v1.151; column dropped in v1.155.)
 
         return true;
       });
@@ -1548,56 +1485,7 @@ export async function POST(request: NextRequest) {
                 }
                 if (!dnpOk) continue;
 
-                // Verify derated pairing limits in new rosters
-                let deratedOk = true;
-                if (maxDeratedPerWeek != null) {
-                  const gamesToCheck = [...donsGames.map((g) => ({
-                    ...g,
-                    assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
-                  }))];
-                  if (maxDeratedPerWeek === 2) {
-                    gamesToCheck.push(...prevWeekGamesData.map((g) => ({
-                      ...g,
-                      assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
-                    })));
-                  }
-
-                  // Check pidJ in game i (new roster newI)
-                  for (const otherId of newI) {
-                    if (otherId === pidJ) continue;
-                    const otherPlayer = playerData.find((p) => p.id === otherId);
-                    if (!otherPlayer || !pJ) continue;
-                    if (pJ.isDerated === otherPlayer.isDerated) continue;
-                    let alreadyPaired = false;
-                    for (const g of gamesToCheck) {
-                      if (g.status !== "normal") continue;
-                      if (g.id === dayStates[i].game.id || g.id === dayStates[j].game.id) continue;
-                      const inGame = g.assignments.some((a) => a.playerId === otherId);
-                      if (!inGame) continue;
-                      if (g.assignments.some((a) => a.playerId === pidJ)) { alreadyPaired = true; break; }
-                    }
-                    if (alreadyPaired) { deratedOk = false; break; }
-                  }
-                  // Check pidI in game j (new roster newJ)
-                  if (deratedOk) {
-                    for (const otherId of newJ) {
-                      if (otherId === pidI) continue;
-                      const otherPlayer = playerData.find((p) => p.id === otherId);
-                      if (!otherPlayer || !pI) continue;
-                      if (pI.isDerated === otherPlayer.isDerated) continue;
-                      let alreadyPaired = false;
-                      for (const g of gamesToCheck) {
-                        if (g.status !== "normal") continue;
-                        if (g.id === dayStates[i].game.id || g.id === dayStates[j].game.id) continue;
-                        const inGame = g.assignments.some((a) => a.playerId === otherId);
-                        if (!inGame) continue;
-                        if (g.assignments.some((a) => a.playerId === pidI)) { alreadyPaired = true; break; }
-                      }
-                      if (alreadyPaired) { deratedOk = false; break; }
-                    }
-                  }
-                }
-                if (!deratedOk) continue;
+                // (R11 derated swap-check retired in v1.155.)
 
                 // Apply swap in DB
                 const [rowI] = await database.select().from(gameAssignments)
@@ -1908,55 +1796,7 @@ export async function POST(request: NextRequest) {
               }
               if (!dnpOk) continue;
 
-              // --- Constraint 6: Derated pairing ---
-              let deratedOk = true;
-              if (maxDeratedPerWeek != null) {
-                const gamesToCheck = [...donsGames.map((g) => ({
-                  ...g,
-                  assignments: (gameAssignmentState.get(g.id) ?? []).map((pid, idx) => ({ playerId: pid, slotPosition: idx + 1 })),
-                }))];
-                if (maxDeratedPerWeek === 2) {
-                  gamesToCheck.push(...prevWeekGamesData.map((g) => ({
-                    ...g,
-                    assignments: g.assignments.map((a) => ({ playerId: a.playerId, slotPosition: a.slotPosition })),
-                  })));
-                }
-
-                // Check pidJ in game i (new roster newI)
-                for (const otherId of newI) {
-                  if (otherId === pidJ) continue;
-                  const otherPlayer = playerData.find((p) => p.id === otherId);
-                  if (!otherPlayer) continue;
-                  if (pJ.isDerated === otherPlayer.isDerated) continue;
-                  let alreadyPaired = false;
-                  for (const g of gamesToCheck) {
-                    if (g.status !== "normal") continue;
-                    if (g.id === gameI.id || g.id === gameJ.id) continue;
-                    const inGame = g.assignments.some((a) => a.playerId === otherId);
-                    if (!inGame) continue;
-                    if (g.assignments.some((a) => a.playerId === pidJ)) { alreadyPaired = true; break; }
-                  }
-                  if (alreadyPaired) { deratedOk = false; break; }
-                }
-                if (deratedOk) {
-                  for (const otherId of newJ) {
-                    if (otherId === pidI) continue;
-                    const otherPlayer = playerData.find((p) => p.id === otherId);
-                    if (!otherPlayer) continue;
-                    if (pI.isDerated === otherPlayer.isDerated) continue;
-                    let alreadyPaired = false;
-                    for (const g of gamesToCheck) {
-                      if (g.status !== "normal") continue;
-                      if (g.id === gameI.id || g.id === gameJ.id) continue;
-                      const inGame = g.assignments.some((a) => a.playerId === otherId);
-                      if (!inGame) continue;
-                      if (g.assignments.some((a) => a.playerId === pidI)) { alreadyPaired = true; break; }
-                    }
-                    if (alreadyPaired) { deratedOk = false; break; }
-                  }
-                }
-              }
-              if (!deratedOk) continue;
+              // (R11 derated cross-day swap-check retired in v1.155.)
 
               // Apply cross-day swap in DB
               const [rowI] = await database.select().from(gameAssignments)

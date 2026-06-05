@@ -19,8 +19,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { startDate: string; maxDeratedPerWeek?: number | null; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null };
-    const { startDate, maxDeratedPerWeek, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason } = body;
+    const body = (await request.json()) as { startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null };
+    const { startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason } = body;
 
     // Validate start date is a Monday
     const date = new Date(startDate + "T00:00:00");
@@ -42,7 +42,6 @@ export async function POST(request: NextRequest) {
         startDate,
         endDate: endDate.toISOString().split("T")[0],
         totalWeeks: 36,
-        maxDeratedPerWeek: maxDeratedPerWeek ?? null,
         maxCGamesPerWeek: maxCGamesPerWeek ?? 1,
         maxCGamesPerWeek1x: maxCGamesPerWeek1x ?? 4,
         maxACGamesPerSeason: maxACGamesPerSeason ?? 1,
@@ -61,8 +60,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id: number; startDate: string; maxDeratedPerWeek?: number | null; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number };
-    const { id, startDate, maxDeratedPerWeek, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek } = body;
+    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number };
+    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek } = body;
 
     const date = new Date(startDate + "T00:00:00");
     if (date.getDay() !== 1) {
@@ -86,7 +85,6 @@ export async function PUT(request: NextRequest) {
       .set({
         startDate,
         endDate: endDate.toISOString().split("T")[0],
-        maxDeratedPerWeek: maxDeratedPerWeek !== undefined ? maxDeratedPerWeek : undefined,
         maxCGamesPerWeek: maxCGamesPerWeek !== undefined ? maxCGamesPerWeek : undefined,
         maxCGamesPerWeek1x: maxCGamesPerWeek1x !== undefined ? maxCGamesPerWeek1x : undefined,
         maxACGamesPerSeason: maxACGamesPerSeason !== undefined ? maxACGamesPerSeason : undefined,

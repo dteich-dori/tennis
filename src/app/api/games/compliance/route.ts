@@ -42,9 +42,10 @@ export async function GET(request: NextRequest) {
     const sid = parseInt(seasonId);
     const wk = parseInt(weekNumber);
 
-    // Load season settings (for maxDeratedPerWeek)
+    // (Season data loaded only for compatibility; derated check retired in v1.155.)
     const seasonData = await database.select().from(seasons).where(eq(seasons.id, sid));
-    const maxDeratedPerWeek = seasonData.length > 0 ? seasonData[0].maxDeratedPerWeek : null;
+    void seasonData;
+    const maxDeratedPerWeek: number | null = null;
 
     // Load games for this week, filtered by group if specified
     const weekGames = group
@@ -589,115 +590,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ===== CHECK 14: Derated pairing limit (dons only) =====
-    // maxDeratedPerWeek=1: same derated player at most once per week
-    // maxDeratedPerWeek=2: same derated player at most once per 2 weeks
-    if (maxDeratedPerWeek != null && group !== "solo") {
-      // For "once per 2 weeks", also load previous week's games and assignments
-      let prevWeekPairings: Map<number, Set<number>> | null = null;
-      if (maxDeratedPerWeek === 2 && wk > 1) {
-        const prevGames = group
-          ? await database.select().from(games).where(and(eq(games.seasonId, sid), eq(games.weekNumber, wk - 1), eq(games.group, group)))
-          : await database.select().from(games).where(and(eq(games.seasonId, sid), eq(games.weekNumber, wk - 1)));
-        const prevGameIds = prevGames.map((g) => g.id);
-        const prevAssignments = prevGameIds.length > 0
-          ? await database.select().from(gameAssignments).where(inArray(gameAssignments.gameId, prevGameIds))
-          : [];
-        const prevGameMap = new Map(prevGames.map((g) => [g.id, g]));
-
-        // Build map: playerId → Set of derated player IDs they were paired with last week
-        prevWeekPairings = new Map<number, Set<number>>();
-        const prevByGame = new Map<number, number[]>();
-        for (const a of prevAssignments) {
-          const g = prevGameMap.get(a.gameId);
-          if (!g || g.status !== "normal") continue;
-          const arr = prevByGame.get(a.gameId) ?? [];
-          arr.push(a.playerId);
-          prevByGame.set(a.gameId, arr);
-        }
-        for (const [, playerIds] of prevByGame) {
-          for (const pid of playerIds) {
-            const pp = playerMap.get(pid);
-            if (!pp || pp.isDerated) continue;
-            for (const otherId of playerIds) {
-              if (otherId === pid) continue;
-              const other = playerMap.get(otherId);
-              if (other?.isDerated) {
-                const set = prevWeekPairings.get(pid) ?? new Set<number>();
-                set.add(otherId);
-                prevWeekPairings.set(pid, set);
-              }
-            }
-          }
-        }
-      }
-
-      // For each non-derated player, track which specific derated players they're paired with
-      for (const [playerId, pAssignments] of assignmentsByPlayer) {
-        const p = playerMap.get(playerId);
-        if (!p || p.isDerated) continue;
-
-        // Count pairings with each specific derated player this week
-        const deratedPairingCount = new Map<number, number>();
-        for (const a of pAssignments) {
-          const g = gameMap.get(a.gameId);
-          if (!g || g.status !== "normal") continue;
-          const gAssigns = assignmentsByGame.get(a.gameId) ?? [];
-          for (const ga of gAssigns) {
-            if (ga.playerId === playerId) continue;
-            const coPlayer = playerMap.get(ga.playerId);
-            if (coPlayer?.isDerated) {
-              deratedPairingCount.set(ga.playerId, (deratedPairingCount.get(ga.playerId) ?? 0) + 1);
-            }
-          }
-        }
-
-        if (maxDeratedPerWeek === 1) {
-          // "Once per week": flag if paired with same derated player more than once this week
-          for (const [deratedId, count] of deratedPairingCount) {
-            if (count > 1) {
-              violations.push({
-                rule: "Derated pairing limit",
-                severity: "warning",
-                gameId: 0,
-                gameNumber: 0,
-                date: "",
-                playerName: playerName(playerId),
-                detail: `Paired with ${playerName(deratedId)} ${count} times this week (limit: once per week)`,
-              });
-            }
-          }
-        } else if (maxDeratedPerWeek === 2) {
-          // "Once per 2 weeks": flag if paired this week AND also paired last week with same derated player
-          const prevPairings = prevWeekPairings?.get(playerId);
-          for (const [deratedId, count] of deratedPairingCount) {
-            if (count > 1) {
-              // Paired multiple times this week alone
-              violations.push({
-                rule: "Derated pairing limit",
-                severity: "warning",
-                gameId: 0,
-                gameNumber: 0,
-                date: "",
-                playerName: playerName(playerId),
-                detail: `Paired with ${playerName(deratedId)} ${count} times this week (limit: once per 2 weeks)`,
-              });
-            } else if (prevPairings?.has(deratedId)) {
-              // Paired once this week but also paired last week
-              violations.push({
-                rule: "Derated pairing limit",
-                severity: "warning",
-                gameId: 0,
-                gameNumber: 0,
-                date: "",
-                playerName: playerName(playerId),
-                detail: `Paired with ${playerName(deratedId)} this week and last week (limit: once per 2 weeks)`,
-              });
-            }
-          }
-        }
-      }
-    }
+    // CHECK 14 (Derated pairing limit) was removed in v1.155 — concept retired.
 
     // Sort: errors first, then by date, then game number
     violations.sort((a, b) => {

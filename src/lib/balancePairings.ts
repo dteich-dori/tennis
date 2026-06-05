@@ -30,7 +30,6 @@ export interface GameData {
 export interface PlayerData {
   id: number;
   skillLevel: string;
-  isDerated: boolean;
 }
 
 export interface DnpPair {
@@ -187,8 +186,7 @@ function hasDnpViolation(
 export function optimizePairings(
   allGames: GameData[],
   playerMap: Map<number, PlayerData>,
-  dnpPairs: DnpPair[],
-  maxDeratedPerWeek: number | null
+  dnpPairs: DnpPair[]
 ): BalanceResult {
   // Build DNP set
   const dnpSet = new Set<string>();
@@ -262,64 +260,13 @@ export function optimizePairings(
     gamesByDate.set(g.date, arr);
   }
 
-  // Build a derated lookup for players
-  const isDeratedMap = new Map<number, boolean>();
-  for (const [pid, p] of playerMap) {
-    isDeratedMap.set(pid, p.isDerated);
-  }
-
   // Build game-to-week lookup
   const gameWeekMap = new Map<number, number>();
   for (const g of validGames) {
     gameWeekMap.set(g.id, g.weekNumber);
   }
+  void gameWeekMap; // retained for potential future use
 
-  // Helper: check derated pairing constraint for a proposed game roster
-  // If maxDeratedPerWeek is set, a derated+non-derated pair can only appear once per week
-  // (or once per 2 weeks if maxDeratedPerWeek === 2)
-  function checkDeratedConstraint(
-    proposedGameId: number,
-    proposedRoster: number[]
-  ): boolean {
-    if (maxDeratedPerWeek == null) return true; // no limit
-
-    const week = gameWeekMap.get(proposedGameId)!;
-    const weeksToCheck =
-      maxDeratedPerWeek === 2 ? [week - 1, week] : [week];
-
-    // Find all derated+non-derated pairs in the proposed roster
-    const deratedPairs: [number, number][] = [];
-    for (let i = 0; i < proposedRoster.length; i++) {
-      for (let j = i + 1; j < proposedRoster.length; j++) {
-        const p1 = proposedRoster[i];
-        const p2 = proposedRoster[j];
-        const d1 = isDeratedMap.get(p1) ?? false;
-        const d2 = isDeratedMap.get(p2) ?? false;
-        if (d1 !== d2) {
-          // One is derated, the other is not
-          deratedPairs.push([p1, p2]);
-        }
-      }
-    }
-
-    if (deratedPairs.length === 0) return true;
-
-    // Check if any of these derated pairs appear in another game in the same week(s)
-    for (const [dp1, dp2] of deratedPairs) {
-      for (const g of validGames) {
-        if (g.id === proposedGameId) continue;
-        const gWeek = gameWeekMap.get(g.id)!;
-        if (!weeksToCheck.includes(gWeek)) continue;
-
-        const roster = gameAssignState.get(g.id)!;
-        const hasP1 = roster.some((a) => a.playerId === dp1);
-        const hasP2 = roster.some((a) => a.playerId === dp2);
-        if (hasP1 && hasP2) return false;
-      }
-    }
-
-    return true;
-  }
 
   // Helper: compute the change in imbalance if we swap player A in game1 with player B in game2
   function computeSwapDelta(
@@ -485,13 +432,7 @@ export function optimizePairings(
               if (hasDnpViolation(newRoster1, dnpSet)) continue;
               if (hasDnpViolation(newRoster2, dnpSet)) continue;
 
-              // Derated check — only needed if the swap introduces new
-              // derated+non-derated pairings (skip if both swapped players
-              // have the same derated status, since it won't change anything)
-              if (maxDeratedPerWeek != null && p1.isDerated !== p2.isDerated) {
-                if (!checkDeratedConstraint(g1Id, newRoster1)) continue;
-                if (!checkDeratedConstraint(g2Id, newRoster2)) continue;
-              }
+              // (R11 derated swap-check retired in v1.155.)
 
               const delta = computeSwapDelta(g1Id, a1.playerId, g2Id, a2.playerId);
               if (delta < globalBestDelta) {

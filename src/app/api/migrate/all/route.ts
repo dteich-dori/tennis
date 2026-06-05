@@ -267,6 +267,35 @@ See you on the courts!'`
     },
   },
   {
+    name: "drop-is-derated",
+    description: "players: drop is_derated column (concept retired in v1.151)",
+    run: async (database) => {
+      try {
+        await database.run(sql`ALTER TABLE players DROP COLUMN is_derated`);
+        return "applied";
+      } catch (err) {
+        // 'no such column' = already dropped (idempotent)
+        const msg = String((err as Error)?.message ?? err).toLowerCase();
+        if (msg.includes("no such column") || msg.includes("no column")) return "already";
+        throw err;
+      }
+    },
+  },
+  {
+    name: "drop-max-derated-per-week",
+    description: "seasons: drop max_derated_per_week column (concept retired in v1.151)",
+    run: async (database) => {
+      try {
+        await database.run(sql`ALTER TABLE seasons DROP COLUMN max_derated_per_week`);
+        return "applied";
+      } catch (err) {
+        const msg = String((err as Error)?.message ?? err).toLowerCase();
+        if (msg.includes("no such column") || msg.includes("no column")) return "already";
+        throw err;
+      }
+    },
+  },
+  {
     name: "group-anchor-id",
     description: "players: add group_anchor_id column",
     run: async (database) => {

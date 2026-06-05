@@ -95,9 +95,7 @@ export async function POST(request: NextRequest) {
           if (p.isActive !== null && p.isActive !== undefined && p.isActive !== current.isActive) {
             updates.isActive = p.isActive;
           }
-          if (p.isDerated !== null && p.isDerated !== undefined && p.isDerated !== current.isDerated) {
-            updates.isDerated = p.isDerated;
-          }
+          // (isDerated dropped in v1.155 — silently ignore old backups)
           if (p.noConsecutiveDays !== null && p.noConsecutiveDays !== undefined && p.noConsecutiveDays !== current.noConsecutiveDays) {
             updates.noConsecutiveDays = p.noConsecutiveDays;
           }
@@ -147,7 +145,6 @@ export async function POST(request: NextRequest) {
           contractedFrequency: (isFullBackup && p.contractedFrequency) || "1",
           skillLevel: (isFullBackup && p.skillLevel) || "C",
           noConsecutiveDays: isFullBackup && p.noConsecutiveDays !== null && p.noConsecutiveDays !== undefined ? p.noConsecutiveDays : false,
-          isDerated: isFullBackup && p.isDerated !== null && p.isDerated !== undefined ? p.isDerated : false,
           noEarlyGames: isFullBackup && p.noEarlyGames !== null && p.noEarlyGames !== undefined ? p.noEarlyGames : false,
           soloGames: isFullBackup ? (p.soloGames || null) : null,
         }).returning();

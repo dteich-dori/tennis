@@ -129,7 +129,6 @@ export async function POST(request: NextRequest) {
       playerMap.set(p.id, {
         id: p.id,
         skillLevel: p.skillLevel,
-        isDerated: p.isDerated,
       });
     }
 
@@ -159,8 +158,7 @@ export async function POST(request: NextRequest) {
     const result = optimizePairings(
       gameDataArray,
       playerMap,
-      dnpRows,
-      season.maxDeratedPerWeek
+      dnpRows
     );
 
     // 6. Persist mutations to the database
