@@ -137,7 +137,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Count incomplete games (normal games with fewer than 4 assignments)
+    // Count incomplete games (normal games with fewer than 4 assignments).
+    // Weeks > 36 are makeup weeks beyond the contract obligation, so
+    // incomplete games there are expected and not counted.
+    const incompleteFilter = group
+      ? and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(games.group, group), sql`${games.weekNumber} <= 36`)
+      : and(eq(games.seasonId, sid), eq(games.status, "normal"), sql`${games.weekNumber} <= 36`);
     const incompleteRows = await database
       .select({
         gameId: games.id,
@@ -145,7 +150,7 @@ export async function GET(request: NextRequest) {
       })
       .from(games)
       .leftJoin(gameAssignments, eq(gameAssignments.gameId, games.id))
-      .where(gameFilter)
+      .where(incompleteFilter)
       .groupBy(games.id)
       .having(sql`count(${gameAssignments.id}) < 4`);
 

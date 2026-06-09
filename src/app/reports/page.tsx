@@ -215,9 +215,11 @@ export default function ReportsPage() {
         }
       }
 
-      // Also detect game-level issues directly from game data
+      // Also detect game-level issues directly from game data.
+      // Weeks > 36 are makeup weeks (beyond the contract obligation);
+      // incompleteness there is expected/flexible, so skip them.
       const playerMap = new Map(allPlayers.map((p) => [p.id, p]));
-      const donsGames = allGames.filter((g) => g.group === "dons" && g.status === "normal");
+      const donsGames = allGames.filter((g) => g.group === "dons" && g.status === "normal" && g.weekNumber <= 36);
       for (const g of donsGames) {
         const count = g.assignments?.length ?? 0;
 

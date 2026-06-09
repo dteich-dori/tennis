@@ -420,8 +420,11 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== CHECK 12: Incomplete games (fewer than 4 players) =====
+    // Weeks > 36 are makeup weeks (beyond contract); incompleteness there
+    // is flexible/expected, so skip the check.
     for (const g of weekGames) {
       if (g.status !== "normal") continue;
+      if (g.weekNumber > 36) continue;
       const gAssigns = assignmentsByGame.get(g.id) ?? [];
       if (gAssigns.length < 4) {
         const empty = 4 - gAssigns.length;
