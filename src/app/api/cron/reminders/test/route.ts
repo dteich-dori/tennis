@@ -8,7 +8,7 @@ import {
   players,
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { sendEmail, sendBulkSms, validateEmailConfig } from "@/lib/email";
+import { sendEmail, sendBulkSms, validateEmailConfig, hasSmsCapability } from "@/lib/email";
 
 /**
  * POST /api/cron/reminders/test
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       substitute(templateSubject, ctx) + (usedSample ? " (TEST)" : "");
 
     const hasEmail = !!(player.email && player.email.trim());
-    const hasSms = !!(player.cellNumber && player.carrier);
+    const hasSms = hasSmsCapability(player.cellNumber, player.carrier);
 
     if (!hasEmail && !hasSms) {
       return NextResponse.json(
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
           {
             name: ctx.name,
             phone: player.cellNumber!,
-            carrier: player.carrier!,
+            carrier: player.carrier ?? undefined,
           },
         ],
         bodyText,
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
       sentTo: {
         name: ctx.name,
         email: hasEmail ? player.email : null,
-        sms: hasSms ? `${player.cellNumber} (${player.carrier})` : null,
+        sms: hasSms ? (player.carrier ? `${player.cellNumber} (${player.carrier})` : player.cellNumber) : null,
       },
       rendered: { subject, body: bodyText },
       emailResult,

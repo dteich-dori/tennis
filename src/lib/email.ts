@@ -31,6 +31,53 @@ export function getSmsGatewayEmail(phone: string, carrier: string): string | nul
   return `${digits}@${domain}`;
 }
 
+export function validateTwilioConfig(): string | null {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !token || !from) {
+    return "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_FROM_NUMBER is not configured";
+  }
+  return null;
+}
+
+// True if a player can receive a text: via Twilio (phone number alone is
+// enough) or, when Twilio isn't configured, via a carrier email gateway
+// (phone + carrier required).
+export function hasSmsCapability(phone?: string | null, carrier?: string | null): boolean {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length !== 10) return false;
+  if (!validateTwilioConfig()) return true;
+  return !!(carrier && SMS_GATEWAYS[carrier]);
+}
+
+async function sendSmsViaTwilio(phone: string, body: string): Promise<{ success: boolean; error?: string }> {
+  const sid = process.env.TWILIO_ACCOUNT_SID!;
+  const token = process.env.TWILIO_AUTH_TOKEN!;
+  const from = process.env.TWILIO_FROM_NUMBER!;
+  const digits = phone.replace(/\D/g, "");
+  const to = `+1${digits}`;
+
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ To: to, From: from, Body: body }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { success: false, error: `Twilio error ${res.status}: ${errText}` };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
 export function validateEmailConfig(): string | null {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
@@ -144,7 +191,7 @@ export async function sendBulkEmails(
 export interface SmsRecipient {
   name: string;
   phone: string;
-  carrier: string;
+  carrier?: string;
 }
 
 export async function sendBulkSms(
@@ -154,14 +201,35 @@ export async function sendBulkSms(
 ): Promise<BulkResult> {
   const result: BulkResult = { sent: 0, smsSent: 0, errors: [], skipped: [], recipients: [] };
 
-  const configError = validateEmailConfig();
-  if (configError) {
-    result.errors.push(configError);
-    return result;
+  const useTwilio = !validateTwilioConfig();
+
+  if (!useTwilio) {
+    const configError = validateEmailConfig();
+    if (configError) {
+      result.errors.push(configError);
+      return result;
+    }
   }
 
   for (const r of recipients) {
-    const gatewayEmail = getSmsGatewayEmail(r.phone, r.carrier);
+    if (useTwilio) {
+      const digits = r.phone.replace(/\D/g, "");
+      if (digits.length !== 10) {
+        result.skipped.push(`${r.name} (invalid phone: ${r.phone})`);
+        continue;
+      }
+
+      const sendResult = await sendSmsViaTwilio(r.phone, text);
+      if (sendResult.success) {
+        result.smsSent++;
+        result.recipients.push(`${r.name} (SMS)`);
+      } else {
+        result.errors.push(`${r.name} (SMS): ${sendResult.error}`);
+      }
+      continue;
+    }
+
+    const gatewayEmail = r.carrier ? getSmsGatewayEmail(r.phone, r.carrier) : null;
     if (!gatewayEmail) {
       result.skipped.push(`${r.name} (invalid phone/carrier: ${r.phone}/${r.carrier})`);
       continue;

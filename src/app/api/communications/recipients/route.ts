@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { players, emailSettings } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
+import { hasSmsCapability } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     // Only include players reachable by email or SMS
     let filtered = allPlayers.filter((p) => {
       const hasEmail = !!(p.email && p.email.trim());
-      const hasSms = !!(p.cellNumber && p.carrier);
+      const hasSms = hasSmsCapability(p.cellNumber, p.carrier);
       return hasEmail || hasSms;
     });
 
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
         cellNumber: p.cellNumber,
         carrier: p.carrier,
         hasEmail: !!(p.email && p.email.trim()),
-        hasSms: !!(p.cellNumber && p.carrier),
+        hasSms: hasSmsCapability(p.cellNumber, p.carrier),
       })),
       count: filtered.length,
     });

@@ -10,7 +10,7 @@ import {
   emailLog,
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { sendEmail, sendBulkSms, validateEmailConfig } from "@/lib/email";
+import { sendEmail, sendBulkSms, validateEmailConfig, hasSmsCapability } from "@/lib/email";
 
 /**
  * GET /api/cron/reminders
@@ -252,7 +252,7 @@ export async function GET(request: NextRequest) {
         const subject = substitute(templateSubject, ctx);
 
         const hasEmail = !!(player.email && player.email.trim());
-        const hasSms = !!(player.cellNumber && player.carrier);
+        const hasSms = hasSmsCapability(player.cellNumber, player.carrier);
         const ch = settings.reminderChannel || "both";
 
         const sendOneEmail = async (): Promise<boolean> => {
@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
               {
                 name: ctx.name,
                 phone: player.cellNumber!,
-                carrier: player.carrier!,
+                carrier: player.carrier ?? undefined,
               },
             ],
             body,

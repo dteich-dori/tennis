@@ -8,6 +8,7 @@ import {
   sendBulkSms,
   sendEmail,
   validateEmailConfig,
+  hasSmsCapability,
   type Recipient,
   type SmsRecipient,
   type EmailAttachment,
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
       const testPhone = settings?.testPhone || "";
       const testCarrier = settings?.testCarrier || "";
       const hasTestEmail = !!testEmail;
-      const hasTestSms = !!(testPhone && testCarrier);
+      const hasTestSms = hasSmsCapability(testPhone, testCarrier);
 
       if (!hasTestEmail && !hasTestSms) {
         return NextResponse.json(
@@ -294,13 +295,13 @@ export async function POST(request: NextRequest) {
       for (const p of filtered) {
         const name = `${p.firstName} ${p.lastName}`;
         const hasEmail = !!(p.email && p.email.trim());
-        const hasSms = !!(p.cellNumber && p.carrier);
+        const hasSms = hasSmsCapability(p.cellNumber, p.carrier);
 
         if (channel === "email") {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
         } else if (channel === "sms") {
           if (hasSms) {
-            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
+            smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier ?? undefined, playerId: p.id });
           } else if (hasEmail) {
             emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
@@ -310,7 +311,7 @@ export async function POST(request: NextRequest) {
             smsRecipients.push({
               name,
               phone: p.cellNumber!,
-              carrier: p.carrier!,
+              carrier: p.carrier ?? undefined,
               playerId: p.id,
               emailFallback: hasEmail ? p.email! : undefined,
             });
@@ -320,7 +321,7 @@ export async function POST(request: NextRequest) {
           }
         } else {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
-          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier!, playerId: p.id });
+          if (hasSms) smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier ?? undefined, playerId: p.id });
         }
         if (hasEmail || hasSms) recipientNamesForLog.push(name);
       }
