@@ -33,10 +33,11 @@ export function getSmsGatewayEmail(phone: string, carrier: string): string | nul
 
 export function validateTwilioConfig(): string | null {
   const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
+  const keySid = process.env.TWILIO_API_KEY_SID;
+  const keySecret = process.env.TWILIO_API_KEY_SECRET;
   const from = process.env.TWILIO_FROM_NUMBER;
-  if (!sid || !token || !from) {
-    return "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_FROM_NUMBER is not configured";
+  if (!sid || !keySid || !keySecret || !from) {
+    return "TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, or TWILIO_FROM_NUMBER is not configured";
   }
   return null;
 }
@@ -54,7 +55,8 @@ export function hasSmsCapability(phone?: string | null, carrier?: string | null)
 
 async function sendSmsViaTwilio(phone: string, body: string): Promise<{ success: boolean; error?: string }> {
   const sid = process.env.TWILIO_ACCOUNT_SID!;
-  const token = process.env.TWILIO_AUTH_TOKEN!;
+  const keySid = process.env.TWILIO_API_KEY_SID!;
+  const keySecret = process.env.TWILIO_API_KEY_SECRET!;
   const from = process.env.TWILIO_FROM_NUMBER!;
   const digits = phone.replace(/\D/g, "");
   const to = `+1${digits}`;
@@ -63,7 +65,7 @@ async function sendSmsViaTwilio(phone: string, body: string): Promise<{ success:
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        Authorization: `Basic ${Buffer.from(`${keySid}:${keySecret}`).toString("base64")}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ To: to, From: from, Body: body }),
