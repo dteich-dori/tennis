@@ -6,6 +6,7 @@ import { generatePlayerStatsPdf } from "@/lib/reports/playerStatsPdf";
 import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf, generateSoloGamesByDatePdf } from "@/lib/reports/gamesByDatePdf";
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
+import { generatePlayerAvailabilityPdf } from "@/lib/reports/playerAvailabilityPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
 import { generateWeeklyGameCountsPdf } from "@/lib/reports/weeklyGameCountsPdf";
@@ -359,6 +360,40 @@ export default function ReportsPage() {
       setError("Failed to generate Pairing Matrix report.");
     }
 
+    setGenerating(null);
+  };
+
+  const handlePlayerAvailabilityReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("playerAvailability");
+    try {
+      const res = await fetch(`/api/players?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to load players data.");
+        setGenerating(null);
+        return;
+      }
+      const players = (await res.json()) as (Player & {
+        isActive: boolean;
+        skillLevel: string;
+        contractedFrequency: string;
+        excludedFromAutoAssign?: boolean;
+        vacations: { startDate: string; endDate: string }[];
+      })[];
+      if (players.length === 0) {
+        setError("No players found.");
+        setGenerating(null);
+        return;
+      }
+      generatePlayerAvailabilityPdf(
+        players,
+        season,
+        season.scheduleVersion
+      );
+    } catch {
+      setError("Failed to generate Player Availability report.");
+    }
     setGenerating(null);
   };
 
@@ -756,6 +791,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "potentialPlayers" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Player Availability Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Player Availability</h2>
+          <p className="text-sm text-muted mb-4">
+            Active players with the days of the week they can play and their vacation date ranges.
+          </p>
+          <button
+            onClick={handlePlayerAvailabilityReport}
+            disabled={generating === "playerAvailability"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "playerAvailability" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
 

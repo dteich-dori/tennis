@@ -6,6 +6,12 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": ["-c", "export PATH=/Users/doriteich/.nvm/versions/node/v24.13.0/bin:$PATH && npm run dev"],
       "port": 3000
+    },
+    {
+      "name": "gamessignup-dev",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "export PATH=/Users/doriteich/.nvm/versions/node/v24.13.0/bin:$PATH && cd /Users/doriteich/GamesSignup && npm run dev"],
+      "port": 3001
     }
   ]
 }
