@@ -809,6 +809,21 @@ export default function ReportsPage() {
           </button>
         </div>
 
+        {/* Twilio SMS Cost Estimate Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Twilio SMS Cost Estimate</h2>
+          <p className="text-sm text-muted mb-4">
+            Estimate accrued and projected Twilio cost: setup, monthly,
+            and per-message fees based on actual SMS sends this season.
+          </p>
+          <a
+            href="/twilio-cost"
+            className="inline-block bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+          >
+            Open Estimator
+          </a>
+        </div>
+
         {/* Court Schedule Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Court Schedule</h2>
