@@ -97,16 +97,22 @@ export async function GET(request: NextRequest) {
 
     const estimatedSmsSegments = smsOnlyCount + dualSendCount + fallbackCount;
 
-    // Months elapsed since season start, fractional
+    // Burden months = elapsed time WITHIN the season window (start..end),
+    // capped at "today" if the season hasn't ended, at season end if it has.
+    // Used to attribute monthly Twilio fees to the Scheduler app only for
+    // the winter portion of the year (the GamesSignup app carries summer).
     const start = new Date(season.startDate + "T00:00:00");
+    const end = new Date(season.endDate + "T23:59:59");
     const today = new Date();
+    const effectiveEnd = today < end ? today : end;
     const monthsElapsed = Math.max(
       0,
-      (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)
+      (effectiveEnd.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)
     );
 
     return NextResponse.json({
       seasonStartDate: season.startDate,
+      seasonEndDate: season.endDate,
       monthsElapsed: Math.round(monthsElapsed * 10) / 10,
       smsOnlyCount,
       dualSendCount,

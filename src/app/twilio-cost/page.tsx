@@ -19,6 +19,7 @@ interface Batch {
 
 interface CostData {
   seasonStartDate: string;
+  seasonEndDate: string;
   monthsElapsed: number;
   smsOnlyCount: number;
   dualSendCount: number;
@@ -44,11 +45,15 @@ interface Rates {
   avgSegmentsPerText: number;
 }
 
+// The Twilio account is SHARED with the GamesSignup app. The convention:
+//   - Setup fees + monthly fees are attributed to GamesSignup (summer-active)
+//     and default to $0 here. Override if you want to attribute them here.
+//   - Per-segment fees apply to this app's actual SMS sends in this season.
 const DEFAULT_RATES: Rates = {
-  brandRegistration: 4,       // A2P 10DLC Sole Proprietor brand
-  campaignRegistration: 15,   // A2P 10DLC campaign registration
-  phoneNumberMonthly: 1.15,   // local US 10DLC number
-  campaignMonthly: 1.5,       // T-Mobile + AT&T pass-through (varies)
+  brandRegistration: 0,       // paid once in GamesSignup
+  campaignRegistration: 0,    // paid once in GamesSignup
+  phoneNumberMonthly: 0,      // GamesSignup carries the rental
+  campaignMonthly: 0,         // GamesSignup carries the campaign maintenance
   perSmsTwilio: 0.0083,       // Twilio base outbound SMS US
   perSmsCarrierFee: 0.005,    // Average A2P 10DLC carrier surcharge (transactional)
   avgSegmentsPerText: 1.2,    // Most reminders are 1 segment; some longer
@@ -125,15 +130,19 @@ export default function TwilioCostPage() {
   const accruedSms = segments * perSmsAll;
   const totalAccrued = oneTime + accruedMonthly + accruedSms;
 
-  // Projection to end of season (12 months from start)
+  // Projection to end of season: monthly fees over the full season length,
+  // SMS annualised to the full season span from the current rate.
   const seasonStartIso = data?.seasonStartDate ?? "";
-  const seasonStart = seasonStartIso ? new Date(seasonStartIso + "T00:00:00") : null;
-  const projectedMonths = seasonStart
-    ? 12 // assume 1-year cost projection
+  const seasonEndIso = data?.seasonEndDate ?? "";
+  const seasonLengthMonths = seasonStartIso && seasonEndIso
+    ? (new Date(seasonEndIso + "T23:59:59").getTime() -
+       new Date(seasonStartIso + "T00:00:00").getTime()) /
+      (1000 * 60 * 60 * 24 * 30.4375)
     : 0;
+  const projectedMonths = seasonLengthMonths;
   const projectedMonthly = monthly * projectedMonths;
   const projectedSms = segments > 0 && monthsElapsed > 0
-    ? (segments / monthsElapsed) * 12 * perSmsAll
+    ? (segments / monthsElapsed) * seasonLengthMonths * perSmsAll
     : 0;
   const projectedTotal = oneTime + projectedMonthly + projectedSms;
 
@@ -141,12 +150,14 @@ export default function TwilioCostPage() {
     <div className="p-8 max-w-4xl">
       <h1 className="text-2xl font-bold mb-2">Twilio SMS Cost Estimate</h1>
       <p className="text-sm text-muted mb-6">
-        Estimate the accrued and projected cost of sending text messages
-        via Twilio. Rates default to typical US A2P 10DLC pricing — adjust
-        to match your actual Twilio billing. SMS counts are pulled live
-        from the email log; per-segment counts assume an average of{" "}
-        <strong>{rates.avgSegmentsPerText.toFixed(1)}</strong> segments per
-        text (one segment ≈ 160 chars).
+        Estimates the Scheduler&apos;s share of the (shared) Twilio cost.
+        The Twilio account is shared with the GamesSignup app: setup fees
+        and monthly recurring fees are attributed to that app (summer
+        burden) and default to $0 here. This app carries its own
+        per-segment SMS cost for the winter season (the season window
+        bounds the months-elapsed calculation). Per-segment counts assume
+        an average of <strong>{rates.avgSegmentsPerText.toFixed(1)}</strong>
+        {" "}segments per text (one segment ≈ 160 chars).
       </p>
 
       {error && (
@@ -181,8 +192,8 @@ export default function TwilioCostPage() {
         {data ? (
           <table className="w-full text-sm">
             <tbody>
-              <Row label="Season start" value={data.seasonStartDate} />
-              <Row label="Months elapsed" value={data.monthsElapsed.toFixed(1)} />
+              <Row label="Season window" value={`${data.seasonStartDate} – ${data.seasonEndDate}`} />
+              <Row label="Months elapsed in window" value={data.monthsElapsed.toFixed(1)} />
               <Row label="SMS-only batches recipients" value={String(data.smsOnlyCount)} />
               <Row label="Email+Text recipients" value={String(data.dualSendCount)} />
               <Row label="Text→Email fallback recipients" value={String(data.fallbackCount)} />
@@ -201,17 +212,17 @@ export default function TwilioCostPage() {
         )}
       </section>
 
-      {/* Projected (12-month) cost */}
+      {/* Projected full-season cost */}
       <section className="border border-border rounded-lg p-4 mb-6">
-        <h2 className="font-semibold mb-3">Projected (12 months from season start)</h2>
+        <h2 className="font-semibold mb-3">Projected (full season)</h2>
         {data ? (
           <table className="w-full text-sm">
             <tbody>
               <Row label="One-time setup fees" value={fmt$(oneTime)} />
-              <Row label={`Monthly fees × ${projectedMonths} months`} value={fmt$(projectedMonthly)} />
-              <Row label="Projected SMS cost (annualised from current usage)" value={fmt$(projectedSms)} />
+              <Row label={`Monthly fees × ${projectedMonths.toFixed(1)} months`} value={fmt$(projectedMonthly)} />
+              <Row label="Projected SMS cost (scaled to full season)" value={fmt$(projectedSms)} />
               <tr><td colSpan={2}><hr className="my-2 border-border" /></td></tr>
-              <Row label="Projected 12-month total" value={fmt$(projectedTotal)} bold large />
+              <Row label="Projected season total" value={fmt$(projectedTotal)} bold large />
             </tbody>
           </table>
         ) : (
