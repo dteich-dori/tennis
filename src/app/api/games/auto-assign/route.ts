@@ -45,10 +45,15 @@ interface LogEntry {
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// AA players count as the A tier for composition rules (A+C avoidance,
-// AACC exception, scarcity counts). The AA-AA pairing preference is
-// layered on top via a separate weekly rotation; see aaPairScore.
-const isATier = (l: string | undefined): boolean => l === "A" || l === "AA";
+// Skill tiers for composition rules. AA/A/BA = A-tier (top), BC/C/D =
+// C-tier (bottom), B is the bridge. The existing "A+C only allowed as
+// AACC" rule generalizes to "A-tier + C-tier only allowed as 2+2 (2 of
+// each tier with 0 B's)". AA-AA pairing preference layers on via the
+// weekly rotation; see aaPairScore.
+const isATier = (l: string | undefined): boolean =>
+  l === "AA" || l === "A" || l === "BA";
+const isCTier = (l: string | undefined): boolean =>
+  l === "BC" || l === "C" || l === "D";
 
 /**
  * POST /api/games/auto-assign
@@ -602,14 +607,14 @@ export async function POST(request: NextRequest) {
           );
           const sa = assignedLevels.filter((l) => isATier(l)).length;
           const sb = assignedLevels.filter((l) => l === "B").length;
-          const sc = assignedLevels.filter((l) => l === "C").length;
+          const sc = assignedLevels.filter((l) => isCTier(l)).length;
           if (isATier(p.skillLevel) && sc > 0) {
-            // Only allow adding an A-tier (A or AA) to a C-containing game
-            // if it can still resolve to AACC: no B's already, exactly 2
-            // C's, < 2 A-tier players.
+            // Only allow adding an A-tier to a C-tier-containing game if
+            // it can still resolve to a 2+2 form: no B's already, exactly
+            // 2 C-tier, < 2 A-tier players.
             if (!(sb === 0 && sc === 2 && sa < 2)) return false;
           }
-          if (p.skillLevel === "C" && sa > 0) {
+          if (isCTier(p.skillLevel) && sa > 0) {
             if (!(sb === 0 && sa === 2 && sc < 2)) return false;
           }
           if (p.skillLevel === "B" && sa > 0 && sc > 0) {
@@ -624,7 +629,7 @@ export async function POST(request: NextRequest) {
           // available to fill the 4th slot.
           const postSa = sa + (isATier(p.skillLevel) ? 1 : 0);
           const postSb = sb + (p.skillLevel === "B" ? 1 : 0);
-          const postSc = sc + (p.skillLevel === "C" ? 1 : 0);
+          const postSc = sc + (isCTier(p.skillLevel) ? 1 : 0);
           const postFilled = postSa + postSb + postSc;
           // Only check when we've created a mixed A+C state AND there are
           // still open slots in this game.
@@ -650,7 +655,7 @@ export async function POST(request: NextRequest) {
             let availableC = 0;
             for (const pp of playerData) {
               if (inGameSet.has(pp.id)) continue;
-              if (!isATier(pp.skillLevel) && pp.skillLevel !== "C") continue;
+              if (!isATier(pp.skillLevel) && !isCTier(pp.skillLevel)) continue;
               if (pp.blockedDays.includes(game.dayOfWeek)) continue;
               if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
               if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
@@ -854,7 +859,7 @@ export async function POST(request: NextRequest) {
       const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
       const aCount = levels.filter((l) => isATier(l)).length;
       const bCount = levels.filter((l) => l === "B").length;
-      const cCount = levels.filter((l) => l === "C").length;
+      const cCount = levels.filter((l) => isCTier(l)).length;
       const hasA = aCount > 0;
       const hasC = cCount > 0;
 
@@ -874,7 +879,7 @@ export async function POST(request: NextRequest) {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
       const aCount = pls.filter((p) => isATier(p?.skillLevel)).length;
       const bCount = pls.filter((p) => p?.skillLevel === "B").length;
-      const cCount = pls.filter((p) => p?.skillLevel === "C").length;
+      const cCount = pls.filter((p) => isCTier(p?.skillLevel)).length;
       if (aCount === 0 || cCount === 0) return false;
       // AACC exception
       if (aCount === 2 && bCount === 0 && cCount === 2) return false;
@@ -973,11 +978,11 @@ export async function POST(request: NextRequest) {
         );
         const sa = levels.filter((l) => isATier(l)).length;
         const sb = levels.filter((l) => l === "B").length;
-        const sc = levels.filter((l) => l === "C").length;
+        const sc = levels.filter((l) => isCTier(l)).length;
         if (isATier(candidate.skillLevel) && sc > 0) {
           if (!(sb === 0 && sc === 2 && sa < 2)) return false;
         }
-        if (candidate.skillLevel === "C" && sa > 0) {
+        if (isCTier(candidate.skillLevel) && sa > 0) {
           if (!(sb === 0 && sa === 2 && sc < 2)) return false;
         }
         if (candidate.skillLevel === "B" && sa > 0 && sc > 0) return false;
@@ -1102,7 +1107,7 @@ export async function POST(request: NextRequest) {
           const aaCount = levels.filter((l) => l === "AA").length;
           const aCount = levels.filter((l) => isATier(l)).length;
           const bCount = levels.filter((l) => l === "B").length;
-          const cCount = levels.filter((l) => l === "C").length;
+          const cCount = levels.filter((l) => isCTier(l)).length;
           const hasA = aCount > 0;
           const hasC = cCount > 0;
           if (!hasA || !hasC) {
@@ -1210,7 +1215,7 @@ export async function POST(request: NextRequest) {
           const levels = ids.map((id) => playerData.find((p) => p.id === id)?.skillLevel);
           const a = levels.filter((l) => isATier(l)).length;
           const b = levels.filter((l) => l === "B").length;
-          const c = levels.filter((l) => l === "C").length;
+          const c = levels.filter((l) => isCTier(l)).length;
           // Highest priority: needs exactly 2 A's to complete AACC
           if (a === 0 && b === 0 && c === 2) return 0;
           // Next priority: needs 1 more A (already has 1A, 0B, 2C)
