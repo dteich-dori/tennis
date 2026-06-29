@@ -45,6 +45,11 @@ interface LogEntry {
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+// AA players count as the A tier for composition rules (A+C avoidance,
+// AACC exception, scarcity counts). The AA-AA pairing preference is
+// layered on top via a separate weekly rotation; see aaPairScore.
+const isATier = (l: string | undefined): boolean => l === "A" || l === "AA";
+
 /**
  * POST /api/games/auto-assign
  * Body: { seasonId: number, weekNumber: number }
@@ -189,6 +194,27 @@ export async function POST(request: NextRequest) {
       groupPct: p.groupPct ?? 0,
       groupMembers: gmByPlayer.get(p.id) ?? [],
     }));
+
+    // ===== AA-AA pair rotation =====
+    // AA players are slightly stronger than A's. Each week one AA-AA pair
+    // is the "preferred" pairing — they get a sorting bonus to land in the
+    // same game. With 3 AA players there are 3 possible pairs; each pair
+    // plays together once every 3 weeks (round-robin). No carry-over: if
+    // the assigned pair can't play that week (vacation, no shared day),
+    // the slot is forfeit and the rotation continues.
+    const aaPlayerIds = playerData
+      .filter((p) => p.skillLevel === "AA")
+      .map((p) => p.id)
+      .sort((a, b) => a - b);
+    const aaPairings: [number, number][] = [];
+    for (let i = 0; i < aaPlayerIds.length; i++) {
+      for (let j = i + 1; j < aaPlayerIds.length; j++) {
+        aaPairings.push([aaPlayerIds[i], aaPlayerIds[j]]);
+      }
+    }
+    const assignedAAPair: [number, number] | null = aaPairings.length > 0
+      ? aaPairings[(weekNumber - 1) % aaPairings.length]
+      : null;
 
     // Only contracted active players (not subs) for Don's auto-assign
     const contractedPlayers = playerData.filter((p) => p.contractedFrequency !== "0");
@@ -574,12 +600,13 @@ export async function POST(request: NextRequest) {
           const assignedLevels = [...assignedInGame].map(
             (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
           );
-          const sa = assignedLevels.filter((l) => l === "A").length;
+          const sa = assignedLevels.filter((l) => isATier(l)).length;
           const sb = assignedLevels.filter((l) => l === "B").length;
           const sc = assignedLevels.filter((l) => l === "C").length;
-          if (p.skillLevel === "A" && sc > 0) {
-            // Only allow adding an A to a C-containing game if it can still
-            // resolve to AACC: no B's already, exactly 2 C's, < 2 A's.
+          if (isATier(p.skillLevel) && sc > 0) {
+            // Only allow adding an A-tier (A or AA) to a C-containing game
+            // if it can still resolve to AACC: no B's already, exactly 2
+            // C's, < 2 A-tier players.
             if (!(sb === 0 && sc === 2 && sa < 2)) return false;
           }
           if (p.skillLevel === "C" && sa > 0) {
@@ -595,7 +622,7 @@ export async function POST(request: NextRequest) {
           // can't complete it, reject. Prevents week-7 game-#116-style
           // deadlocks where a 2A+1C state is reached with no more C
           // available to fill the 4th slot.
-          const postSa = sa + (p.skillLevel === "A" ? 1 : 0);
+          const postSa = sa + (isATier(p.skillLevel) ? 1 : 0);
           const postSb = sb + (p.skillLevel === "B" ? 1 : 0);
           const postSc = sc + (p.skillLevel === "C" ? 1 : 0);
           const postFilled = postSa + postSb + postSc;
@@ -623,11 +650,11 @@ export async function POST(request: NextRequest) {
             let availableC = 0;
             for (const pp of playerData) {
               if (inGameSet.has(pp.id)) continue;
-              if (pp.skillLevel !== "A" && pp.skillLevel !== "C") continue;
+              if (!isATier(pp.skillLevel) && pp.skillLevel !== "C") continue;
               if (pp.blockedDays.includes(game.dayOfWeek)) continue;
               if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
               if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
-              if (pp.skillLevel === "A") availableA++;
+              if (isATier(pp.skillLevel)) availableA++;
               else availableC++;
             }
             if (availableA < needMoreA || availableC < needMoreC) {
@@ -825,7 +852,7 @@ export async function POST(request: NextRequest) {
     //   0 = A+C with no bridge (e.g., AAAC, AACC, ACCC, ABCC) ← blocked
     function getCompositionScore(pids: number[]): number {
       const levels = pids.map((id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B");
-      const aCount = levels.filter((l) => l === "A").length;
+      const aCount = levels.filter((l) => isATier(l)).length;
       const bCount = levels.filter((l) => l === "B").length;
       const cCount = levels.filter((l) => l === "C").length;
       const hasA = aCount > 0;
@@ -845,7 +872,7 @@ export async function POST(request: NextRequest) {
     // refuses any swap that would create a non-AACC A+C combo.
     function hasACViolation(pids: number[]): boolean {
       const pls = pids.map((id) => playerData.find((p) => p.id === id));
-      const aCount = pls.filter((p) => p?.skillLevel === "A").length;
+      const aCount = pls.filter((p) => isATier(p?.skillLevel)).length;
       const bCount = pls.filter((p) => p?.skillLevel === "B").length;
       const cCount = pls.filter((p) => p?.skillLevel === "C").length;
       if (aCount === 0 || cCount === 0) return false;
@@ -944,10 +971,10 @@ export async function POST(request: NextRequest) {
         const levels = currentIds.map(
           (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
         );
-        const sa = levels.filter((l) => l === "A").length;
+        const sa = levels.filter((l) => isATier(l)).length;
         const sb = levels.filter((l) => l === "B").length;
         const sc = levels.filter((l) => l === "C").length;
-        if (candidate.skillLevel === "A" && sc > 0) {
+        if (isATier(candidate.skillLevel) && sc > 0) {
           if (!(sb === 0 && sc === 2 && sa < 2)) return false;
         }
         if (candidate.skillLevel === "C" && sa > 0) {
@@ -982,7 +1009,7 @@ export async function POST(request: NextRequest) {
             const levels = currentIds.map(
               (id) => playerData.find((pl) => pl.id === id)?.skillLevel
             );
-            if (levels.some((l) => l === "A")) continue;
+            if (levels.some((l) => isATier(l))) continue;
             const nextSlot = currentIds.length + 1;
             const ok = await passZeroAssign(game, anchor.id, nextSlot);
             if (!ok) continue;
@@ -1040,6 +1067,29 @@ export async function POST(request: NextRequest) {
       const sortByPriority = (players: PlayerData[], game: GameData) => {
         const currentAssignedIds = gameAssignmentState.get(game.id) ?? [];
 
+        // AA-pair bonus: strongly prefer landing the assigned AA pair in
+        // the same game this week. A small penalty for a non-assigned AA
+        // joining a game that already has both members of the assigned
+        // pair (keeps the 3rd AA in their own game).
+        function aaPairScore(p: PlayerData): number {
+          if (!assignedAAPair) return 0;
+          const [aa1, aa2] = assignedAAPair;
+          const candidateIsPair1 = p.id === aa1;
+          const candidateIsPair2 = p.id === aa2;
+          const gameHas1 = currentAssignedIds.includes(aa1);
+          const gameHas2 = currentAssignedIds.includes(aa2);
+          // Candidate completes the assigned AA pair → top priority.
+          if ((candidateIsPair1 && gameHas2) || (candidateIsPair2 && gameHas1)) {
+            return -100;
+          }
+          // A 3rd AA (not in the assigned pair) wants to crash the pair's
+          // game → discourage. Lets the 3rd AA find a different game.
+          if (p.skillLevel === "AA" && !candidateIsPair1 && !candidateIsPair2 && gameHas1 && gameHas2) {
+            return 10;
+          }
+          return 0;
+        }
+
         // Composition quality penalty: prefer candidates that maintain/improve game composition
         // Uses a hypothetical roster to compute quality score with vs without the candidate
         function compositionPenalty(p: PlayerData): number {
@@ -1049,12 +1099,19 @@ export async function POST(request: NextRequest) {
             if (id === p.id) return p.skillLevel;
             return playerData.find((pl) => pl.id === id)?.skillLevel ?? "B";
           });
-          const aCount = levels.filter((l) => l === "A").length;
+          const aaCount = levels.filter((l) => l === "AA").length;
+          const aCount = levels.filter((l) => isATier(l)).length;
           const bCount = levels.filter((l) => l === "B").length;
           const cCount = levels.filter((l) => l === "C").length;
           const hasA = aCount > 0;
           const hasC = cCount > 0;
-          if (!hasA || !hasC) return 0; // no A+C gap, no penalty
+          if (!hasA || !hasC) {
+            // No A+C gap. If the AA-AA pair is in this game, prefer A
+            // bridges over B's so AA AA A A wins over AA AA A B over AA
+            // AA B B. (Hard block on AA + C is handled above via aCount.)
+            if (aaCount >= 2 && bCount > 0) return bCount; // 1 or 2
+            return 0;
+          }
           if (bCount >= 2) return 1; // bridged but still A+C
           if (bCount === 1) return 2; // weakly bridged
           return 3; // no bridge — worst
@@ -1064,6 +1121,11 @@ export async function POST(request: NextRequest) {
           const pa = getPlayerPriority(a, game);
           const pb = getPlayerPriority(b, game);
           if (pa.mustPlay !== pb.mustPlay) return pa.mustPlay ? -1 : 1;
+          // AA-pair preference (this week's assigned pair) — overrides
+          // composition/diversity/owed so the pair lands together.
+          const aaA = aaPairScore(a);
+          const aaB = aaPairScore(b);
+          if (aaA !== aaB) return aaA - aaB;
           // Sub priority: 1+ players (contracted who also sub) outrank
           // pure-sub "0" players. Only matters when the pool mixes them
           // (Pass 4 sub fill).
@@ -1146,7 +1208,7 @@ export async function POST(request: NextRequest) {
         const score = (g: typeof g1) => {
           const ids = gameAssignmentState.get(g.id) ?? [];
           const levels = ids.map((id) => playerData.find((p) => p.id === id)?.skillLevel);
-          const a = levels.filter((l) => l === "A").length;
+          const a = levels.filter((l) => isATier(l)).length;
           const b = levels.filter((l) => l === "B").length;
           const c = levels.filter((l) => l === "C").length;
           // Highest priority: needs exactly 2 A's to complete AACC
