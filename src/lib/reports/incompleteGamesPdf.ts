@@ -38,10 +38,10 @@ function reasonFor(row: IncompleteGameRow): string {
   const cappedCount = row.cappedSlots.length;
   if (emptyCount === 0) return "—";
   if (cappedCount === emptyCount) {
-    return `Weekly cap (${cappedCount} slot${cappedCount === 1 ? "" : "s"} blocked by player cap)`;
+    return `Season contract cap (${cappedCount} slot${cappedCount === 1 ? "" : "s"} blocked by player cap)`;
   }
   if (cappedCount > 0) {
-    return `${cappedCount} cap-blocked + ${emptyCount - cappedCount} no eligible candidate`;
+    return `${cappedCount} blocked by season contract cap + ${emptyCount - cappedCount} no eligible candidate`;
   }
   return "No eligible candidates available";
 }
