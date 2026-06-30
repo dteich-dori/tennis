@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { gameAssignments, games } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { gameAssignments, gameCappedSlots, games } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
 
 /** Look up the seasonId for a given game id; null if game not found. */
@@ -49,6 +49,14 @@ export async function POST(request: NextRequest) {
         isPrefill: isPrefill ?? false,
       })
       .returning();
+
+    // Clear any cap-empty marker for this slot — it's filled now.
+    await database
+      .delete(gameCappedSlots)
+      .where(and(
+        eq(gameCappedSlots.gameId, gameId),
+        eq(gameCappedSlots.slotPosition, slotPosition),
+      ));
 
     const sid = await seasonIdForGame(database, gameId);
     if (sid) await bumpScheduleVersion(sid);

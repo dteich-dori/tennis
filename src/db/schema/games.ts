@@ -29,3 +29,18 @@ export const gameAssignments = sqliteTable("game_assignments", {
   slotPosition: integer("slot_position").notNull(), // 1-4
   isPrefill: integer("is_prefill", { mode: "boolean" }).notNull().default(false),
 });
+
+// Markers for slots that the weekly auto-assign left empty SPECIFICALLY
+// because every otherwise-eligible candidate was at their weekly cap
+// (vs. truly nobody-available). Written by the end-of-week sweep, read
+// by the Schedule grid (renders a distinct border) and by the
+// end-of-season sweep (decides whether to fill them by lifting the cap,
+// gated by seasons.allowCapOverrideAtSeasonEnd).
+export const gameCappedSlots = sqliteTable("game_capped_slots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  gameId: integer("game_id")
+    .notNull()
+    .references(() => games.id, { onDelete: "cascade" }),
+  slotPosition: integer("slot_position").notNull(), // 1-4
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
+import { games, gameAssignments, gameCappedSlots, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { weeklyContractedGames, isSubEligible } from "@/lib/contractFrequency";
 
@@ -105,6 +105,14 @@ export async function POST(request: NextRequest) {
 
     const donsGames = gamesWithAssignments.filter((g) => g.group === "dons" && g.status === "normal");
     const soloGames = gamesWithAssignments.filter((g) => g.group === "solo" && g.status === "normal");
+
+    // Clear any previous cap-empty markers for this week's Don's games —
+    // the end-of-week sweep will rewrite them based on this run's state.
+    if (donsGames.length > 0) {
+      await database
+        .delete(gameCappedSlots)
+        .where(inArray(gameCappedSlots.gameId, donsGames.map((g) => g.id)));
+    }
 
     // 2. Validate: partially-assigned Solo games must be completed first
     // Solo games with 0 assignments are OK (Solo doesn't need this week) — only block
@@ -1698,18 +1706,21 @@ export async function POST(request: NextRequest) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
           const slot = currentAssigned.length + 1;
 
-          // Try Pass 3 (extras) — gate lifted; non-2+ WTD cap lifted too
+          // Try Pass 3 (extras) — gate lifted only; WTD cap stays in
+          // force (so non-2+ players are still capped at their weekly
+          // contract; cap-caused empties get marked below for an
+          // end-of-season sweep to handle).
           let eligible: PlayerData[] = [];
           let sweepPass = "";
           if (assignExtra) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true, bypassWtdCap: true })
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
               .filter((p) => !usedOnDay.has(p.id));
             if (eligible.length > 0) sweepPass = "extras";
           }
 
-          // Try Pass 3.5 (STD catchup) — gate lifted; non-2+ WTD cap lifted too
+          // Try Pass 3.5 (STD catchup) — same gating
           if (eligible.length === 0 && assignStdCatchup) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true, bypassWtdCap: true })
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
               .filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
                 if (p.contractedFrequency === "0") return false;
@@ -1728,7 +1739,35 @@ export async function POST(request: NextRequest) {
             if (eligible.length > 0) sweepPass = "subs";
           }
 
-          if (eligible.length === 0) break;
+          if (eligible.length === 0) {
+            // No standard candidate. Check whether lifting the WTD cap
+            // for non-2+ contracts would surface anyone (the "asterisk"
+            // players — capped but still YTD-behind). If yes, mark this
+            // slot as cap-empty so the Schedule grid can render a
+            // distinct border and the end-of-season sweep can revisit
+            // it. If no, the slot is just empty (no candidates at all).
+            if (assignExtra) {
+              const capRelaxed = getAvailablePlayers(
+                game, currentAssigned, false,
+                { allowExtras: true, bypassWtdCap: true }
+              ).filter((p) => !usedOnDay.has(p.id));
+              if (capRelaxed.length > 0) {
+                try {
+                  await database
+                    .insert(gameCappedSlots)
+                    .values({ gameId: game.id, slotPosition: slot });
+                  log.push({
+                    type: "info",
+                    day: DAYS[game.dayOfWeek],
+                    message: `[Cap-empty] Game #${game.gameNumber} slot ${slot}: left empty — ${capRelaxed.length} candidate(s) at weekly cap. Marked for end-of-season sweep.`,
+                  });
+                } catch {
+                  // ignore unique-conflict races
+                }
+              }
+            }
+            break;
+          }
 
           // Sort: prefer the most behind on STD season target, then random.
           eligible.sort((a, b) => {
