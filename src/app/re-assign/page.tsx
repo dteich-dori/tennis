@@ -118,7 +118,7 @@ export default function ReAssignPage() {
   const [weekEnd, setWeekEnd] = useState<number>(36);
   // Defaults checked (v1.156) — match Season Setup behaviour
   const [assignExtra, setAssignExtra] = useState(true);
-  const [assignCSubs, setAssignCSubs] = useState(true);
+  const [assignSubs, setAssignSubs] = useState(false);
 
   // Scan results
   const [conflicts, setConflicts] = useState<ConflictRow[] | null>(null);
@@ -433,7 +433,7 @@ export default function ReAssignPage() {
           targets,
           runAutoAssign,
           assignExtra,
-          assignCSubs,
+          assignSubs,
         }),
       });
       const data = (await res.json()) as {
@@ -675,8 +675,8 @@ export default function ReAssignPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={assignCSubs}
-                  onChange={(e) => setAssignCSubs(e.target.checked)}
+                  checked={assignSubs}
+                  onChange={(e) => setAssignSubs(e.target.checked)}
                 />
                 Also assign subs to fill
               </label>

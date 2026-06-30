@@ -187,7 +187,7 @@ export default function SchedulePage() {
   const [autoAssignError, setAutoAssignError] = useState("");
   // Defaults checked (v1.156) — match Season Setup behaviour
   const [assignExtra, setAssignExtra] = useState(true);
-  const [assignCSubs, setAssignCSubs] = useState(true);
+  const [assignSubs, setAssignSubs] = useState(false);
 
   // Run All Weeks state
   const [runAllLoading, setRunAllLoading] = useState(false);
@@ -612,7 +612,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/games/auto-assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek, assignExtra, assignCSubs }),
+        body: JSON.stringify({ seasonId: season.id, weekNumber: currentWeek, assignExtra, assignSubs }),
       });
       const data = await res.json() as {
         success?: boolean;
@@ -722,7 +722,7 @@ export default function SchedulePage() {
           const res = await fetch("/api/games/auto-assign", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ seasonId: season.id, weekNumber: week, assignExtra, assignCSubs }),
+            body: JSON.stringify({ seasonId: season.id, weekNumber: week, assignExtra, assignSubs }),
           });
           const data = await res.json();
 
@@ -1173,11 +1173,11 @@ export default function SchedulePage() {
               <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={assignCSubs}
-                  onChange={(e) => setAssignCSubs(e.target.checked)}
+                  checked={assignSubs}
+                  onChange={(e) => setAssignSubs(e.target.checked)}
                   className="accent-indigo-500"
                 />
-                Assign C subs
+                Assign subs
               </label>
             </div>
             <button

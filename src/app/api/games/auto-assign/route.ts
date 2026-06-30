@@ -52,11 +52,11 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId, weekNumber, assignExtra, assignCSubs, assignStdCatchup } = (await request.json()) as {
+    const { seasonId, weekNumber, assignExtra, assignSubs, assignStdCatchup } = (await request.json()) as {
       seasonId: number;
       weekNumber: number;
       assignExtra?: boolean;
-      assignCSubs?: boolean;
+      assignSubs?: boolean;
       assignStdCatchup?: boolean;
     };
 
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     // Only contracted active players (not subs) for Don's auto-assign
     const contractedPlayers = playerData.filter((p) => p.contractedFrequency !== "0");
 
-    // Sub-eligible players — used as fallback if assignCSubs is true. Includes
+    // Sub-eligible players — used as fallback if assignSubs is true. Includes
     // pure subs ("0") AND 1+ players (who have a 1x contract but are also
     // allowed to behave like a sub). 1+ players have priority over "0" subs.
     const subPlayers = playerData
@@ -1347,7 +1347,7 @@ export async function POST(request: NextRequest) {
             }
           }
           // Pass 4: subs — allow substitute players to fill remaining gaps
-          if (eligible.length === 0 && assignCSubs) {
+          if (eligible.length === 0 && assignSubs) {
             passUsed = 4;
             eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers, isSubs: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
@@ -1385,7 +1385,7 @@ export async function POST(request: NextRequest) {
           } else {
             const hints: string[] = [];
             if (!assignExtra) hints.push("extras");
-            if (!assignCSubs) hints.push("C subs");
+            if (!assignSubs) hints.push("subs");
             const hintStr = hints.length > 0 ? ` (enable ${hints.join(" and ")} for more options)` : "";
             log.push({
               type: "warning",
@@ -1881,7 +1881,7 @@ export async function POST(request: NextRequest) {
     if (assignStdCatchup && pass35Count > 0) {
       log.push({ type: "info", message: `Pass 3.5 (STD catchup): ${pass35Count} slots filled by players with season deficit` });
     }
-    if (assignCSubs && pass4Count > 0) {
+    if (assignSubs && pass4Count > 0) {
       log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
     }
 

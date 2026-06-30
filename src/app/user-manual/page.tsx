@@ -275,7 +275,7 @@ export default function UserManualPage() {
                   <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
                     <li><span className="font-semibold">STD catchup</span> (on by default) &mdash; After the initial assignment completes, runs a second pass over all weeks to fill remaining empty slots with players who have a season-total deficit (behind on their 36-week contract).</li>
                     <li><span className="font-semibold">Assign extra</span> &mdash; Allows 2+ contract players to play beyond their weekly minimum of 2 games.</li>
-                    <li><span className="font-semibold">Assign C subs</span> &mdash; Allows substitute (frequency 0) players to fill any remaining empty slots.</li>
+                    <li><span className="font-semibold">Assign subs</span> &mdash; Off by default. When on, substitute players whose &ldquo;Include in auto-assign&rdquo; flag is set may fill any remaining empty slots.</li>
                   </ul>
                   A <span className="font-semibold">Stop</span> button appears during the run to cancel the assignment mid-season.
                 </li>

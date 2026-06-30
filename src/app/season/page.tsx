@@ -75,10 +75,10 @@ export default function SeasonPage() {
   const [donsAssignLog, setDonsAssignLog] = useState<
     { type: string; week?: number; message: string }[]
   >([]);
-  // Defaults checked (v1.156) — most admins want extras + C subs available
-  // so the algorithm has room to fill empties after base contracts are met.
+  // assignExtra defaults checked; assignSubs defaults UNCHECKED (v1.171)
+  // so subs are only pulled in when the admin explicitly opts in.
   const [donsAssignExtra, setDonsAssignExtra] = useState(true);
-  const [donsAssignCSubs, setDonsAssignCSubs] = useState(true);
+  const [donsAssignSubs, setDonsAssignSubs] = useState(false);
   const [donsAssignStdCatchup, setDonsAssignStdCatchup] = useState(true);
 
   // Solo auto-assign state
@@ -694,7 +694,7 @@ export default function SeasonPage() {
           const res = await fetch("/api/games/auto-assign", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignCSubs: donsAssignCSubs }),
+            body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignSubs: donsAssignSubs }),
           });
           const data = await res.json();
 
@@ -749,7 +749,7 @@ export default function SeasonPage() {
             const res = await fetch("/api/games/auto-assign", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignCSubs: donsAssignCSubs, assignStdCatchup: true }),
+              body: JSON.stringify({ seasonId: activeSeason.id, weekNumber: week, assignExtra: donsAssignExtra, assignSubs: donsAssignSubs, assignStdCatchup: true }),
             });
             const data = await res.json();
             if (res.ok) {
@@ -1899,11 +1899,11 @@ export default function SeasonPage() {
             <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none" title="Allow substitute (frequency 0) players to fill any remaining empty slots after all other passes.">
               <input
                 type="checkbox"
-                checked={donsAssignCSubs}
-                onChange={(e) => setDonsAssignCSubs(e.target.checked)}
+                checked={donsAssignSubs}
+                onChange={(e) => setDonsAssignSubs(e.target.checked)}
                 className="accent-indigo-500"
               />
-              Assign C subs
+              Assign subs
             </label>
             <button
               onClick={handleBalanceDonsBalls}

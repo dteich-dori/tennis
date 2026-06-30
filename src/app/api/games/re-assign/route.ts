@@ -15,7 +15,7 @@ interface ReAssignBody {
   targets: Target[];
   runAutoAssign?: boolean; // default true
   assignExtra?: boolean;
-  assignCSubs?: boolean;
+  assignSubs?: boolean;
 }
 
 /**
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       targets = [],
       runAutoAssign = true,
       assignExtra = false,
-      assignCSubs = false,
+      assignSubs = false,
     } = body;
 
     if (!seasonId || !effectiveDate) {
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
                 seasonId,
                 weekNumber: wk,
                 assignExtra,
-                assignCSubs,
+                assignSubs,
               }),
             }
           );

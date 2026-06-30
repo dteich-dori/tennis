@@ -17,11 +17,11 @@ interface LogEntry {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { seasonId, infoOnly, assignExtra, assignCSubs } = (await request.json()) as {
+    const { seasonId, infoOnly, assignExtra, assignSubs } = (await request.json()) as {
       seasonId: number;
       infoOnly?: boolean;
       assignExtra?: boolean;
-      assignCSubs?: boolean;
+      assignSubs?: boolean;
     };
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
             "Content-Type": "application/json",
             Cookie: cookieHeader,
           },
-          body: JSON.stringify({ seasonId, weekNumber: week, assignExtra, assignCSubs }),
+          body: JSON.stringify({ seasonId, weekNumber: week, assignExtra, assignSubs }),
         });
 
         const data = await res.json();
