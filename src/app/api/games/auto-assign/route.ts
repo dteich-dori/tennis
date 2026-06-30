@@ -55,6 +55,52 @@ const isATier = (l: string | undefined): boolean =>
 const isCTier = (l: string | undefined): boolean =>
   l === "BC" || l === "C" || l === "D";
 
+// Numeric rank used by the composition rule (lower = stronger).
+const skillRank = (l: string | undefined): number => {
+  switch (l) {
+    case "AA": return 0;
+    case "A":  return 1;
+    case "BA": return 2;
+    case "B":  return 3;
+    case "BC": return 4;
+    case "C":  return 5;
+    case "D":  return 6;
+    default:   return 3;
+  }
+};
+
+// Composition rule v2 (v1.166+): a 4-player game is valid iff EITHER
+//   (a) tight cluster — sorted ranks have all adjacent gaps ≤ 1, OR
+//   (b) 2+2 form — 2 A-tier + 2 C-tier + 0 B's (rank-3).
+// For a partial game (< 4 players), accept the after-add state if any
+// legal final completion is still arithmetically feasible. Pool
+// availability is verified by the caller for non-trivial paths.
+function canCompleteComposition(levels: (string | undefined)[]): boolean {
+  if (levels.length === 0) return true;
+  if (levels.length > 4) return false;
+  const ranks = levels.map(skillRank).sort((a, b) => a - b);
+  const remaining = 4 - ranks.length;
+
+  // --- Tight-cluster feasibility ---
+  // Need every integer rank in [minR, maxR] represented. Remaining
+  // slots must cover the missing ranks.
+  const minR = ranks[0];
+  const maxR = ranks[ranks.length - 1];
+  const present = new Set(ranks);
+  let missing = 0;
+  for (let r = minR; r <= maxR; r++) {
+    if (!present.has(r)) missing++;
+  }
+  if (missing <= remaining) return true;
+
+  // --- 2+2 feasibility ---
+  if (ranks.some((r) => r === 3)) return false;        // 2+2 forbids B
+  const aTierCount = ranks.filter((r) => r <= 2).length;
+  const cTierCount = ranks.filter((r) => r >= 4).length;
+  if (aTierCount > 2 || cTierCount > 2) return false;
+  return true;
+}
+
 /**
  * POST /api/games/auto-assign
  * Body: { seasonId: number, weekNumber: number }
@@ -597,74 +643,97 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // ===== A+C COMPOSITION RULE =====
-        // The only allowed A+C composition is AACC (2 A's + 2 C's + 0 B's).
-        // Every other A+C variant — AAAC, AABC, ABBC, ABCC, ACCC — stays
-        // blocked. Slots may be left empty when no valid alternative exists.
+        // ===== COMPOSITION RULE (v1.166) =====
+        // Valid 4-player composition: either a "tight cluster" (sorted
+        // ranks have all adjacent gaps ≤ 1) or "2+2 form" (2 A-tier + 2
+        // C-tier + 0 B's). The tight-cluster path admits B-bridged mixes
+        // like BA B B BC; the 2+2 path admits AACC and its variants.
         {
           const assignedLevels = [...assignedInGame].map(
             (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
           );
-          const sa = assignedLevels.filter((l) => isATier(l)).length;
-          const sb = assignedLevels.filter((l) => l === "B").length;
-          const sc = assignedLevels.filter((l) => isCTier(l)).length;
-          if (isATier(p.skillLevel) && sc > 0) {
-            // Only allow adding an A-tier to a C-tier-containing game if
-            // it can still resolve to a 2+2 form: no B's already, exactly
-            // 2 C-tier, < 2 A-tier players.
-            if (!(sb === 0 && sc === 2 && sa < 2)) return false;
-          }
-          if (isCTier(p.skillLevel) && sa > 0) {
-            if (!(sb === 0 && sa === 2 && sc < 2)) return false;
-          }
-          if (p.skillLevel === "B" && sa > 0 && sc > 0) {
-            // A B would ruin the AACC trajectory.
-            return false;
-          }
+          const afterAddLevels = [...assignedLevels, p.skillLevel];
+          if (!canCompleteComposition(afterAddLevels)) return false;
 
-          // R8 look-ahead (v1.154): if placing this player would commit
-          // the game to an AACC trajectory but the remaining capacity
-          // can't complete it, reject. Prevents week-7 game-#116-style
-          // deadlocks where a 2A+1C state is reached with no more C
-          // available to fill the 4th slot.
-          const postSa = sa + (isATier(p.skillLevel) ? 1 : 0);
-          const postSb = sb + (p.skillLevel === "B" ? 1 : 0);
-          const postSc = sc + (isCTier(p.skillLevel) ? 1 : 0);
-          const postFilled = postSa + postSb + postSc;
-          // Only check when we've created a mixed A+C state AND there are
-          // still open slots in this game.
-          if (postSa > 0 && postSc > 0 && postFilled < 4) {
-            // Required to complete as AACC
-            const needMoreA = 2 - postSa;
-            const needMoreC = 2 - postSc;
+          // Pool availability look-ahead (generalizes the old R8 check):
+          // when the after-add state forces a specific completion path,
+          // verify enough eligible bodies are still available on this
+          // day. We check both paths and require at least one to be
+          // satisfiable by the remaining pool.
+          const afterAddRanks = afterAddLevels.map(skillRank).sort((a, b) => a - b);
+          const postFilled = afterAddRanks.length;
+          if (postFilled < 4) {
             const slotsLeft = 4 - postFilled;
-            if (
-              needMoreA < 0 ||
-              needMoreC < 0 ||
-              postSb > 0 ||
-              needMoreA + needMoreC > slotsLeft
-            ) {
-              // Can't even reach AACC arithmetically
-              return false;
+            const minR = afterAddRanks[0];
+            const maxR = afterAddRanks[afterAddRanks.length - 1];
+            const present = new Set(afterAddRanks);
+            // Count missing integer ranks in [minR, maxR] — required for tight cluster.
+            const missingRanks: number[] = [];
+            for (let r = minR; r <= maxR; r++) {
+              if (!present.has(r)) missingRanks.push(r);
             }
-            // Count A and C bodies available for this day's remaining slots:
-            // not in this game, not blocked, not on vacation, not already
-            // playing on this date.
+            // Build pool of remaining-day-eligible players, bucketed by rank.
             const inGameSet = new Set([...assignedInGame, p.id]);
-            let availableA = 0;
-            let availableC = 0;
+            const poolByRank = new Map<number, number>();
             for (const pp of playerData) {
               if (inGameSet.has(pp.id)) continue;
-              if (!isATier(pp.skillLevel) && !isCTier(pp.skillLevel)) continue;
               if (pp.blockedDays.includes(game.dayOfWeek)) continue;
               if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
               if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
-              if (isATier(pp.skillLevel)) availableA++;
-              else availableC++;
+              const r = skillRank(pp.skillLevel);
+              poolByRank.set(r, (poolByRank.get(r) ?? 0) + 1);
             }
-            if (availableA < needMoreA || availableC < needMoreC) {
-              return false;
+
+            // --- Tight-cluster pool feasibility ---
+            // Each missing rank in [minR, maxR] needs at least one player
+            // available at that rank. After filling missing ranks, any
+            // remaining slot can be filled by any rank in [minR, maxR]
+            // (the cluster bounds may also extend by 1 in either
+            // direction; we keep this conservative and assume bounds
+            // stay).
+            let tightOK = missingRanks.length <= slotsLeft;
+            if (tightOK) {
+              const usedFromRank = new Map<number, number>();
+              for (const r of missingRanks) {
+                const avail = poolByRank.get(r) ?? 0;
+                if (avail < 1) { tightOK = false; break; }
+                usedFromRank.set(r, 1);
+              }
+              if (tightOK) {
+                // Remaining slotsLeft - missingRanks.length slots must
+                // also come from someone within [minR, maxR]. Check
+                // total pool size in that range minus what we already
+                // earmarked.
+                const extraNeeded = slotsLeft - missingRanks.length;
+                let inRangePool = 0;
+                for (let r = minR; r <= maxR; r++) {
+                  inRangePool += (poolByRank.get(r) ?? 0) - (usedFromRank.get(r) ?? 0);
+                }
+                if (inRangePool < extraNeeded) tightOK = false;
+              }
             }
+
+            // --- 2+2 pool feasibility ---
+            const bCount = afterAddRanks.filter((r) => r === 3).length;
+            const aTierCount = afterAddRanks.filter((r) => r <= 2).length;
+            const cTierCount = afterAddRanks.filter((r) => r >= 4).length;
+            let twoTwoOK =
+              bCount === 0 && aTierCount <= 2 && cTierCount <= 2;
+            if (twoTwoOK) {
+              const needA = 2 - aTierCount;
+              const needC = 2 - cTierCount;
+              if (needA + needC !== slotsLeft) twoTwoOK = false;
+              if (twoTwoOK) {
+                let poolA = 0, poolC = 0;
+                for (const [r, n] of poolByRank) {
+                  if (r <= 2) poolA += n;
+                  else if (r >= 4) poolC += n;
+                }
+                if (poolA < needA || poolC < needC) twoTwoOK = false;
+              }
+            }
+
+            if (!tightOK && !twoTwoOK) return false;
           }
         }
 
@@ -872,18 +941,14 @@ export async function POST(request: NextRequest) {
       return 0;
     }
 
-    // A+C policy: AACC (2A + 2C + 0B) is the only allowed mixed-comp;
-    // every other A+C variant is a violation. Day-level swap optimizer
-    // refuses any swap that would create a non-AACC A+C combo.
+    // Composition policy (v1.166): valid game = tight cluster OR 2+2
+    // form. Used by the day-level swap optimizer to refuse swaps that
+    // create an invalid composition.
     function hasACViolation(pids: number[]): boolean {
-      const pls = pids.map((id) => playerData.find((p) => p.id === id));
-      const aCount = pls.filter((p) => isATier(p?.skillLevel)).length;
-      const bCount = pls.filter((p) => p?.skillLevel === "B").length;
-      const cCount = pls.filter((p) => isCTier(p?.skillLevel)).length;
-      if (aCount === 0 || cCount === 0) return false;
-      // AACC exception
-      if (aCount === 2 && bCount === 0 && cCount === 2) return false;
-      return true;
+      const levels = pids.map(
+        (id) => playerData.find((p) => p.id === id)?.skillLevel ?? "B"
+      );
+      return !canCompleteComposition(levels);
     }
 
     // ===== Pass 0: Anchor games =====
@@ -972,20 +1037,13 @@ export async function POST(request: NextRequest) {
           const ap = playerData.find((pl) => pl.id === aid);
           if (ap?.doNotPair.includes(candidate.id)) return false;
         }
-        // A+C compositional check — only AACC permitted
+        // Composition check (v1.166): tight cluster OR 2+2 form.
         const levels = currentIds.map(
           (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
         );
-        const sa = levels.filter((l) => isATier(l)).length;
-        const sb = levels.filter((l) => l === "B").length;
-        const sc = levels.filter((l) => isCTier(l)).length;
-        if (isATier(candidate.skillLevel) && sc > 0) {
-          if (!(sb === 0 && sc === 2 && sa < 2)) return false;
+        if (!canCompleteComposition([...levels, candidate.skillLevel])) {
+          return false;
         }
-        if (isCTier(candidate.skillLevel) && sa > 0) {
-          if (!(sb === 0 && sa === 2 && sc < 2)) return false;
-        }
-        if (candidate.skillLevel === "B" && sa > 0 && sc > 0) return false;
         return true;
       };
 
