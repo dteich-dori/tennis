@@ -16,7 +16,6 @@ interface SoloPlayerData {
   firstName: string;
   lastName: string;
   soloGames: number; // 1-36 target games per season
-  contractedFrequency: string; // "0", "1", "1+", "2", "2+" — for Mon-bias of 2x Don players
   noEarlyGames: boolean;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
@@ -166,7 +165,6 @@ export async function POST(request: NextRequest) {
       firstName: p.firstName,
       lastName: p.lastName,
       soloGames: p.soloGames!,
-      contractedFrequency: p.contractedFrequency,
       noEarlyGames: p.noEarlyGames,
       blockedDays: blockedByPlayer.get(p.id) ?? [],
       vacations: vacsByPlayer.get(p.id) ?? [],
@@ -560,16 +558,9 @@ export async function POST(request: NextRequest) {
           // Sort candidates by priority:
           // 1. Single-day players first — they can ONLY play on this day,
           //    so they must get priority (e.g., Miller needs 36/37 Tuesdays)
-          // 2. Monday-bias for 2x Don players — placing their solo on
-          //    Monday frees them up for Don games on Tuesday (the
-          //    busiest Don day). Non-Monday solo games skip 2x players
-          //    when other candidates are available, conserving them.
-          // 3. Normalized overall deficit — players most behind schedule
-          // 4. Day-specific deficit as tiebreaker
+          // 2. Normalized overall deficit — players most behind schedule
+          // 3. Day-specific deficit as tiebreaker
           const shuffled = shuffle([...candidates]);
-          const isMonday = game.dayOfWeek === 1;
-          const is2xDon = (p: SoloPlayerData) =>
-            p.contractedFrequency === "2" || p.contractedFrequency === "2+";
           const sorted = shuffled.sort((a, b) => {
             // Single-day players get top priority — no alternative day
             const aPlayable = playerPlayableDays.get(a.id)?.length ?? 1;
@@ -577,11 +568,6 @@ export async function POST(request: NextRequest) {
             if (aPlayable !== bPlayable) {
               return aPlayable - bPlayable; // fewer playable days = higher priority
             }
-
-            // Monday-bias for 2x Don players (lower score = higher priority)
-            const aMondayScore = isMonday ? (is2xDon(a) ? 0 : 1) : (is2xDon(a) ? 1 : 0);
-            const bMondayScore = isMonday ? (is2xDon(b) ? 0 : 1) : (is2xDon(b) ? 1 : 0);
-            if (aMondayScore !== bMondayScore) return aMondayScore - bMondayScore;
 
             const aExpected = (a.soloGames / maxWeek) * week;
             const bExpected = (b.soloGames / maxWeek) * week;
