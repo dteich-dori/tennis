@@ -64,7 +64,7 @@ async function markPlayerChange(
 }
 
 const VALID_FREQUENCIES = ["0", "1", "1+", "2", "2+"];
-const VALID_SKILL_LEVELS = ["AA", "A", "BA", "B", "BC", "C", "D"];
+const VALID_SKILL_LEVELS = ["A", "B", "C", "D"];
 function validatePlayerFields(body: PlayerBody): string | null {
   if (!body.seasonId || typeof body.seasonId !== "number") return "seasonId is required";
   if (!body.firstName?.trim()) return "firstName is required";

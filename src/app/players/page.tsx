@@ -419,7 +419,7 @@ export default function PlayersPage() {
         const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
         const skill = fields[5] ?? "";
-        if (["AA", "A", "BA", "B", "BC", "C", "D"].includes(skill)) player.skillLevel = skill;
+        if (["A", "B", "C", "D"].includes(skill)) player.skillLevel = skill;
 
         const freq = fields[6] ?? "";
         if (freq === "Sub") player.contractedFrequency = "0";
@@ -799,11 +799,8 @@ export default function PlayersPage() {
                 onChange={(e) => setForm({ ...form, skillLevel: e.target.value })}
                 className="border border-border rounded px-3 py-2 text-sm w-full"
               >
-                <option value="AA">AA</option>
                 <option value="A">A</option>
-                <option value="BA">BA</option>
                 <option value="B">B</option>
-                <option value="BC">BC</option>
                 <option value="C">C</option>
                 <option value="D">D</option>
               </select>
