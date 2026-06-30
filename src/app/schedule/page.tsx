@@ -1940,6 +1940,30 @@ export default function SchedulePage() {
                                           // Track front-load player IDs for visual indicator
                                           const frontLoadIds = new Set(frontLoadPlayers.map((p) => p.id));
 
+                                          // Partition the sorted regularPlayers into
+                                          //   withinCapPlayers — eligible without exceeding their weekly cap
+                                          //   overCapPlayers — would exceed the cap (capped contract met
+                                          //                     this week, but they have YTD/STD deficit so
+                                          //                     they're still owed a makeup)
+                                          // Over-cap appears below within-cap with an amber divider, matching
+                                          // the cap-empty styling on the grid.
+                                          const overCapIds = new Set<number>();
+                                          if (game.group === "dons") {
+                                            for (const p of regularPlayers) {
+                                              const counts = playerCounts[p.id] ?? { wtd: 0, ytd: 0, ytdDons: 0, ytdSolo: 0, wtdDons: 0, wtdSolo: 0, stdDons: 0, stdSolo: 0 };
+                                              const baseFreq = weeklyContractedGames(p.contractedFrequency);
+                                              const remaining = baseFreq - counts.wtdDons;
+                                              if (remaining > 0) continue;                              // still owed base
+                                              if (p.contractedFrequency === "2+") continue;             // uncapped contract
+                                              if (isMustPlay(p, game)) continue;                        // hard requirement
+                                              if (hasYtdDeficit(p, game.group) || hasStdDeficit(p, game.group)) {
+                                                overCapIds.add(p.id);
+                                              }
+                                            }
+                                          }
+                                          const withinCapPlayers = regularPlayers.filter((p) => !overCapIds.has(p.id));
+                                          const overCapPlayers = regularPlayers.filter((p) => overCapIds.has(p.id));
+
                                           // Bonus players: available but NOT in regular list (already met weekly quota)
                                           const regularIds = new Set(regularPlayers.map((p) => p.id));
                                           const skillOrder: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
@@ -2066,10 +2090,22 @@ export default function SchedulePage() {
 
                                           return (
                                             <>
-                                              {regularPlayers.map((p) => renderPlayer(p, false))}
+                                              {withinCapPlayers.map((p) => renderPlayer(p, false))}
+                                              {overCapPlayers.length > 0 && (
+                                                <>
+                                                  <div className="border-t-2 border-dashed border-amber-400 mx-2 my-1" />
+                                                  <div
+                                                    className="px-2 py-0.5 text-[10px] text-amber-700 font-semibold bg-amber-50"
+                                                    title="These players have met their weekly contract cap but are still behind on YTD/STD season targets. Picking one assigns an extra game beyond their weekly cap — a makeup."
+                                                  >
+                                                    OVER CAP (makeup)
+                                                  </div>
+                                                  {overCapPlayers.map((p) => renderPlayer(p, false))}
+                                                </>
+                                              )}
                                               {bonusPlayers.length > 0 && (
                                                 <>
-                                                  {regularPlayers.length > 0 && (
+                                                  {(withinCapPlayers.length > 0 || overCapPlayers.length > 0) && (
                                                     <div className="border-t border-green-300 mx-2 my-1" />
                                                   )}
                                                   {bonusPlayers.map((p) => renderPlayer(p, true))}
