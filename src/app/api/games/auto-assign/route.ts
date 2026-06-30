@@ -1665,6 +1665,111 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // --- End-of-week sweep ---
+    // The day-by-day loop's Pass 3/3.5 (extras + STD catchup) is gated on
+    // "any contracted player still has unmet weekly base + remaining
+    // playable days". The gate is correct DURING the loop — it protects
+    // empty slots so under-contract players can land later in the week —
+    // but once the whole week is processed and the gate would still be
+    // closed (because the protected player never made it after all),
+    // empty slots are left orphaned. The sweep revisits those slots
+    // with the gate LIFTED. Respects assignExtra / assignStdCatchup /
+    // assignSubs the same way the main loop does.
+    {
+      const emptyGames = donsGames.filter(
+        (g) => (gameAssignmentState.get(g.id) ?? []).length < 4
+      );
+      let sweepFilled = 0;
+      for (const game of emptyGames) {
+        // Build usedOnDay for this date
+        const usedOnDay = new Set<number>();
+        for (const g of donsGames) {
+          if (g.date !== game.date) continue;
+          for (const pid of (gameAssignmentState.get(g.id) ?? [])) usedOnDay.add(pid);
+        }
+        // Fill remaining slots one at a time
+        while ((gameAssignmentState.get(game.id) ?? []).length < 4) {
+          const currentAssigned = gameAssignmentState.get(game.id) ?? [];
+          const slot = currentAssigned.length + 1;
+
+          // Try Pass 3 (extras) — gate lifted
+          let eligible: PlayerData[] = [];
+          let sweepPass = "";
+          if (assignExtra) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
+              .filter((p) => !usedOnDay.has(p.id));
+            if (eligible.length > 0) sweepPass = "extras";
+          }
+
+          // Try Pass 3.5 (STD catchup) — gate lifted
+          if (eligible.length === 0 && assignStdCatchup) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
+              .filter((p) => {
+                if (usedOnDay.has(p.id)) return false;
+                if (p.contractedFrequency === "0") return false;
+                const freq = weeklyContractedGames(p.contractedFrequency);
+                if (freq === 0) return false;
+                const std = stdDonsCounts.get(p.id) ?? 0;
+                return freq * contractWeeks - std > 0;
+              });
+            if (eligible.length > 0) sweepPass = "STD-catchup";
+          }
+
+          // Try Pass 4 (subs)
+          if (eligible.length === 0 && assignSubs) {
+            eligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers, isSubs: true })
+              .filter((p) => !usedOnDay.has(p.id));
+            if (eligible.length > 0) sweepPass = "subs";
+          }
+
+          if (eligible.length === 0) break;
+
+          // Sort: prefer the most behind on STD season target, then random.
+          eligible.sort((a, b) => {
+            const aFreq = weeklyContractedGames(a.contractedFrequency);
+            const bFreq = weeklyContractedGames(b.contractedFrequency);
+            const aStd = stdDonsCounts.get(a.id) ?? 0;
+            const bStd = stdDonsCounts.get(b.id) ?? 0;
+            const aDef = aFreq * contractWeeks - aStd;
+            const bDef = bFreq * contractWeeks - bStd;
+            if (bDef !== aDef) return bDef - aDef;
+            return Math.random() - 0.5;
+          });
+
+          const chosen = eligible[0];
+
+          // Inline DB insert (mirrors assignPlayer; that function is
+          // scoped inside the day loop and not reachable from here).
+          const result = await database.insert(gameAssignments).values({
+            gameId: game.id,
+            slotPosition: slot,
+            playerId: chosen.id,
+            isPrefill: false,
+          }).returning();
+          createdAssignmentIds.push(result[0].id);
+          currentAssigned.push(chosen.id);
+          gameAssignmentState.set(game.id, currentAssigned);
+          wtdDonsCounts.set(chosen.id, (wtdDonsCounts.get(chosen.id) ?? 0) + 1);
+          const dates = assignedDates.get(chosen.id) ?? new Set<string>();
+          dates.add(game.date);
+          assignedDates.set(chosen.id, dates);
+          usedOnDay.add(chosen.id);
+          sweepFilled++;
+          log.push({
+            type: "info",
+            day: DAYS[game.dayOfWeek],
+            message: `[End-of-week sweep / ${sweepPass}] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned (gate lifted)`,
+          });
+        }
+      }
+      if (sweepFilled > 0) {
+        log.push({
+          type: "info",
+          message: `End-of-week sweep filled ${sweepFilled} previously-empty slot${sweepFilled === 1 ? "" : "s"} with the Pass 3/3.5 gate lifted.`,
+        });
+      }
+    }
+
     // --- Cross-day composition optimization ---
     // After all days are processed, try swapping players between games on DIFFERENT days
     // to improve composition quality. Each swap must validate that both players are
