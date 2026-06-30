@@ -57,6 +57,13 @@
       "when": 1773700000000,
       "tag": "0007_add_player_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1782000000000,
+      "tag": "0008_revert_skill_levels",
+      "breakpoints": true
     }
   ]
 }
