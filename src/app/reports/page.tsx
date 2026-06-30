@@ -7,6 +7,7 @@ import { generateGamesByDatePdf, generateGamesByDateWorksheetPdf, generateSoloGa
 import { generatePairingMatrixPdf } from "@/lib/reports/pairingMatrixPdf";
 import { generatePotentialPlayersPdf } from "@/lib/reports/potentialPlayersPdf";
 import { generatePlayerAvailabilityPdf } from "@/lib/reports/playerAvailabilityPdf";
+import { generateIncompleteGamesPdf, type IncompleteGameRow } from "@/lib/reports/incompleteGamesPdf";
 import { generateCourtSchedulePdf } from "@/lib/reports/courtSchedulePdf";
 import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
 import { generateWeeklyGameCountsPdf } from "@/lib/reports/weeklyGameCountsPdf";
@@ -393,6 +394,78 @@ export default function ReportsPage() {
       );
     } catch {
       setError("Failed to generate Player Availability report.");
+    }
+    setGenerating(null);
+  };
+
+  const handleIncompleteGamesReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("incompleteGames");
+    try {
+      const [playersRes, gamesRes, cappedRes] = await Promise.all([
+        fetch(`/api/players?seasonId=${season.id}`),
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/games/capped-slots?seasonId=${season.id}`),
+      ]);
+      if (!playersRes.ok || !gamesRes.ok) {
+        setError("Failed to load games or players.");
+        setGenerating(null);
+        return;
+      }
+      const players = (await playersRes.json()) as {
+        id: number;
+        firstName: string;
+        lastName: string;
+        skillLevel: string;
+      }[];
+      const games = (await gamesRes.json()) as {
+        id: number;
+        gameNumber: number;
+        weekNumber: number;
+        date: string;
+        dayOfWeek: number;
+        startTime: string;
+        courtNumber: number;
+        group: "dons" | "solo";
+        status: string;
+        assignments: { id: number; gameId: number; playerId: number; slotPosition: number }[];
+      }[];
+      const capped = cappedRes.ok
+        ? ((await cappedRes.json()) as Record<string, number[]>)
+        : {};
+
+      const playerById = new Map(players.map((p) => [p.id, p]));
+      const rows: IncompleteGameRow[] = games
+        .filter((g) => g.status === "normal" && g.assignments.length < 4)
+        .map((g) => ({
+          weekNumber: g.weekNumber,
+          gameNumber: g.gameNumber,
+          date: g.date,
+          dayOfWeek: g.dayOfWeek,
+          startTime: g.startTime,
+          courtNumber: g.courtNumber,
+          group: g.group,
+          assigned: g.assignments
+            .map((a) => {
+              const p = playerById.get(a.playerId);
+              return p
+                ? {
+                    slot: a.slotPosition,
+                    lastName: p.lastName,
+                    firstName: p.firstName,
+                    skillLevel: p.skillLevel,
+                  }
+                : null;
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null)
+            .sort((a, b) => a.slot - b.slot),
+          cappedSlots: capped[String(g.id)] ?? [],
+        }));
+
+      generateIncompleteGamesPdf(rows, season, season.scheduleVersion);
+    } catch {
+      setError("Failed to generate Incomplete Games report.");
     }
     setGenerating(null);
   };
@@ -806,6 +879,24 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "playerAvailability" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Incomplete Games Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Incomplete Games</h2>
+          <p className="text-sm text-muted mb-4">
+            All games with fewer than 4 assigned players. Shows week,
+            game number, court/time, assigned players (2 per line), and
+            the reason the game wasn&apos;t fully assigned (cap-blocked
+            vs. no eligible candidates).
+          </p>
+          <button
+            onClick={handleIncompleteGamesReport}
+            disabled={generating === "incompleteGames"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "incompleteGames" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
 
