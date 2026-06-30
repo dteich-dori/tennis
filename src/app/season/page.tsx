@@ -14,6 +14,7 @@ interface Season {
   maxCGamesPerWeek1x: number | null;
   maxACGamesPerSeason: number | null;
   daysPerWeek?: number;
+  allowCapOverrideAtSeasonEnd?: boolean;
 }
 
 interface Holiday {
@@ -56,6 +57,7 @@ export default function SeasonPage() {
   const [maxCGamesPerWeek1x, setMaxCGamesPerWeek1x] = useState<string>("4");
   const [maxACGamesPerSeason, setMaxACGamesPerSeason] = useState<string>("1");
   const [daysPerWeek, setDaysPerWeek] = useState<number>(5);
+  const [allowCapOverrideAtSeasonEnd, setAllowCapOverrideAtSeasonEnd] = useState<boolean>(false);
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -136,6 +138,7 @@ export default function SeasonPage() {
       setMaxCGamesPerWeek1x(latest.maxCGamesPerWeek1x != null ? String(latest.maxCGamesPerWeek1x) : "none");
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
       setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
+      setAllowCapOverrideAtSeasonEnd(!!latest.allowCapOverrideAtSeasonEnd);
     }
   }, []);
 
@@ -283,6 +286,25 @@ export default function SeasonPage() {
       body: JSON.stringify({ id: activeSeason.id, startDate: activeSeason.startDate, maxACGamesPerSeason: val }),
     });
   }, [maxACGamesPerSeason, activeSeason]);
+
+  // Auto-save allowCapOverrideAtSeasonEnd toggle
+  const capOverrideInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!capOverrideInitialized.current) {
+      capOverrideInitialized.current = true;
+      return;
+    }
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: activeSeason.id,
+        startDate: activeSeason.startDate,
+        allowCapOverrideAtSeasonEnd,
+      }),
+    });
+  }, [allowCapOverrideAtSeasonEnd, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -1904,6 +1926,18 @@ export default function SeasonPage() {
                 className="accent-indigo-500"
               />
               Assign subs
+            </label>
+            <label
+              className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none"
+              title="At the end of the season auto-assign, fill cap-empty slots (the amber dashed cells) by lifting the weekly contract cap for players still in season deficit. When off, those cells stay empty for manual review."
+            >
+              <input
+                type="checkbox"
+                checked={allowCapOverrideAtSeasonEnd}
+                onChange={(e) => setAllowCapOverrideAtSeasonEnd(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Allow cap override at season end
             </label>
             <button
               onClick={handleBalanceDonsBalls}

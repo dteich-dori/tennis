@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number };
-    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek } = body;
+    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number; allowCapOverrideAtSeasonEnd?: boolean };
+    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek, allowCapOverrideAtSeasonEnd } = body;
 
     const date = new Date(startDate + "T00:00:00");
     if (date.getDay() !== 1) {
@@ -92,6 +92,8 @@ export async function PUT(request: NextRequest) {
           daysPerWeek !== undefined
             ? (daysPerWeek === 7 ? 7 : daysPerWeek === 6 ? 6 : 5)
             : undefined,
+        allowCapOverrideAtSeasonEnd:
+          allowCapOverrideAtSeasonEnd !== undefined ? allowCapOverrideAtSeasonEnd : undefined,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(seasons.id, id))

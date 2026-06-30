@@ -199,13 +199,39 @@ export async function POST(request: NextRequest) {
       message: `Done: ${weeksAssignedCount} week(s) assigned, ${totalAssigned}/${totalSlots} total slots filled.`,
     });
 
+    // --- End-of-season sweep ---
+    // Runs unconditionally after all weeks finish; it preserves markers
+    // unless the season's allowCapOverrideAtSeasonEnd setting is on, in
+    // which case it fills cap-empty slots by lifting the weekly cap.
+    let sweepFilled = 0;
+    let sweepMarkers = 0;
+    try {
+      const sweepRes = await fetch(`${baseUrl}/api/games/end-of-season-sweep`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ seasonId }),
+      });
+      const sweepData = await sweepRes.json();
+      if (sweepRes.ok) {
+        sweepFilled = sweepData.filled ?? 0;
+        sweepMarkers = sweepData.markers ?? 0;
+        if (sweepData.log) for (const entry of sweepData.log) log.push(entry);
+      } else {
+        log.push({ type: "warning", message: `End-of-season sweep failed: ${sweepData.error ?? "unknown error"}` });
+      }
+    } catch (err) {
+      log.push({ type: "warning", message: `End-of-season sweep error: ${String(err)}` });
+    }
+
     return NextResponse.json({
       success: true,
       weeksAssigned: weeksAssignedCount,
       weeksSkipped: weeksSkipped.length,
-      totalAssigned,
+      totalAssigned: totalAssigned + sweepFilled,
       totalSlots,
-      totalUnfilled,
+      totalUnfilled: Math.max(0, totalUnfilled - sweepFilled),
+      sweepFilled,
+      sweepMarkers,
       log,
     });
   } catch (err) {

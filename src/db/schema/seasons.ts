@@ -27,4 +27,9 @@ export const seasons = sqliteTable("seasons", {
   // 6 = Mon–Sat, 7 = Sun–Sat. Used to compute "available days/week" for the
   // contract-vs-availability reconciliation (see lib/playerAvailability.ts).
   daysPerWeek: integer("days_per_week").notNull().default(5),
+  // When true, the end-of-season sweep (auto-fired by auto-assign-all
+  // after all weeks finish) fills cap-empty slots by lifting the
+  // weekly contract cap. When false (default), cap-empty markers stay
+  // visible on the Schedule grid but the slots are left unassigned.
+  allowCapOverrideAtSeasonEnd: integer("allow_cap_override_at_season_end", { mode: "boolean" }).notNull().default(false),
 });
