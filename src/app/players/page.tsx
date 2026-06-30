@@ -906,14 +906,14 @@ export default function PlayersPage() {
               </label>
               <label
                 className="flex items-center gap-2 text-sm"
-                title="When checked, auto-assign skips this player entirely. They remain visible everywhere else (manual assignment, communications, reports)."
+                title="When checked, auto-assign considers this player. When unchecked, auto-assign skips them entirely (they stay visible for manual assignment, communications, and reports). Subs (frequency 0) are only auto-assigned when this is checked AND 'Assign subs' is on at run time."
               >
                 <input
                   type="checkbox"
-                  checked={form.excludedFromAutoAssign}
-                  onChange={(e) => setForm({ ...form, excludedFromAutoAssign: e.target.checked })}
+                  checked={!form.excludedFromAutoAssign}
+                  onChange={(e) => setForm({ ...form, excludedFromAutoAssign: !e.target.checked })}
                 />
-                Exclude from auto-assign
+                Include in auto-assign
               </label>
               {form.cGamesOk && (
                 <label className="flex items-center gap-2 text-sm ml-6">

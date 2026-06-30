@@ -428,11 +428,13 @@ export default function UserManualPage() {
                   excluded from assignment dropdowns and auto-assign.
                 </li>
                 <li>
-                  <span className="font-semibold">Exclude from auto-assign</span> &mdash; When
-                  checked, auto-assign skips this player entirely while they remain visible
-                  everywhere else (manual assignment, communications, reports, Accounts). Useful
-                  for subs you want to keep on the roster but not auto-schedule. Flagged players
-                  show a small amber <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1 rounded text-[10px]">⛔ AA</span>{" "}
+                  <span className="font-semibold">Include in auto-assign</span> &mdash; On by
+                  default. When unchecked, auto-assign skips this player entirely while they
+                  remain visible everywhere else (manual assignment, communications, reports,
+                  Accounts). Useful for subs you want to keep on the roster but not auto-schedule
+                  &mdash; for subs (frequency 0), this flag must also be on AND the Schedule page&apos;s
+                  &ldquo;Assign subs&rdquo; option must be enabled at run time for them to be
+                  picked. Excluded players show a small amber <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1 rounded text-[10px]">⛔ AA</span>{" "}
                   badge on the roster row.
                 </li>
                 <li>
@@ -694,8 +696,8 @@ export default function UserManualPage() {
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R2</td>
                     <td className="px-2 py-1">
-                      Player must not be flagged <em>Exclude from auto-assign</em> on their player record.
-                      This check happens at player-load time — flagged players are filtered out of
+                      Player must have <em>Include in auto-assign</em> checked on their player record.
+                      This check happens at player-load time — players with it unchecked are filtered out of
                       both the contracted-pool and the sub-pool before any rule below is evaluated,
                       so they never appear in the eligibility lists or the diagnostic panel.
                       Use this to keep a player on the roster (visible in dropdowns, communications,
@@ -741,7 +743,7 @@ export default function UserManualPage() {
                       derated concept has been replaced by simpler tools:
                       promote/demote a player&apos;s skill level (A → B → C) if
                       they fall behind in capability, and use C-anchor groups
-                      plus <em>Exclude from auto-assign</em> to isolate
+                      plus unchecking <em>Include in auto-assign</em> to isolate
                       specific players.
                     </td>
                   </tr>
@@ -1307,8 +1309,8 @@ export default function UserManualPage() {
                   Makes over-contract weeks stand out at a glance.
                 </li>
                 <li>
-                  Players flagged <span className="font-semibold">Exclude from auto-assign</span>{" "}
-                  are dropped from this report.
+                  Players with <span className="font-semibold">Include in auto-assign</span>{" "}
+                  unchecked are dropped from this report.
                 </li>
               </ul>
 
