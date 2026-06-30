@@ -69,6 +69,9 @@ export default function SchedulePage() {
   const backup = useBackup();
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<Game[]>([]);
+  // gameId -> Set of slot positions left empty by the weekly cap
+  // (read from /api/games/capped-slots; rendered as amber dashed border).
+  const [cappedSlots, setCappedSlots] = useState<Map<number, Set<number>>>(new Map());
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentWeek, setCurrentWeek] = useState(() => {
     if (typeof window !== "undefined") {
@@ -283,11 +286,20 @@ export default function SchedulePage() {
   const loadGames = useCallback(
     async (seasonId: number, weekNum: number) => {
       try {
-        const res = await fetch(
-          `/api/games?seasonId=${seasonId}&weekNumber=${weekNum}`
-        );
-        const data = (await res.json()) as Game[];
+        const [gamesRes, cappedRes] = await Promise.all([
+          fetch(`/api/games?seasonId=${seasonId}&weekNumber=${weekNum}`),
+          fetch(`/api/games/capped-slots?seasonId=${seasonId}`),
+        ]);
+        const data = (await gamesRes.json()) as Game[];
         setGames(data);
+        if (cappedRes.ok) {
+          const capped = (await cappedRes.json()) as Record<string, number[]>;
+          const map = new Map<number, Set<number>>();
+          for (const [gid, slots] of Object.entries(capped)) {
+            map.set(parseInt(gid), new Set(slots));
+          }
+          setCappedSlots(map);
+        }
       } catch (err) {
         console.error("Failed to load games:", err);
       }
@@ -1761,21 +1773,33 @@ export default function SchedulePage() {
                                       })()}
                                     </button>
                                   ) : (
-                                    <button
-                                      onClick={() =>
-                                        setActiveSlot(
-                                          isActive
-                                            ? null
-                                            : {
-                                                gameId: game.id,
-                                                slotPosition: slot,
-                                              }
-                                        )
-                                      }
-                                      className="w-full text-left text-gray-300 hover:text-primary hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
-                                    >
-                                      + assign
-                                    </button>
+                                    (() => {
+                                      const isCapped = cappedSlots.get(game.id)?.has(slot) ?? false;
+                                      return (
+                                        <button
+                                          onClick={() =>
+                                            setActiveSlot(
+                                              isActive
+                                                ? null
+                                                : {
+                                                    gameId: game.id,
+                                                    slotPosition: slot,
+                                                  }
+                                            )
+                                          }
+                                          title={isCapped
+                                            ? "Empty because every eligible candidate is at their weekly cap. The end-of-season sweep can fill these if the season-end override setting is on."
+                                            : undefined}
+                                          className={`w-full text-left text-gray-300 hover:text-primary hover:bg-primary/5 rounded px-1 py-0.5 transition-colors ${
+                                            isCapped
+                                              ? "border-2 border-dashed border-amber-400 bg-amber-50/40"
+                                              : ""
+                                          }`}
+                                        >
+                                          {isCapped ? "+ assign (CAP)" : "+ assign"}
+                                        </button>
+                                      );
+                                    })()
                                   )}
 
                                   {/* Player assignment dropdown */}

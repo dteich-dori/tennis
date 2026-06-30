@@ -1742,28 +1742,33 @@ export async function POST(request: NextRequest) {
           if (eligible.length === 0) {
             // No standard candidate. Check whether lifting the WTD cap
             // for non-2+ contracts would surface anyone (the "asterisk"
-            // players — capped but still YTD-behind). If yes, mark this
-            // slot as cap-empty so the Schedule grid can render a
-            // distinct border and the end-of-season sweep can revisit
-            // it. If no, the slot is just empty (no candidates at all).
+            // players — capped but still YTD-behind). If yes, mark up
+            // to min(capRelaxed, remainingSlots) slots as cap-empty so
+            // the Schedule grid renders distinct borders on each and
+            // the end-of-season sweep can revisit them.
             if (assignExtra) {
               const capRelaxed = getAvailablePlayers(
                 game, currentAssigned, false,
                 { allowExtras: true, bypassWtdCap: true }
               ).filter((p) => !usedOnDay.has(p.id));
-              if (capRelaxed.length > 0) {
+              const remainingSlots = 4 - currentAssigned.length;
+              const slotsToMark = Math.min(capRelaxed.length, remainingSlots);
+              for (let i = 0; i < slotsToMark; i++) {
+                const markSlot = slot + i;
                 try {
                   await database
                     .insert(gameCappedSlots)
-                    .values({ gameId: game.id, slotPosition: slot });
-                  log.push({
-                    type: "info",
-                    day: DAYS[game.dayOfWeek],
-                    message: `[Cap-empty] Game #${game.gameNumber} slot ${slot}: left empty — ${capRelaxed.length} candidate(s) at weekly cap. Marked for end-of-season sweep.`,
-                  });
+                    .values({ gameId: game.id, slotPosition: markSlot });
                 } catch {
                   // ignore unique-conflict races
                 }
+              }
+              if (slotsToMark > 0) {
+                log.push({
+                  type: "info",
+                  day: DAYS[game.dayOfWeek],
+                  message: `[Cap-empty] Game #${game.gameNumber} slots ${slot}${slotsToMark > 1 ? `-${slot + slotsToMark - 1}` : ""}: left empty — ${capRelaxed.length} candidate(s) at weekly cap. Marked for end-of-season sweep.`,
+                });
               }
             }
             break;
