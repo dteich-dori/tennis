@@ -470,7 +470,7 @@ export async function POST(request: NextRequest) {
     // options.playerPool: custom player pool to search (e.g. subPlayers for Pass 4)
     function getAvailablePlayers(
       game: GameData, currentAssignments: number[], firstGameOnly = false,
-      options?: { allowExtras?: boolean; playerPool?: PlayerData[]; isSubs?: boolean }
+      options?: { allowExtras?: boolean; playerPool?: PlayerData[]; isSubs?: boolean; bypassWtdCap?: boolean }
     ): PlayerData[] {
       const pool = options?.playerPool ?? contractedPlayers;
       const isSubs = !!options?.isSubs;
@@ -517,8 +517,14 @@ export async function POST(request: NextRequest) {
             // stealing slots from players who haven't met their base contract)
             const freq = weeklyContractedGames(p.contractedFrequency);
             if (freq - wtd <= 0) {
-              // Allow through if allowExtras and player has front-loaded adjusted freq
-              if (options?.allowExtras) {
+              // bypassWtdCap (end-of-week sweep): the weekly contract is
+              // a soft preference once the week is done — let non-2+
+              // players take an "asterisk" makeup game if they have YTD
+              // deficit and the slot would otherwise stay empty.
+              if (options?.bypassWtdCap) {
+                // eligible — caller is intentionally over-allocating
+              } else if (options?.allowExtras) {
+                // Allow through if allowExtras AND player is front-loaded
                 const adjFreq = adjustedFreqMap.get(p.id) ?? freq;
                 if (adjFreq > freq && wtd < adjFreq) {
                   // eligible — front-loaded player, let Pass 2.5 filter handle it
@@ -1692,18 +1698,18 @@ export async function POST(request: NextRequest) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];
           const slot = currentAssigned.length + 1;
 
-          // Try Pass 3 (extras) — gate lifted
+          // Try Pass 3 (extras) — gate lifted; non-2+ WTD cap lifted too
           let eligible: PlayerData[] = [];
           let sweepPass = "";
           if (assignExtra) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true, bypassWtdCap: true })
               .filter((p) => !usedOnDay.has(p.id));
             if (eligible.length > 0) sweepPass = "extras";
           }
 
-          // Try Pass 3.5 (STD catchup) — gate lifted
+          // Try Pass 3.5 (STD catchup) — gate lifted; non-2+ WTD cap lifted too
           if (eligible.length === 0 && assignStdCatchup) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
+            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true, bypassWtdCap: true })
               .filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
                 if (p.contractedFrequency === "0") return false;
