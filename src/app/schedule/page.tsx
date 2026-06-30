@@ -1788,7 +1788,7 @@ export default function SchedulePage() {
                                             )
                                           }
                                           title={isCapped
-                                            ? "Empty because every eligible candidate is at their weekly cap. The end-of-season sweep can fill these if the season-end override setting is on."
+                                            ? "Empty because every eligible candidate is at their season contract cap. The end-of-season sweep can fill these if the season-end override setting is on."
                                             : undefined}
                                           className={`w-full text-left text-gray-300 hover:text-primary hover:bg-primary/5 rounded px-1 py-0.5 transition-colors ${
                                             isCapped
@@ -1796,7 +1796,7 @@ export default function SchedulePage() {
                                               : ""
                                           }`}
                                         >
-                                          {isCapped ? "+ assign (CAP)" : "+ assign"}
+                                          {isCapped ? "+ assign (SEASON CAP)" : "+ assign"}
                                         </button>
                                       );
                                     })()
@@ -2096,9 +2096,9 @@ export default function SchedulePage() {
                                                   <div className="border-t-2 border-dashed border-amber-400 mx-2 my-1" />
                                                   <div
                                                     className="px-2 py-0.5 text-[10px] text-amber-700 font-semibold bg-amber-50"
-                                                    title="These players have met their weekly contract cap but are still behind on YTD/STD season targets. Picking one assigns an extra game beyond their weekly cap — a makeup."
+                                                    title="These players have met their season contract cap but are still behind on YTD/STD season targets. Picking one assigns an extra game beyond their season cap — a makeup."
                                                   >
-                                                    OVER CAP (makeup)
+                                                    OVER SEASON CAP (makeup)
                                                   </div>
                                                   {overCapPlayers.map((p) => renderPlayer(p, false))}
                                                 </>

@@ -1929,7 +1929,7 @@ export default function SeasonPage() {
             </label>
             <label
               className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none"
-              title="At the end of the season auto-assign, fill cap-empty slots (the amber dashed cells) by lifting the weekly contract cap for players still in season deficit. When off, those cells stay empty for manual review."
+              title="At the end of the season auto-assign, fill cap-empty slots (the amber dashed cells) by lifting the season contract cap for players still in season deficit. When off, those cells stay empty for manual review."
             >
               <input
                 type="checkbox"

@@ -1767,7 +1767,7 @@ export async function POST(request: NextRequest) {
                 log.push({
                   type: "info",
                   day: DAYS[game.dayOfWeek],
-                  message: `[Cap-empty] Game #${game.gameNumber} slots ${slot}${slotsToMark > 1 ? `-${slot + slotsToMark - 1}` : ""}: left empty — ${capRelaxed.length} candidate(s) at weekly cap. Marked for end-of-season sweep.`,
+                  message: `[Cap-empty] Game #${game.gameNumber} slots ${slot}${slotsToMark > 1 ? `-${slot + slotsToMark - 1}` : ""}: left empty — ${capRelaxed.length} candidate(s) at season contract cap. Marked for end-of-season sweep.`,
                 });
               }
             }
