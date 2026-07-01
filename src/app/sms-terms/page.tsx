@@ -166,14 +166,7 @@ export default function SmsTermsPage() {
       </section>
 
       <section className="text-xs text-gray-500 border-t border-gray-200 pt-4">
-        <p>
-          Last updated: {new Date().toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}
-          .
-        </p>
+        <p>Last updated: July 1, 2026.</p>
         <p className="mt-2">
           Want to sign up? Go to{" "}
           <Link href="/join" className="text-primary underline">
