@@ -9,6 +9,7 @@ const links = [
   { href: "/season", label: "Season Setup" },
   { href: "/courts", label: "Court Schedule" },
   { href: "/players", label: "Players" },
+  { href: "/signup-review", label: "Sign-ups" },
   { href: "/schedule", label: "Schedule" },
   { href: "/re-assign", label: "Re-Assign" },
   { href: "/reports", label: "Reports" },
