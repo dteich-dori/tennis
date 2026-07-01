@@ -33,7 +33,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/calendar/subscribe/") || // public landing page that redirects to webcal://
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
     pathname.startsWith("/api/public/") || // public API endpoints
-    pathname.startsWith("/api/migrate/") // one-shot DB migration endpoints
+    pathname.startsWith("/api/migrate/") || // one-shot DB migration endpoints
+    pathname === "/join" || // public sign-up + SMS opt-in landing (A2P 10DLC CTA)
+    pathname === "/sms-terms" // public SMS terms / Twilio compliance disclosures
   ) {
     return NextResponse.next();
   }

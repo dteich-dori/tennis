@@ -22,8 +22,13 @@ const links = [
 export function Nav() {
   const pathname = usePathname();
 
-  // Hide nav on login page
-  if (pathname === "/login" || pathname === "/online-schedule") return null;
+  // Hide nav on login + all public landing pages
+  if (
+    pathname === "/login" ||
+    pathname === "/online-schedule" ||
+    pathname === "/join" ||
+    pathname === "/sms-terms"
+  ) return null;
 
   return (
     <nav className="w-56 border-r border-border bg-gray-50 p-4 flex flex-col gap-1">
