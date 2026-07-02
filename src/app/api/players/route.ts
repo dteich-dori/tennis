@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
       lockedExtraGames,
       excludedFromAutoAssign,
       groupAnchorId,
+      smsOptOut,
     } = body;
 
     const validationError = validatePlayerFields(body);
@@ -297,6 +298,9 @@ export async function POST(request: NextRequest) {
         preassignedGamesWanted: preassignedGamesWanted || null,
         lockedExtraGames: lockedExtraGames ?? null,
         excludedFromAutoAssign: excludedFromAutoAssign ?? false,
+        smsOptOut: !!smsOptOut,
+        smsOptOutAt: smsOptOut ? new Date().toISOString() : null,
+        smsOptOutReason: smsOptOut ? "Set at player creation" : null,
         // Group anchor: enforce eligibility rules at write time.
         // - A/B players with cGamesOk=true may have an anchor pointing
         //   to a C player.
@@ -403,6 +407,7 @@ export async function PUT(request: NextRequest) {
       lockedExtraGames,
       excludedFromAutoAssign,
       groupAnchorId,
+      smsOptOut,
     } = body;
 
     if (!id) {
@@ -450,6 +455,22 @@ export async function PUT(request: NextRequest) {
         excludedFromAutoAssign !== undefined
           ? excludedFromAutoAssign
           : currentPlayer.excludedFromAutoAssign,
+      // SMS opt-out flag from the "Do not text" checkbox on the player
+      // form. If the value changed, stamp the timestamp + a descriptive
+      // reason so it can be told apart from webhook / /sms-opt-outs
+      // driven changes.
+      smsOptOut:
+        smsOptOut !== undefined ? smsOptOut : currentPlayer.smsOptOut,
+      smsOptOutAt:
+        smsOptOut !== undefined && smsOptOut !== currentPlayer.smsOptOut
+          ? new Date().toISOString()
+          : currentPlayer.smsOptOutAt,
+      smsOptOutReason:
+        smsOptOut !== undefined && smsOptOut !== currentPlayer.smsOptOut
+          ? (smsOptOut
+              ? "Do-not-text toggled on via player form"
+              : "Do-not-text toggled off via player form")
+          : currentPlayer.smsOptOutReason,
       // Group anchor — same eligibility rule as on POST. Note that any
       // edit that flips cGamesOk to false (or changes skill away from
       // A/B) auto-clears the anchor.

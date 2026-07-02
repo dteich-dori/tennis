@@ -88,6 +88,7 @@ const emptyPlayer = {
   preassignedGamesWanted: null as number | null,
   excludedFromAutoAssign: false,
   groupAnchorId: null as number | null,
+  smsOptOut: false,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
   doNotPair: [] as number[],
@@ -182,6 +183,7 @@ export default function PlayersPage() {
       groupAnchorId: player.groupAnchorId ?? null,
       preassignedGamesWanted: player.preassignedGamesWanted ?? null,
       excludedFromAutoAssign: player.excludedFromAutoAssign ?? false,
+      smsOptOut: player.smsOptOut ?? false,
       blockedDays: player.blockedDays,
       vacations: player.vacations.map((v) => ({
         startDate: v.startDate,
@@ -917,6 +919,17 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, excludedFromAutoAssign: !e.target.checked })}
                 />
                 Include in auto-assign
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="When checked, this player is excluded from ALL outgoing SMS regardless of channel. Equivalent to them replying STOP. Toggling here logs an audit trail. Also editable at /sms-opt-outs."
+              >
+                <input
+                  type="checkbox"
+                  checked={form.smsOptOut}
+                  onChange={(e) => setForm({ ...form, smsOptOut: e.target.checked })}
+                />
+                Do not text (SMS opt-out)
               </label>
               {form.cGamesOk && (
                 <label className="flex items-center gap-2 text-sm ml-6">
