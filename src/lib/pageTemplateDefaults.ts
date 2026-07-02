@@ -2,6 +2,11 @@
 // row in page_templates yet, this string is used. The admin editor at
 // /page-templates lets you override any of them; "Reset to default"
 // deletes the row so the code falls back to these values again.
+//
+// Defaults sync'd to the approved live wording as of July 2026. Keep
+// this file in sync with any deliberate copy change so newly-cloned
+// environments start from the approved content, and so "Reset to
+// default" restores something sensible rather than the stale demo copy.
 
 export interface TemplateSlot {
   key: string;
@@ -13,36 +18,36 @@ export interface TemplateSlot {
 
 const SMS_TERMS_BODY_DEFAULT = `# SMS Terms & Privacy
 
-Brooklake Country Club — Tennis Program
+DON's group at Brooklake Tennis Club
 
 ## Program description
 
-The Brooklake Country Club Tennis Program uses SMS text messages to send scheduling information to enrolled players. Messages are strictly transactional and program-related — game reminders, court assignments, cancellations (weather, holidays), and seasonal announcements. We do not send promotional or marketing text messages.
+The Don's group uses SMS text messages to send scheduling information to enrolled players. Messages are strictly transactional and program-related — game reminders, court assignments, cancellations (weather, holidays), and seasonal announcements. We do not send promotional, political, or marketing text messages.
 
 ## How consent is collected
 
 Consent is collected in one of two ways:
 
 1. Explicit opt-in via the public sign-up form at [/join](/join), where the user checks a clearly-labeled consent box next to the disclosure text. The exact wording the user agreed to is saved with every submission for our records.
-2. Verbal or written consent given directly to the tennis committee at the time of enrollment. In this case, the committee member entering the record confirms the member has been shown the same disclosure text used on the online form and has agreed to it.
+2. Verbal or written consent given directly to the administrator at the time of enrollment. The player will receive a confirmation and a disclosure statement.
 
-Consent to receive SMS is **not** a condition of joining the tennis program. Members may choose email-only communication and still participate fully.
+Consent to receive SMS is not a condition of joining the tennis program. Members may choose email-only communication and still participate fully.
 
 ## Message frequency
 
-Approximately **2 to 5 messages per week during the tennis season** (September through late May). Message volume drops to **0 to 1 messages per week** during the summer off-season. Frequency depends on how often you are scheduled and on schedule changes.
+Frequency depends on how often you are scheduled to play and on schedule changes.
 
 ## Data & message rates
 
-**Message and data rates may apply** depending on your mobile carrier and plan. The Brooklake Country Club Tennis Program does not charge members for SMS messages; any fees are those imposed by your carrier.
+**Message and data rates may apply** depending on your mobile carrier and plan.
 
 ## Opting out (STOP)
 
-You may unsubscribe at any time by replying **STOP** to any text message you receive from us. You will receive one final confirmation message and will not receive any further SMS messages. To re-subscribe, contact the tennis committee.
+You can unsubscribe at any time by replying **STOP** to any text message you receive from us. You will receive one final confirmation message and will not receive any further SMS messages. To re-subscribe, contact the group administrator at 973-493-4959.
 
 ## Help (HELP)
 
-Reply **HELP** to any of our messages and you will receive a reply with instructions on how to contact the tennis committee. You may also reach us at the email address below.
+Reply **HELP** to any of our messages and you will receive a reply with instructions on how to contact the administrator. You may also reach us at the email address below.
 
 ## Information we collect
 
@@ -59,14 +64,16 @@ The sign-up form and player record collect only the information reasonably neede
 - **Program operations only.** Contact details are used solely to communicate about your participation in the tennis program (game reminders, cancellations, schedule changes, invoices where applicable).
 - **No sale, no marketing sharing.** We do not sell, rent, or share your personal information — including your phone number — with third parties for marketing or promotional purposes.
 - **Service providers.** To deliver text messages we use Twilio, Inc. as our SMS provider; email is delivered via standard email service providers. These providers process your phone number and email only to transmit our messages to you and are contractually restricted from using the data for any other purpose.
-- **Retention.** We keep your record for as long as you are an active tennis-program member. You can request deletion at any time by contacting the committee.
+- **Retention.** We keep your record for as long as you are an active tennis-program member. You can request deletion at any time by contacting the administrator.
 
 ## Contact
 
 Questions about SMS communications, opt-out, or your data:
 
-Brooklake Country Club — Tennis Committee
-Email: [tennis@brooklakecc.example](mailto:tennis@brooklakecc.example)
+DON's group at Brooklake Tennis Club
+Administrator: Dori Teich
+Email: [dori.teich@gmail.com](mailto:dori.teich@gmail.com)
+Phone: 973-493-4959
 
 ---
 
@@ -74,24 +81,24 @@ Email: [tennis@brooklakecc.example](mailto:tennis@brooklakecc.example)
 
 Want to sign up? Go to [/join](/join).`;
 
-const JOIN_DESCRIPTION_DEFAULT = `**Brooklake Country Club — Tennis Program sign-up.** Submissions are reviewed by the tennis committee before your player record is activated. Text-message notifications are *optional* — you can choose email-only communication instead.
+const JOIN_DESCRIPTION_DEFAULT = `**DON's group at Brooklake Tennis Club — Tennis games sign-up.** Submissions are reviewed by the administrator before your player record is activated. Text-message notifications are *optional* — you can choose email-only communication instead.
 
 ## What you're signing up for
 
 - A schedule of doubles tennis games at Brooklake's courts throughout the tennis season.
-- Weekly reminders about your assigned games, court number, and start time.
+- Day-before reminders about your assigned games, court number, and start time.
 - Occasional notifications about court changes, cancellations (weather, holidays), and seasonal updates.
-- You'll be paired with other members at similar playing levels. The scheduling committee handles assignments.`;
+- The administrator handles assignments, taking into consideration your availability, vacations, and playing-level preferences.`;
 
-const JOIN_CONSENT_TEXT_DEFAULT = `I agree to receive SMS text messages from Brooklake Country Club — Tennis Program at the mobile number I provided. Messages are game-schedule and program-related (reminders, cancellations, court changes, seasonal updates). Message frequency varies but typically runs 2–5 messages per week during the tennis season. Message and data rates may apply. Reply STOP to unsubscribe at any time; reply HELP for help. Consent to receive text messages is not a condition of joining the tennis program — I can also request email-only communication. See the SMS Terms & Privacy page for full details.`;
+const JOIN_CONSENT_TEXT_DEFAULT = `I agree to receive SMS text messages from Don's group at the Brooklake Tennis Club at the mobile number I provided. Messages are game-schedule and program-related (reminders, cancellations, court changes, seasonal updates). Message frequency varies but typically runs 2–5 messages per week during the tennis season. Message and data rates may apply. Reply STOP to any text message from the group to immediately unsubscribe at any time; reply HELP for help. Consent to receive text messages is not a condition of joining the tennis program — I can also request email-only communication. See the SMS Terms & Privacy page for full details.`;
 
 const JOIN_THANK_YOU_DEFAULT = `## Thank you — we've got your info.
 
-Your sign-up request has been submitted and will be reviewed by the tennis committee. If you provided a cell number and consented to texts, you'll receive schedule messages once your account is approved.
+Your sign-up request has been received and will be reviewed promptly. If you provided a cell number and consented to texts, you'll receive schedule messages once your account is approved.
 
 To opt out of SMS at any time, reply **STOP** to any text you receive. Reply **HELP** for help.
 
-Questions? Contact the tennis committee at [tennis@brooklakecc.example](mailto:tennis@brooklakecc.example).`;
+Questions? Contact the administrator via [dori.teich@gmail.com](mailto:dori.teich@gmail.com).`;
 
 export const TEMPLATE_SLOTS: TemplateSlot[] = [
   {
