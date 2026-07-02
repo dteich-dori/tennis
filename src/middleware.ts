@@ -35,7 +35,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/public/") || // public API endpoints
     pathname.startsWith("/api/migrate/") || // one-shot DB migration endpoints
     pathname === "/join" || // public sign-up + SMS opt-in landing (A2P 10DLC CTA)
-    pathname === "/sms-terms" // public SMS terms / Twilio compliance disclosures
+    pathname === "/sms-terms" || // public combined SMS terms (legacy, kept for bookmarks)
+    pathname === "/privacy" || // public Privacy Policy (A2P 10DLC required URL)
+    pathname === "/terms" // public Terms of Service (A2P 10DLC required URL)
   ) {
     return NextResponse.next();
   }

@@ -100,14 +100,128 @@ To opt out of SMS at any time, reply **STOP** to any text you receive. Reply **H
 
 Questions? Contact the administrator via [dori.teich@gmail.com](mailto:dori.teich@gmail.com).`;
 
+const PRIVACY_BODY_DEFAULT = `# Privacy Policy
+
+DON's group at Brooklake Tennis Club
+
+This Privacy Policy describes how we collect, use, and share personal information for the SMS text messaging service operated by the DON's group at Brooklake Tennis Club.
+
+## Information we collect
+
+The sign-up form at [/join](/join) and the internal player record collect only the information reasonably needed to run the tennis program:
+
+- Name.
+- Cell phone number (only if you opt in to SMS).
+- Mobile carrier (optional — used only to improve SMS reliability).
+- Email address (used for email notifications and account confirmation).
+- Skill level, playing preferences, and vacation dates as needed for scheduling.
+
+## How we use your information
+
+- **Program operations only.** Contact details are used solely to communicate about your participation in the tennis program (game reminders, cancellations, schedule changes, invoices where applicable).
+- **No sale, no marketing sharing.** We do not sell, rent, or share your personal information — including your phone number — with third parties for marketing or promotional purposes.
+- **Service providers.** To deliver text messages we use Twilio, Inc. as our SMS provider; email is delivered via standard email service providers. These providers process your phone number and email only to transmit our messages to you and are contractually restricted from using the data for any other purpose.
+- **Retention.** We keep your record for as long as you are an active tennis-program member. You can request deletion at any time by contacting the administrator.
+
+## Your choices
+
+- You may **opt out of SMS** at any time by replying **STOP** to any message you receive. See our [Terms of Service](/terms) for the complete list of opt-out keywords.
+- You may **choose email-only** communication and still participate fully in the tennis program.
+- You may **request deletion** of your record at any time by contacting the administrator.
+
+## Contact
+
+Questions about your data or this Privacy Policy:
+
+DON's group at Brooklake Tennis Club
+Administrator: Dori Teich
+Email: [dori.teich@gmail.com](mailto:dori.teich@gmail.com)
+Phone: 973-493-4959
+
+---
+
+*Last updated: July 1, 2026.*
+
+See also: [Terms of Service](/terms) · [Sign up](/join)`;
+
+const TERMS_BODY_DEFAULT = `# Terms of Service
+
+DON's group at Brooklake Tennis Club — SMS text-messaging service
+
+These Terms of Service govern your use of the SMS text-messaging service operated by the DON's group at Brooklake Tennis Club. By opting in via the sign-up form at [/join](/join) or by giving verbal or written consent to the administrator, you agree to these terms.
+
+## Program description
+
+The Don's group uses SMS text messages to send scheduling information to enrolled players. Messages are strictly transactional and program-related — game reminders, court assignments, cancellations (weather, holidays), and seasonal announcements. We do not send promotional, political, or marketing text messages.
+
+## How consent is collected
+
+Consent is collected in one of two ways:
+
+1. Explicit opt-in via the public sign-up form at [/join](/join), where the user checks a clearly-labeled consent box next to the disclosure text. The exact wording the user agreed to is saved verbatim with every submission for our records.
+2. Verbal or written consent given directly to the administrator at the time of enrollment. The player will receive a confirmation and a disclosure statement.
+
+Consent to receive SMS is not a condition of joining the tennis program. Members may choose email-only communication and still participate fully.
+
+## Message frequency
+
+Frequency depends on how often you are scheduled to play and on schedule changes. Message volume typically ranges from 2 to 5 messages per week during the tennis season and drops to 0 to 1 messages per week during the off-season.
+
+## Data & message rates
+
+**Message and data rates may apply** depending on your mobile carrier and plan. The DON's group at Brooklake Tennis Club does not charge for SMS; any fees are those imposed by your carrier.
+
+## Opting out (STOP)
+
+You can unsubscribe at any time by replying **STOP**, **STOPALL**, **UNSUBSCRIBE**, **CANCEL**, **END**, or **QUIT** to any text message. You will receive one final confirmation message and will not receive any further SMS messages. To re-subscribe, reply **START** or **YES**, or contact the administrator at 973-493-4959.
+
+## Help (HELP)
+
+Reply **HELP** or **INFO** to any of our messages and you will receive a reply with instructions on how to contact the administrator.
+
+## Privacy
+
+See our [Privacy Policy](/privacy) for how we collect, use, and share your personal information.
+
+## Contact
+
+Questions about the service or these Terms:
+
+DON's group at Brooklake Tennis Club
+Administrator: Dori Teich
+Email: [dori.teich@gmail.com](mailto:dori.teich@gmail.com)
+Phone: 973-493-4959
+
+---
+
+*Last updated: July 1, 2026.*
+
+See also: [Privacy Policy](/privacy) · [Sign up](/join)`;
+
 export const TEMPLATE_SLOTS: TemplateSlot[] = [
   {
     key: "sms-terms-body",
     label: "SMS Terms page — full body",
     helpText:
-      "The entire body of /sms-terms as Markdown. This is the URL your Twilio campaign submission points to. Any change here takes effect immediately on the live page.",
+      "The entire body of /sms-terms as Markdown. Kept for legacy bookmarks; the split Privacy Policy (/privacy) and Terms of Service (/terms) pages are what Twilio's reviewer sees now.",
     contentType: "markdown",
     defaultContent: SMS_TERMS_BODY_DEFAULT,
+  },
+  {
+    key: "privacy-policy-body",
+    label: "Privacy Policy page — full body",
+    helpText:
+      "The entire body of /privacy as Markdown. Focus on data collection, use, sharing, and retention. This is the URL you paste as the Privacy Policy URL in your Twilio campaign submission.",
+    contentType: "markdown",
+    defaultContent: PRIVACY_BODY_DEFAULT,
+  },
+  {
+    key: "terms-of-service-body",
+    label: "Terms of Service page — full body",
+    helpText:
+      "The entire body of /terms as Markdown. Focus on program description, opt-in flow, message frequency, STOP/HELP, and opt-out procedure. This is the URL you paste as the Terms of Service URL in your Twilio campaign submission.",
+    contentType: "markdown",
+    defaultContent: TERMS_BODY_DEFAULT,
   },
   {
     key: "join-description",

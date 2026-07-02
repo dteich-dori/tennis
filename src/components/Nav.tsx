@@ -30,7 +30,9 @@ export function Nav() {
     pathname === "/login" ||
     pathname === "/online-schedule" ||
     pathname === "/join" ||
-    pathname === "/sms-terms"
+    pathname === "/sms-terms" ||
+    pathname === "/privacy" ||
+    pathname === "/terms"
   ) return null;
 
   return (

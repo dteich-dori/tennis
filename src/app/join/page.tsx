@@ -252,13 +252,17 @@ export default function JoinPage() {
             </span>
           </label>
           <p className="text-xs text-amber-800 mt-3">
-            See our{" "}
-            <Link href="/sms-terms" className="underline" target="_blank">
-              SMS Terms &amp; Privacy
-            </Link>{" "}
-            for the full policy, including how we handle your phone number
-            and message data. We do not sell or share your information with
-            third parties for marketing purposes.
+            Read our{" "}
+            <Link href="/privacy" className="underline font-semibold" target="_blank">
+              Privacy Policy
+            </Link>
+            {" "}and our{" "}
+            <Link href="/terms" className="underline font-semibold" target="_blank">
+              Terms of Service
+            </Link>
+            {" "}for the full policy, including how we handle your phone
+            number and message data. We do not sell or share your
+            information with third parties for marketing purposes.
           </p>
         </div>
 
