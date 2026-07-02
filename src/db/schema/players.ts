@@ -37,6 +37,13 @@ export const players = sqliteTable("players", {
   // anchor. NULL = not in any group. The anchor player has groupPct
   // applied to their own games; each member has their own groupPct.
   groupAnchorId: integer("group_anchor_id"),
+  // A2P 10DLC compliance: when the player replies STOP (or one of the
+  // standard opt-out keywords) to any SMS, Twilio's webhook flips this
+  // flag. The send code skips SMS to opted-out players (email still
+  // works). Reply START/YES/UNSTOP flips it back off.
+  smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
+  smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
+  smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text
 });
 
 export const playerBlockedDays = sqliteTable("player_blocked_days", {

@@ -246,6 +246,7 @@ export async function POST(request: NextRequest) {
           cellNumber: players.cellNumber,
           carrier: players.carrier,
           contractedFrequency: players.contractedFrequency,
+          smsOptOut: players.smsOptOut,
         })
         .from(players)
         .where(
@@ -295,7 +296,10 @@ export async function POST(request: NextRequest) {
       for (const p of filtered) {
         const name = `${p.firstName} ${p.lastName}`;
         const hasEmail = !!(p.email && p.email.trim());
-        const hasSms = hasSmsCapability(p.cellNumber, p.carrier);
+        // A2P 10DLC: skip SMS entirely for players who replied STOP
+        // (Twilio's carrier-side block would drop the send anyway, but
+        // we also don't want to be seen attempting delivery).
+        const hasSms = hasSmsCapability(p.cellNumber, p.carrier) && !p.smsOptOut;
 
         if (channel === "email") {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
