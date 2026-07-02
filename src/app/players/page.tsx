@@ -47,6 +47,9 @@ interface Player {
   preassignedGamesWanted: number | null;
   excludedFromAutoAssign: boolean;
   groupAnchorId: number | null;
+  smsOptOut?: boolean;
+  smsOptOutAt?: string | null;
+  smsOptOutReason?: string | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -1344,6 +1347,14 @@ export default function PlayersPage() {
                       title="Excluded from auto-assign"
                     >
                       ⛔ AA
+                    </span>
+                  )}
+                  {player.smsOptOut && (
+                    <span
+                      className="ml-1 inline-block px-1.5 py-0 text-[10px] bg-red-100 text-red-800 rounded border border-red-300 align-middle"
+                      title={`Opted out of SMS${player.smsOptOutAt ? ` on ${new Date(player.smsOptOutAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}${player.smsOptOutReason ? ` — reason: ${player.smsOptOutReason}` : ""}. Manage at /sms-opt-outs.`}
+                    >
+                      🔕 STOP
                     </span>
                   )}
                 </td>

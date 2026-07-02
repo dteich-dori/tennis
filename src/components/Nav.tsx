@@ -10,6 +10,7 @@ const links = [
   { href: "/courts", label: "Court Schedule" },
   { href: "/players", label: "Players" },
   { href: "/signup-review", label: "Sign-ups" },
+  { href: "/sms-opt-outs", label: "SMS Opt-Outs" },
   { href: "/page-templates", label: "Page Copy" },
   { href: "/schedule", label: "Schedule" },
   { href: "/re-assign", label: "Re-Assign" },
