@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 
 const CARRIERS = [
   { value: "", label: "— Prefer not to say —" },
@@ -20,12 +21,6 @@ const CARRIERS = [
   { value: "xfinity", label: "Xfinity Mobile" },
   { value: "other", label: "Other" },
 ];
-
-// Frozen at submission time so we have per-submission audit evidence
-// of what the user actually saw when they checked the consent box.
-// If the copy on this page changes later, past submissions still
-// carry the exact wording they agreed to.
-const CONSENT_TEXT = `I agree to receive SMS text messages from Brooklake Country Club — Tennis Program at the mobile number I provided. Messages are game-schedule and program-related (reminders, cancellations, court changes, seasonal updates). Message frequency varies but typically runs 2–5 messages per week during the tennis season. Message and data rates may apply. Reply STOP to unsubscribe at any time; reply HELP for help. Consent to receive text messages is not a condition of joining the tennis program — I can also request email-only communication. See the SMS Terms & Privacy page for full details.`;
 
 interface FormState {
   firstName: string;
@@ -47,11 +42,36 @@ const empty: FormState = {
   consent: false,
 };
 
+// Fallback copy if the template endpoint fails. The reviewer will still
+// see a valid consent flow even under network trouble.
+const FALLBACK_DESCRIPTION = "**Brooklake Country Club — Tennis Program sign-up.** Submissions are reviewed by the tennis committee before your player record is activated.";
+const FALLBACK_CONSENT = "I agree to receive SMS text messages from Brooklake Country Club — Tennis Program at the mobile number I provided. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. Reply HELP for help.";
+const FALLBACK_THANK_YOU = "## Thank you — we've got your info.\n\nYour sign-up request has been submitted.";
+
 export default function JoinPage() {
   const [form, setForm] = useState<FormState>(empty);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+
+  // Editable copy from /page-templates. Fetched at mount; consent text
+  // is snapshotted with each submission for audit evidence.
+  const [description, setDescription] = useState<string>(FALLBACK_DESCRIPTION);
+  const [consentText, setConsentText] = useState<string>(FALLBACK_CONSENT);
+  const [thankYou, setThankYou] = useState<string>(FALLBACK_THANK_YOU);
+
+  useEffect(() => {
+    fetch("/api/public/page-templates?keys=join-description,join-consent-text,join-thank-you")
+      .then((r) => r.json())
+      .then((data: Record<string, string>) => {
+        if (data["join-description"]) setDescription(data["join-description"]);
+        if (data["join-consent-text"]) setConsentText(data["join-consent-text"]);
+        if (data["join-thank-you"]) setThankYou(data["join-thank-you"]);
+      })
+      .catch(() => {
+        /* fall back to the defaults above */
+      });
+  }, []);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -84,7 +104,8 @@ export default function JoinPage() {
           email: form.email,
           notes: form.notes,
           consentGiven: true,
-          consentText: CONSENT_TEXT,
+          // Freeze whatever the user saw at submit-time into the audit trail.
+          consentText,
         }),
       });
       const body = await res.json();
@@ -103,25 +124,8 @@ export default function JoinPage() {
   if (submitted) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-10">
-        <div className="border border-green-300 bg-green-50 text-green-900 rounded-lg p-6">
-          <h1 className="text-2xl font-bold mb-3">Thank you — we&rsquo;ve got your info.</h1>
-          <p className="mb-2">
-            Your sign-up request has been submitted and will be reviewed by the
-            tennis committee. If you provided a cell number and consented to
-            texts, you&rsquo;ll receive schedule messages once your account is
-            approved.
-          </p>
-          <p className="mb-2">
-            To opt out of SMS at any time, reply <strong>STOP</strong> to any
-            text you receive. Reply <strong>HELP</strong> for help.
-          </p>
-          <p className="text-sm text-green-800 mt-4">
-            Questions? Contact the tennis committee at{" "}
-            <a href="mailto:tennis@brooklakecc.example" className="underline">
-              tennis@brooklakecc.example
-            </a>
-            .
-          </p>
+        <div className="border border-green-300 bg-green-50 text-green-900 rounded-lg p-6 prose prose-sm max-w-none prose-a:text-green-800">
+          <ReactMarkdown>{thankYou}</ReactMarkdown>
         </div>
       </div>
     );
@@ -129,38 +133,11 @@ export default function JoinPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-2">
-        Join the Tennis Program
-      </h1>
-      <p className="text-sm text-gray-600 mb-6">
-        Brooklake Country Club — Tennis Program sign-up. Submissions are
-        reviewed by the tennis committee before your player record is
-        activated. Text-message notifications are <em>optional</em> — you
-        can choose email-only communication instead.
-      </p>
+      <h1 className="text-3xl font-bold mb-2">Join the Tennis Program</h1>
 
-      {/* Program description */}
-      <section className="border border-border rounded-lg p-4 mb-6 bg-gray-50 text-sm">
-        <h2 className="font-semibold mb-2">What you&rsquo;re signing up for</h2>
-        <ul className="list-disc list-inside space-y-1 text-gray-700">
-          <li>
-            A schedule of doubles tennis games at Brooklake&rsquo;s courts
-            throughout the tennis season.
-          </li>
-          <li>
-            Weekly reminders about your assigned games, court number, and
-            start time.
-          </li>
-          <li>
-            Occasional notifications about court changes, cancellations
-            (weather, holidays), and seasonal updates.
-          </li>
-          <li>
-            You&rsquo;ll be paired with other members at similar playing
-            levels. The scheduling committee handles assignments.
-          </li>
-        </ul>
-      </section>
+      <div className="prose prose-sm max-w-none text-sm text-gray-700 mb-6 prose-a:text-primary">
+        <ReactMarkdown>{description}</ReactMarkdown>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
@@ -254,8 +231,8 @@ export default function JoinPage() {
           <h2 className="font-semibold text-amber-900 mb-2">
             Text-message consent (optional but required for SMS reminders)
           </h2>
-          <div className="text-sm text-amber-900 mb-3 space-y-2">
-            <p>{CONSENT_TEXT}</p>
+          <div className="text-sm text-amber-900 mb-3 whitespace-pre-wrap">
+            {consentText}
           </div>
           <label className="flex items-start gap-2 cursor-pointer">
             <input

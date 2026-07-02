@@ -22,11 +22,13 @@
 		"nodemailer": "^8.0.5",
 		"react": "19.1.5",
 		"react-dom": "19.1.5",
+		"react-markdown": "^10.1.0",
 		"resend": "^6.9.2"
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "^3",
 		"@tailwindcss/postcss": "^4",
+		"@tailwindcss/typography": "^0.5.20",
 		"@types/node": "^20.19.33",
 		"@types/nodemailer": "^8.0.0",
 		"@types/react": "^19.1.5",
