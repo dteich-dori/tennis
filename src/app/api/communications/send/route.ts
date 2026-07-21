@@ -15,10 +15,12 @@ import {
 } from "@/lib/email";
 import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
 import { loadAccountSummariesForSeason } from "@/lib/loadAccountSummaries";
+import { loadAvailabilityForSeason } from "@/lib/loadAvailabilityForSeason";
 import {
   buildContext,
   substituteTemplate,
   templateHasVariables,
+  type AvailabilityData,
 } from "@/lib/templateSubstitute";
 import type { AccountSummary } from "@/lib/playerAccountSummary";
 
@@ -346,12 +348,25 @@ export async function POST(request: NextRequest) {
       templateHasVariables(subject) || templateHasVariables(messageBody);
 
     let summariesByPlayer: Map<number, AccountSummary> | null = null;
+    let availabilityByPlayer: Map<number, AvailabilityData> | null = null;
     if (needsSubstitution) {
       try {
         const loaded = await loadAccountSummariesForSeason(seasonId);
         summariesByPlayer = loaded.byPlayerId;
       } catch (err) {
         console.error("[send] failed to load account summaries:", err);
+      }
+      // Only load availability when the template actually references
+      // {blockedDays} or {vacations} — saves a two-table query per send.
+      const usesAvailability =
+        /\{(blockeddays|vacations)\}/i.test(subject) ||
+        /\{(blockeddays|vacations)\}/i.test(messageBody);
+      if (usesAvailability) {
+        try {
+          availabilityByPlayer = await loadAvailabilityForSeason(seasonId);
+        } catch (err) {
+          console.error("[send] failed to load availability data:", err);
+        }
       }
     }
     const allUnknownTokens = new Set<string>();
@@ -400,7 +415,10 @@ export async function POST(request: NextRequest) {
       if (recipientGroup === "Test" && !testSubstitutedAs) {
         testSubstitutedAs = `${summary.firstName} ${summary.lastName}`;
       }
-      const ctx = buildContext(summary);
+      const availability = playerId != null && availabilityByPlayer
+        ? availabilityByPlayer.get(playerId)
+        : undefined;
+      const ctx = buildContext(summary, availability);
       const sub = substituteTemplate(subject, ctx);
       const txt = substituteTemplate(messageBody, ctx);
       sub.unknownTokens.forEach((t) => allUnknownTokens.add(t));

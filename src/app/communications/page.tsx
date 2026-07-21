@@ -134,6 +134,8 @@ export default function CommunicationsPage() {
     { token: "depositDue",  description: "Standard deposit still owed",            example: "$250" },
     { token: "extraGames",  description: "Extra games (2x+ / sub)",                example: "3" },
     { token: "extraFee",    description: "Dollar amount of extras",                example: "$150" },
+    { token: "blockedDays", description: "Days of week the player is blocked from", example: "Monday, Wednesday" },
+    { token: "vacations",   description: "Bulleted list of vacation dates",         example: "• Fri, Dec 25\n• Mon, Jan 5 — Fri, Jan 9" },
   ];
 
   // Clear post-send banners whenever the user starts composing a new message

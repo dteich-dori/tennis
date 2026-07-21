@@ -26,6 +26,8 @@ export const TEMPLATE_VARIABLES: Array<{
   { token: "depositDue",  description: "Standard deposit still owed (clamped to 0)", example: "$250" },
   { token: "extraGames",  description: "Extra-games count (2x+ players or subs)",   example: "3" },
   { token: "extraFee",    description: "Dollar amount charged for extras",          example: "$150" },
+  { token: "blockedDays", description: "Comma-separated tennis-week days the player is blocked from", example: "Monday, Wednesday" },
+  { token: "vacations",   description: "Bulleted list of vacation date ranges (each on its own line)", example: "• Fri, Dec 25, 2026\n• Mon, Jan 5, 2027 — Fri, Jan 9, 2027" },
 ];
 
 /** Variable names lowercased, for case-insensitive lookup. */
@@ -40,11 +42,57 @@ const fmt$ = (n: number): string => {
   })}`;
 };
 
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function formatVacationRange(v: { startDate: string; endDate: string }): string {
+  const fmt = (yyyymmdd: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(yyyymmdd);
+    if (!m) return yyyymmdd;
+    return new Date(yyyymmdd + "T00:00:00").toLocaleDateString("en-US", {
+      weekday: "short", month: "short", day: "numeric", year: "numeric",
+    });
+  };
+  return v.startDate === v.endDate ? fmt(v.startDate) : `${fmt(v.startDate)} — ${fmt(v.endDate)}`;
+}
+
+export interface AvailabilityData {
+  blockedDays: number[]; // day-of-week ints, 0=Sun … 6=Sat
+  vacations: { startDate: string; endDate: string }[];
+  daysPerWeek: number; // 5 = Mon-Fri, 6 = Mon-Sat, 7 = Sun-Sat
+}
+
 /**
- * Build the substitution context from a player's account summary.
- * Caller is responsible for passing the right summary for each recipient.
+ * Build the substitution context from a player's account summary. Callers
+ * that want the {blockedDays} / {vacations} tokens to resolve should also
+ * pass the player's availability data — omit it and those tokens fall back
+ * to "None" / "None recorded." so the email still renders sensibly.
  */
-export function buildContext(s: AccountSummary): Record<string, string> {
+export function buildContext(
+  s: AccountSummary,
+  availability?: AvailabilityData
+): Record<string, string> {
+  // Blocked days, filtered to the season's tennis-week days so a stray
+  // checkbox for Sat/Sun on a 5-day week doesn't confuse the recipient.
+  let blockedDaysStr = "None";
+  let vacationsStr = "None recorded.";
+  if (availability) {
+    const { blockedDays, vacations, daysPerWeek } = availability;
+    const tennisDays = daysPerWeek === 7
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : daysPerWeek === 6
+        ? [1, 2, 3, 4, 5, 6]
+        : [1, 2, 3, 4, 5];
+    const blockedSet = new Set(blockedDays);
+    const blockedLabels = tennisDays.filter((d) => blockedSet.has(d)).map((d) => DAY_NAMES[d]);
+    if (blockedLabels.length > 0) blockedDaysStr = blockedLabels.join(", ");
+    if (vacations.length > 0) {
+      vacationsStr = vacations
+        .slice()
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))
+        .map((v) => `• ${formatVacationRange(v)}`)
+        .join("\n");
+    }
+  }
   return {
     firstname: s.firstName,
     lastname: s.lastName,
@@ -58,6 +106,8 @@ export function buildContext(s: AccountSummary): Record<string, string> {
     depositdue: fmt$(s.depositDue),
     extragames: String(s.extraGames),
     extrafee: fmt$(s.extras),
+    blockeddays: blockedDaysStr,
+    vacations: vacationsStr,
   };
 }
 
