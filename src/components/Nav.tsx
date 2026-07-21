@@ -17,6 +17,7 @@ const links = [
   { href: "/reports", label: "Reports" },
   { href: "/budget", label: "Bookkeeping" },
   { href: "/communications", label: "Communications" },
+  { href: "/availability-verify", label: "Verify Avail." },
   { href: "/online-schedule", label: "Online Display" },
   { href: "/user-manual", label: "User Manual" },
   { href: "/developer-guide", label: "Developer Guide" },
