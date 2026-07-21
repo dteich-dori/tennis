@@ -32,22 +32,24 @@ function formatVacationRange(v: { startDate: string; endDate: string }): string 
  * client can call preview via dryRun and see identical output.
  */
 export function buildPlayerEmail(
-  player: { firstName: string; lastName: string },
+  _player: { firstName: string; lastName: string },
   blockedDays: number[],
   vacations: { startDate: string; endDate: string }[],
+  subjectText: string,
   introText: string,
   daysPerWeek: number,
 ): { subject: string; text: string; html: string } {
-  const subject = `Please verify your availability — ${player.firstName}`;
+  const subject = subjectText.trim() || "Please verify your availability";
 
-  // Days the player CAN play (tennis-week days not in blocked list)
+  // Blocked days, filtered to the tennis-week days (drop Sat/Sun on a
+  // 5-day week etc — a checkbox for a non-tennis day is stale and
+  // shouldn't confuse the recipient).
   const tennisDays = daysPerWeek === 7
     ? [0, 1, 2, 3, 4, 5, 6]
     : daysPerWeek === 6
       ? [1, 2, 3, 4, 5, 6]
       : [1, 2, 3, 4, 5];
   const blockedSet = new Set(blockedDays);
-  const availableDayLabels = tennisDays.filter((d) => !blockedSet.has(d)).map((d) => DAY_NAMES[d]);
   const blockedDayLabels = tennisDays.filter((d) => blockedSet.has(d)).map((d) => DAY_NAMES[d]);
 
   const vacationList = vacations.length === 0
@@ -57,25 +59,17 @@ export function buildPlayerEmail(
         .map((v) => `  • ${formatVacationRange(v)}`)
         .join("\n");
 
-  const availableDaysLine = availableDayLabels.length > 0
-    ? availableDayLabels.join(", ")
-    : "(no days available — every tennis day is blocked)";
   const blockedDaysLine = blockedDayLabels.length > 0
     ? blockedDayLabels.join(", ")
-    : "None. You are available every tennis day.";
+    : "None on file — you're not blocked from any tennis day.";
 
-  const text = `Hi ${player.firstName},
-
-${introText.trim()}
+  const text = `${introText.trim()}
 
 ═══════════════════════════════════
 YOUR CURRENT AVAILABILITY ON FILE
 ═══════════════════════════════════
 
-DAYS YOU CAN PLAY (tennis week):
-  ${availableDaysLine}
-
-DAYS YOU'RE BLOCKED FROM:
+BLOCKED DAYS OF THE WEEK:
   ${blockedDaysLine}
 
 VACATIONS ON FILE:
@@ -99,12 +93,10 @@ Dori
         .join("") + "</ul>";
 
   const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 640px;">
-  <p>Hi ${escapeHtml(player.firstName)},</p>
   <p style="white-space: pre-wrap;">${escapeHtml(introText.trim())}</p>
   <div style="border: 2px solid #d97706; background: #fff8e1; border-radius: 6px; padding: 16px; margin: 20px 0;">
     <h3 style="margin: 0 0 12px 0; color: #92400e; font-size: 15px;">Your current availability on file</h3>
-    <p style="margin: 8px 0;"><strong>Days you can play:</strong><br>${escapeHtml(availableDaysLine)}</p>
-    <p style="margin: 8px 0;"><strong>Days you&rsquo;re blocked from:</strong><br>${escapeHtml(blockedDaysLine)}</p>
+    <p style="margin: 8px 0;"><strong>Blocked days of the week:</strong><br>${escapeHtml(blockedDaysLine)}</p>
     <p style="margin: 8px 0;"><strong>Vacations on file:</strong></p>
     ${vacationHtml}
   </div>
@@ -140,6 +132,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       seasonId: number;
+      subject?: string;
       introText?: string;
       recipientGroup: "All" | "Contract" | "Subs" | "Selected";
       selectedPlayerIds?: number[];
@@ -147,8 +140,10 @@ export async function POST(request: NextRequest) {
     };
     const { seasonId, recipientGroup, selectedPlayerIds, dryRun } = body;
     const introText = (body.introText ?? "").trim();
+    const subjectText = (body.subject ?? "").trim();
     if (!seasonId) return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     if (!introText) return NextResponse.json({ error: "introText required" }, { status: 400 });
+    if (!subjectText) return NextResponse.json({ error: "subject required" }, { status: 400 });
 
     const database = await db();
 
@@ -224,6 +219,7 @@ export async function POST(request: NextRequest) {
         { firstName: first.firstName, lastName: first.lastName },
         blockedByPlayer.get(first.id) ?? [],
         vacsByPlayer.get(first.id) ?? [],
+        subjectText,
         introText,
         daysPerWeek,
       );
@@ -246,6 +242,7 @@ export async function POST(request: NextRequest) {
         { firstName: p.firstName, lastName: p.lastName },
         blockedByPlayer.get(p.id) ?? [],
         vacsByPlayer.get(p.id) ?? [],
+        subjectText,
         introText,
         daysPerWeek,
       );
