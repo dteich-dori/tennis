@@ -82,17 +82,35 @@ export async function POST(request: NextRequest) {
 
     const from = params["From"] ?? "";
     const body = (params["Body"] ?? "").trim();
-    const firstWord = body.split(/\s+/)[0]?.toUpperCase() ?? "";
-    const isOptOut = OPT_OUT_KEYWORDS.includes(firstWord);
-    const isOptIn = OPT_IN_KEYWORDS.includes(firstWord);
+
+    // Match STOP/START-family keywords when they appear as the FIRST
+    // word of any line in the body. This handles:
+    //   - "STOP" alone
+    //   - "STOP please" / "STOP." / "STOP!"
+    //   - iMessage-style prepended headers followed by a newline and
+    //     then "STOP" on its own line (e.g. "Reply from Dori:\nSTOP")
+    // While rejecting running-prose false positives like:
+    //   - "please stop by court 3 tomorrow" (first word is "please")
+    //   - "I need to stop coming to games" (first word is "I")
+    const firstWords = body
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/[^A-Za-z]+/)[0]?.toUpperCase() ?? "")
+      .filter(Boolean);
+    const firstWordSet = new Set(firstWords);
+    const hitOptOut = OPT_OUT_KEYWORDS.find((k) => firstWordSet.has(k));
+    const hitOptIn = OPT_IN_KEYWORDS.find((k) => firstWordSet.has(k));
+    // If both appear (rare), STOP wins — the user's clearer intent.
+    const isOptOut = !!hitOptOut;
+    const isOptIn = !hitOptOut && !!hitOptIn;
     if (!isOptOut && !isOptIn) {
       // Not a keyword we care about; still return OK so Twilio doesn't retry.
       return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
     }
+    const matchedKeyword = hitOptOut ?? hitOptIn ?? "";
 
     const digits = last10Digits(from);
     if (!digits) {
-      console.warn(`[twilio-webhook] Received keyword ${firstWord} from unparseable number ${from}`);
+      console.warn(`[twilio-webhook] Received keyword ${matchedKeyword} from unparseable number ${from}`);
       return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
     }
 
@@ -109,7 +127,7 @@ export async function POST(request: NextRequest) {
       .map((m) => m.id);
 
     if (matchedIds.length === 0) {
-      console.warn(`[twilio-webhook] ${firstWord} from ${from} — no matching player.`);
+      console.warn(`[twilio-webhook] ${matchedKeyword} from ${from} — no matching player.`);
       return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
     }
 
@@ -123,13 +141,13 @@ export async function POST(request: NextRequest) {
       } else {
         await database
           .update(players)
-          .set({ smsOptOut: false, smsOptOutAt: now, smsOptOutReason: `Opt-in via ${firstWord}` })
+          .set({ smsOptOut: false, smsOptOutAt: now, smsOptOutReason: `Opt-in via ${matchedKeyword}` })
           .where(eq(players.id, id));
       }
     }
 
     console.log(
-      `[twilio-webhook] ${isOptOut ? "OPT-OUT" : "OPT-IN"} keyword "${firstWord}" from ${from} — updated ${matchedIds.length} player record(s).`
+      `[twilio-webhook] ${isOptOut ? "OPT-OUT" : "OPT-IN"} keyword "${matchedKeyword}" from ${from} — updated ${matchedIds.length} player record(s).`
     );
 
     // Empty TwiML — the carrier delivers Twilio's auto STOP/START reply.
