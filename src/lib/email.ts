@@ -42,15 +42,18 @@ export function validateTwilioConfig(): string | null {
   return null;
 }
 
-// True if a player can receive a text: via Twilio (phone number alone is
-// enough) or, when Twilio isn't configured, via a carrier email gateway
-// (phone + carrier required).
-export function hasSmsCapability(phone?: string | null, carrier?: string | null): boolean {
+// True if a player can receive a text. Twilio is the only supported
+// transport now — the carrier-gateway fallback path was retired
+// (v1.199). A valid 10-digit US cell number is sufficient; carrier is
+// no longer required.
+//
+// The `carrier` parameter is retained for backwards compatibility with
+// callers that still pass it but is intentionally ignored.
+export function hasSmsCapability(phone?: string | null, _carrier?: string | null): boolean {
   if (!phone) return false;
   const digits = phone.replace(/\D/g, "");
   if (digits.length !== 10) return false;
-  if (!validateTwilioConfig()) return true;
-  return !!(carrier && SMS_GATEWAYS[carrier]);
+  return true;
 }
 
 async function sendSmsViaTwilio(phone: string, body: string): Promise<{ success: boolean; error?: string }> {

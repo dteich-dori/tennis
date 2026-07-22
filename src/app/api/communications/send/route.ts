@@ -307,10 +307,12 @@ export async function POST(request: NextRequest) {
         if (channel === "email") {
           if (hasEmail) emailRecipients.push({ name, email: p.email!, playerId: p.id });
         } else if (channel === "sms") {
+          // Strict SMS-only. If the player has no SMS capability (no
+          // valid cell number, or STOP-opted-out), they get SKIPPED —
+          // NOT silently redirected to email. Use "sms-fallback" if you
+          // want the try-SMS-then-email behavior.
           if (hasSms) {
             smsRecipients.push({ name, phone: p.cellNumber!, carrier: p.carrier ?? undefined, playerId: p.id });
-          } else if (hasEmail) {
-            emailRecipients.push({ name, email: p.email!, playerId: p.id });
           }
         } else if (channel === "sms-fallback") {
           // Try SMS first; if the SMS send returns an error, retry via email.
