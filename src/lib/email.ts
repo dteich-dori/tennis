@@ -126,9 +126,14 @@ export function buildMobileFriendlyHtml(text: string): string {
 <meta name="supported-color-schemes" content="light dark">
 <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
 <style>
-body { margin:0; padding:20px; background:#fff; color:#111; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
-.wrap { max-width:640px; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:1.5; }
+body { margin:0; padding:14px; background:#fff; color:#111; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+.wrap { max-width:640px; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:1.45; }
 pre { white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:inherit; margin:0; }
+/* Compact on narrow screens */
+@media (max-width: 480px) {
+  body { padding:10px; }
+  .wrap { font-size:13px; line-height:1.4; }
+}
 @media (prefers-color-scheme: dark) { body { background:#111; color:#eee; } }
 </style>
 </head>
