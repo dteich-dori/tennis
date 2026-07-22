@@ -105,6 +105,39 @@ export interface EmailAttachment {
   contentType?: string;
 }
 
+/**
+ * Wrap a plain-text email body in a minimal, mobile-friendly HTML
+ * skeleton. Preserves the plain-text layout via <pre> + pre-wrap so
+ * the same content renders identically in both parts, but bumps the
+ * base font size to 16px and sets a proper viewport so iOS Mail and
+ * Gmail don't shrink the text on small screens.
+ */
+export function buildMobileFriendlyHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
+<style>
+body { margin:0; padding:20px; background:#fff; color:#111; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+.wrap { max-width:640px; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:1.5; }
+pre { white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:inherit; margin:0; }
+@media (prefers-color-scheme: dark) { body { background:#111; color:#eee; } }
+</style>
+</head>
+<body>
+<div class="wrap"><pre>${escaped}</pre></div>
+</body>
+</html>`;
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -178,7 +211,9 @@ export async function sendBulkEmails(
       continue;
     }
 
-    const sendResult = await sendEmail({ to: email, subject, text, fromName, replyTo, attachments });
+    // Same mobile-friendly HTML twin as the personalized-send path uses,
+    // so a bulk-identical send is just as readable on a phone.
+    const sendResult = await sendEmail({ to: email, subject, text, html: buildMobileFriendlyHtml(text), fromName, replyTo, attachments });
     if (sendResult.success) {
       result.sent++;
       result.recipients.push(r.name);

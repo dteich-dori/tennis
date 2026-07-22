@@ -9,6 +9,7 @@ import {
   sendEmail,
   validateEmailConfig,
   hasSmsCapability,
+  buildMobileFriendlyHtml,
   type Recipient,
   type SmsRecipient,
   type EmailAttachment,
@@ -496,6 +497,11 @@ export async function POST(request: NextRequest) {
             to: r.email,
             subject: perSubject,
             text: perText,
+            // Mobile-friendly HTML twin: iOS Mail / Gmail will pick this
+            // over the plain-text alternative on small screens, giving
+            // the recipient a 16px base font instead of the default
+            // ~11px auto-shrink.
+            html: buildMobileFriendlyHtml(perText),
             fromName,
             replyTo,
             attachments: emailAttachments,
