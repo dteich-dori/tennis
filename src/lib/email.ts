@@ -246,47 +246,32 @@ export async function sendBulkSms(
 ): Promise<BulkResult> {
   const result: BulkResult = { sent: 0, smsSent: 0, errors: [], skipped: [], recipients: [] };
 
-  const useTwilio = !validateTwilioConfig();
-
-  if (!useTwilio) {
-    const configError = validateEmailConfig();
-    if (configError) {
-      result.errors.push(configError);
-      return result;
-    }
+  // Twilio is the only supported SMS transport (v1.200+). If the
+  // config isn't visible to the running server, error out with a
+  // clear message pointing to the diagnostic endpoint instead of
+  // silently falling back to carrier-gateway emails.
+  const twilioConfigError = validateTwilioConfig();
+  if (twilioConfigError) {
+    result.errors.push(
+      `SMS is not sendable from this server: ${twilioConfigError}. ` +
+      `Visit /api/admin/twilio-config to see which env vars are missing, ` +
+      `set them in Vercel → Settings → Environment Variables (Production), ` +
+      `and redeploy.`
+    );
+    return result;
   }
+  // fromName is unused now that we no longer route via SMS gateway
+  // emails, but the parameter is kept for signature compatibility.
+  void fromName;
 
   for (const r of recipients) {
-    if (useTwilio) {
-      const digits = r.phone.replace(/\D/g, "");
-      if (digits.length !== 10) {
-        result.skipped.push(`${r.name} (invalid phone: ${r.phone})`);
-        continue;
-      }
-
-      const sendResult = await sendSmsViaTwilio(r.phone, text);
-      if (sendResult.success) {
-        result.smsSent++;
-        result.recipients.push(`${r.name} (SMS)`);
-      } else {
-        result.errors.push(`${r.name} (SMS): ${sendResult.error}`);
-      }
+    const digits = r.phone.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      result.skipped.push(`${r.name} (invalid phone: ${r.phone})`);
       continue;
     }
 
-    const gatewayEmail = r.carrier ? getSmsGatewayEmail(r.phone, r.carrier) : null;
-    if (!gatewayEmail) {
-      result.skipped.push(`${r.name} (invalid phone/carrier: ${r.phone}/${r.carrier})`);
-      continue;
-    }
-
-    // SMS messages should be short — no subject line needed
-    const sendResult = await sendEmail({
-      to: gatewayEmail,
-      subject: fromName,
-      text,
-      fromName,
-    });
+    const sendResult = await sendSmsViaTwilio(r.phone, text);
     if (sendResult.success) {
       result.smsSent++;
       result.recipients.push(`${r.name} (SMS)`);
