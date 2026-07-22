@@ -38,8 +38,17 @@ export async function loadAvailabilityForSeason(
     arr.push(b.dayOfWeek);
     blockedByPlayer.set(b.playerId, arr);
   }
+  // Dedupe vacations by (startDate, endDate) so accidental duplicate
+  // rows in player_vacations don't appear as repeated bullets in the
+  // {vacations} template output. See v1.196 note.
   const vacsByPlayer = new Map<number, { startDate: string; endDate: string }[]>();
+  const seenPerPlayer = new Map<number, Set<string>>();
   for (const v of vacationRows) {
+    const seen = seenPerPlayer.get(v.playerId) ?? new Set<string>();
+    const key = `${v.startDate}|${v.endDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    seenPerPlayer.set(v.playerId, seen);
     const arr = vacsByPlayer.get(v.playerId) ?? [];
     arr.push({ startDate: v.startDate, endDate: v.endDate });
     vacsByPlayer.set(v.playerId, arr);
