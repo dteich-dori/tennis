@@ -69,7 +69,7 @@ type RecipientGroup =
   | "Owes Deposit"
   | "Players"
   | "Test";
-type TabView = "compose" | "templates" | "history";
+type TabView = "compose" | "templates" | "history" | "scheduledReminders";
 
 export default function CommunicationsPage() {
   const [season, setSeason] = useState<Season | null>(null);
@@ -603,7 +603,7 @@ export default function CommunicationsPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 border-b border-border">
-        {(["compose", "templates", "history"] as TabView[]).map((tab) => (
+        {(["compose", "templates", "history", "scheduledReminders"] as TabView[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -613,7 +613,13 @@ export default function CommunicationsPage() {
                 : "border-transparent text-muted hover:text-foreground"
             }`}
           >
-            {tab === "compose" ? "Compose" : tab === "templates" ? "Templates" : "History"}
+            {tab === "compose"
+              ? "Compose"
+              : tab === "templates"
+                ? "Templates"
+                : tab === "history"
+                  ? "History"
+                  : "Scheduled Reminders"}
           </button>
         ))}
       </div>
@@ -694,144 +700,7 @@ export default function CommunicationsPage() {
               />
             </div>
 
-            {/* ===== Daily reminders ===== */}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold">Daily game reminders</h3>
-                <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={remindersEnabled}
-                    onChange={(e) => setRemindersEnabled(e.target.checked)}
-                  />
-                  <span className={remindersEnabled ? "text-green-700 font-medium" : "text-muted"}>
-                    {remindersEnabled ? "Enabled" : "Disabled"}
-                  </span>
-                </label>
-              </div>
-              <p className="text-xs text-muted mb-2">
-                Once a day around <strong>6 PM Eastern</strong>, every player
-                who has a normal game tomorrow gets an automatic email + SMS
-                reminder. Uses the template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
-                <br />
-                <span className="text-[11px] text-muted/70">
-                  (Send time is fixed by the Vercel Hobby plan&apos;s daily-cron
-                  limit. Edit <code>vercel.json</code> to change it.)
-                </span>
-              </p>
-              <div className="mt-2">
-                <label className="block text-xs font-medium mb-1">Send via</label>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Try Text first; if the SMS send fails, retry that recipient via email.">
-                    <input type="radio" name="reminderChannel" value="sms-fallback" checked={reminderChannel === "sms-fallback"} onChange={() => setReminderChannel("sms-fallback")} />
-                    Text → Email on failure
-                  </label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Send to both email AND text (players with both configured get both)">
-                    <input type="radio" name="reminderChannel" value="both" checked={reminderChannel === "both"} onChange={() => setReminderChannel("both")} />
-                    Email + Text
-                  </label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Email only to all players with an email address">
-                    <input type="radio" name="reminderChannel" value="email" checked={reminderChannel === "email"} onChange={() => setReminderChannel("email")} />
-                    Email only
-                  </label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Prefer text; players without phone+carrier get email instead">
-                    <input type="radio" name="reminderChannel" value="sms" checked={reminderChannel === "sms"} onChange={() => setReminderChannel("sms")} />
-                    Text only
-                  </label>
-                </div>
-              </div>
-
-              <div className="mt-2">
-                <label className="block text-xs font-medium mb-1">
-                  Reminder template
-                </label>
-                <select
-                  value={reminderTemplateId ?? ""}
-                  onChange={(e) =>
-                    setReminderTemplateId(
-                      e.target.value ? parseInt(e.target.value) : null
-                    )
-                  }
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
-                >
-                  <option value="">— Built-in default (edit below) —</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted mt-1">
-                  Pick one of your saved templates from the Templates tab, or
-                  leave unset to use the built-in fallback below. Variables
-                  available: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
-                </p>
-                {!reminderTemplateId && (
-                  <textarea
-                    value={reminderTemplate}
-                    onChange={(e) => setReminderTemplate(e.target.value)}
-                    rows={6}
-                    className="mt-2 w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white font-mono"
-                    placeholder="Hi {firstName}, you have a game tomorrow ..."
-                  />
-                )}
-                {reminderTemplateId && (() => {
-                  const tpl = templates.find((t) => t.id === reminderTemplateId);
-                  if (!tpl) return null;
-                  return (
-                    <div className="mt-2 p-2 border border-gray-200 bg-gray-50 rounded text-xs">
-                      <div className="font-medium mb-1">Preview: <span className="text-muted">{tpl.subject}</span></div>
-                      <pre className="whitespace-pre-wrap font-mono text-[11px] text-gray-700">{tpl.body}</pre>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Manual test send */}
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <label className="block text-xs font-medium mb-1">
-                  Send test reminder
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={reminderTestPlayerId ?? ""}
-                    onChange={(e) =>
-                      setReminderTestPlayerId(
-                        e.target.value ? parseInt(e.target.value) : null
-                      )
-                    }
-                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
-                  >
-                    <option value="">— Select a player —</option>
-                    {activePlayers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.lastName}, {p.firstName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleSendTestReminder}
-                    disabled={!reminderTestPlayerId || reminderTestSending}
-                    className="px-3 py-1 text-sm border border-primary text-primary rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Send a single reminder right now to the selected player — uses real game data if any exists, otherwise sample placeholders."
-                  >
-                    {reminderTestSending ? "Sending…" : "Send test now"}
-                  </button>
-                </div>
-                {reminderTestResult && (
-                  <p
-                    className={`text-xs mt-2 ${
-                      reminderTestResult.startsWith("✓")
-                        ? "text-green-700"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {reminderTestResult}
-                  </p>
-                )}
-              </div>
-            </div>
+            {/* Daily reminders moved to the "Scheduled Reminders" tab. */}
 
             <div className="mt-3 flex items-center gap-3">
               <button
@@ -1568,6 +1437,171 @@ export default function CommunicationsPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ===== SCHEDULED REMINDERS TAB ===== */}
+      {activeTab === "scheduledReminders" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Automated recurring messages. Each reminder is a self-contained
+            card below — enable it, pick the template and delivery channel,
+            and it will fire on its own schedule until disabled.
+          </p>
+
+          {/* --- Reminder card: Daily game reminders --- */}
+          <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Daily game reminders</h3>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={remindersEnabled}
+                  onChange={(e) => setRemindersEnabled(e.target.checked)}
+                />
+                <span className={remindersEnabled ? "text-green-700 font-medium" : "text-muted"}>
+                  {remindersEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </label>
+            </div>
+            <p className="text-xs text-muted mb-2">
+              Once a day around <strong>6 PM Eastern</strong>, every player
+              who has a normal game tomorrow gets an automatic email + SMS
+              reminder. Uses the template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
+              <br />
+              <span className="text-[11px] text-muted/70">
+                (Send time is fixed by the Vercel Hobby plan&apos;s daily-cron
+                limit. Edit <code>vercel.json</code> to change it.)
+              </span>
+            </p>
+            <div className="mt-2">
+              <label className="block text-xs font-medium mb-1">Send via</label>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Try Text first; if the SMS send fails, retry that recipient via email.">
+                  <input type="radio" name="reminderChannel" value="sms-fallback" checked={reminderChannel === "sms-fallback"} onChange={() => setReminderChannel("sms-fallback")} />
+                  Text → Email on failure
+                </label>
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Send to both email AND text (players with both configured get both)">
+                  <input type="radio" name="reminderChannel" value="both" checked={reminderChannel === "both"} onChange={() => setReminderChannel("both")} />
+                  Email + Text
+                </label>
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Email only to all players with an email address">
+                  <input type="radio" name="reminderChannel" value="email" checked={reminderChannel === "email"} onChange={() => setReminderChannel("email")} />
+                  Email only
+                </label>
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Text only; players without a valid cell number are skipped">
+                  <input type="radio" name="reminderChannel" value="sms" checked={reminderChannel === "sms"} onChange={() => setReminderChannel("sms")} />
+                  Text only
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <label className="block text-xs font-medium mb-1">
+                Reminder template
+              </label>
+              <select
+                value={reminderTemplateId ?? ""}
+                onChange={(e) =>
+                  setReminderTemplateId(
+                    e.target.value ? parseInt(e.target.value) : null
+                  )
+                }
+                className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+              >
+                <option value="">— Built-in default (edit below) —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted mt-1">
+                Pick one of your saved templates from the Templates tab, or
+                leave unset to use the built-in fallback below. Variables
+                available: <code>{"{firstName}"}</code>, <code>{"{lastName}"}</code>, <code>{"{name}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code>, <code>{"{court}"}</code>, <code>{"{partners}"}</code>, <code>{"{group}"}</code>.
+              </p>
+              {!reminderTemplateId && (
+                <textarea
+                  value={reminderTemplate}
+                  onChange={(e) => setReminderTemplate(e.target.value)}
+                  rows={6}
+                  className="mt-2 w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white font-mono"
+                  placeholder="Hi {firstName}, you have a game tomorrow ..."
+                />
+              )}
+              {reminderTemplateId && (() => {
+                const tpl = templates.find((t) => t.id === reminderTemplateId);
+                if (!tpl) return null;
+                return (
+                  <div className="mt-2 p-2 border border-gray-200 bg-white rounded text-xs">
+                    <div className="font-medium mb-1">Preview: <span className="text-muted">{tpl.subject}</span></div>
+                    <pre className="whitespace-pre-wrap font-mono text-[11px] text-gray-700">{tpl.body}</pre>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Manual test send */}
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <label className="block text-xs font-medium mb-1">
+                Send test reminder
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={reminderTestPlayerId ?? ""}
+                  onChange={(e) =>
+                    setReminderTestPlayerId(
+                      e.target.value ? parseInt(e.target.value) : null
+                    )
+                  }
+                  className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                >
+                  <option value="">— Select a player —</option>
+                  {activePlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.lastName}, {p.firstName}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleSendTestReminder}
+                  disabled={!reminderTestPlayerId || reminderTestSending}
+                  className="px-3 py-1 text-sm border border-primary text-primary rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Send a single reminder right now to the selected player — uses real game data if any exists, otherwise sample placeholders."
+                >
+                  {reminderTestSending ? "Sending…" : "Send test now"}
+                </button>
+              </div>
+              {reminderTestResult && (
+                <p
+                  className={`text-xs mt-2 ${
+                    reminderTestResult.startsWith("✓")
+                      ? "text-green-700"
+                      : "text-red-600"
+                  }`}
+                >
+                  {reminderTestResult}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-blue-200 flex items-center gap-3">
+              <button
+                onClick={handleSaveSettings}
+                className="px-3 py-1.5 bg-primary text-white rounded text-sm hover:opacity-90"
+              >
+                Save Reminder Settings
+              </button>
+              {settingsMessage && (
+                <span className="text-sm text-green-600">{settingsMessage}</span>
+              )}
+            </div>
+          </div>
+          {/* --- End reminder card. Add more cards here as new scheduled
+              reminders are added (use a distinct light-tint background per
+              card — amber-50, emerald-50, purple-50, etc.). --- */}
         </div>
       )}
     </div>
