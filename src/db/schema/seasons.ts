@@ -32,4 +32,8 @@ export const seasons = sqliteTable("seasons", {
   // weekly contract cap. When false (default), cap-empty markers stay
   // visible on the Schedule grid but the slots are left unassigned.
   allowCapOverrideAtSeasonEnd: integer("allow_cap_override_at_season_end", { mode: "boolean" }).notNull().default(false),
+  // JSON-encoded array of composition keys (e.g. ["AAAA","AABB",...])
+  // the auto-assign may produce. NULL = use lib/compositions.ts
+  // DEFAULT_ALLOWED_KEYS (mirrors the pre-v1.204 hard-coded rule).
+  allowedCompositions: text("allowed_compositions"),
 });

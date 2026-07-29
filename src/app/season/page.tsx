@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useBackup } from "@/lib/useBackup";
+import { COMPOSITIONS, DEFAULT_ALLOWED_KEYS } from "@/lib/compositions";
 
 
 interface Season {
@@ -15,6 +16,7 @@ interface Season {
   maxACGamesPerSeason: number | null;
   daysPerWeek?: number;
   allowCapOverrideAtSeasonEnd?: boolean;
+  allowedCompositions?: string | null;
 }
 
 interface Holiday {
@@ -58,6 +60,13 @@ export default function SeasonPage() {
   const [maxACGamesPerSeason, setMaxACGamesPerSeason] = useState<string>("1");
   const [daysPerWeek, setDaysPerWeek] = useState<number>(5);
   const [allowCapOverrideAtSeasonEnd, setAllowCapOverrideAtSeasonEnd] = useState<boolean>(false);
+  // Which A/B/C compositions the auto-assign may produce (v1.204+).
+  // Initialised from the code-shipped defaults; overridden by the
+  // saved value when the season loads.
+  const [allowedCompositions, setAllowedCompositions] = useState<Set<string>>(
+    new Set()
+  );
+  const [compositionsMessage, setCompositionsMessage] = useState<string>("");
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -139,6 +148,23 @@ export default function SeasonPage() {
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
       setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
       setAllowCapOverrideAtSeasonEnd(!!latest.allowCapOverrideAtSeasonEnd);
+      // Parse allowed compositions (JSON array), fall back to defaults if
+      // NULL or malformed.
+      try {
+        const raw = latest.allowedCompositions;
+        if (raw && typeof raw === "string") {
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+            setAllowedCompositions(new Set(parsed as string[]));
+          } else {
+            setAllowedCompositions(new Set(DEFAULT_ALLOWED_KEYS));
+          }
+        } else {
+          setAllowedCompositions(new Set(DEFAULT_ALLOWED_KEYS));
+        }
+      } catch {
+        setAllowedCompositions(new Set(DEFAULT_ALLOWED_KEYS));
+      }
     }
   }, []);
 
@@ -305,6 +331,30 @@ export default function SeasonPage() {
       }),
     });
   }, [allowCapOverrideAtSeasonEnd, activeSeason]);
+
+  // Auto-save allowedCompositions grid
+  const compositionsInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!compositionsInitialized.current) {
+      compositionsInitialized.current = true;
+      return;
+    }
+    setCompositionsMessage("Saving…");
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: activeSeason.id,
+        startDate: activeSeason.startDate,
+        allowedCompositions: [...allowedCompositions].sort(),
+      }),
+    })
+      .then((r) => r.ok ? setCompositionsMessage("Saved.") : setCompositionsMessage("Save failed."))
+      .catch(() => setCompositionsMessage("Save failed."));
+    const t = setTimeout(() => setCompositionsMessage(""), 1500);
+    return () => clearTimeout(t);
+  }, [allowedCompositions, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
     const date = new Date(dateStr + "T00:00:00");
@@ -1319,6 +1369,88 @@ export default function SeasonPage() {
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Allowed compositions grid (v1.204) */}
+        <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 mb-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <div>
+              <div className="text-sm font-medium text-purple-800">
+                Allowed skill compositions
+              </div>
+              <p className="text-xs text-purple-700/80">
+                Which A/B/C combinations the auto-assign may produce.
+                Check the boxes for the mixes you accept — everything
+                else is blocked. Defaults preserve the pre-v1.204
+                behavior (same-tier and B-bridged mixes plus AACC).
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAllowedCompositions(new Set(DEFAULT_ALLOWED_KEYS))}
+                className="text-xs text-purple-700 border border-purple-300 rounded px-2 py-1 hover:bg-purple-100"
+              >
+                Reset to defaults
+              </button>
+              {compositionsMessage && (
+                <span className="text-xs text-purple-700">{compositionsMessage}</span>
+              )}
+            </div>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-purple-700 border-b border-purple-200">
+                <th className="py-1 pr-2 w-8">✓</th>
+                <th className="py-1 pr-2">Composition</th>
+                <th className="py-1 pr-2">Description</th>
+                <th className="py-1">Category</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(["tier-uniform", "adjacent-tier", "AACC", "mixed-A+C"] as const).map((cat) => (
+                <>
+                  {COMPOSITIONS.filter((c) => c.category === cat).map((c) => {
+                    const isChecked = allowedCompositions.has(c.key);
+                    return (
+                      <tr
+                        key={c.key}
+                        className={`border-b border-purple-100 ${isChecked ? "bg-white" : "bg-purple-50/50 text-gray-500"}`}
+                      >
+                        <td className="py-1 pr-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const next = new Set(allowedCompositions);
+                              if (e.target.checked) next.add(c.key); else next.delete(c.key);
+                              setAllowedCompositions(next);
+                            }}
+                            className="accent-purple-600 cursor-pointer"
+                          />
+                        </td>
+                        <td className="py-1 pr-2 font-mono font-medium">{c.key}</td>
+                        <td className="py-1 pr-2">{c.description}</td>
+                        <td className="py-1 text-purple-700/70">
+                          {c.category === "tier-uniform"
+                            ? "same tier"
+                            : c.category === "adjacent-tier"
+                              ? "A+B or B+C"
+                              : c.category === "AACC"
+                                ? "AACC (2+2)"
+                                : "mixed A+C (blocked by default)"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-purple-700/70 mt-2">
+            {allowedCompositions.size} of {COMPOSITIONS.length} compositions allowed.
+            Changes save automatically. Applies to the NEXT auto-assign
+            run — existing assignments aren&rsquo;t re-checked.
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">

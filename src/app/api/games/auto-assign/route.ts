@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments, gameCappedSlots, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { weeklyContractedGames, isSubEligible } from "@/lib/contractFrequency";
+import { parseAllowedCompositions, canReachAllowed } from "@/lib/compositions";
 
 // Types
 interface PlayerData {
@@ -299,6 +300,10 @@ export async function POST(request: NextRequest) {
     const [seasonRecord] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
     const maxCGamesPerWeek = seasonRecord?.maxCGamesPerWeek ?? 1;
     const maxCGamesPerWeek1x = seasonRecord?.maxCGamesPerWeek1x ?? 4; // weeks between C games for 1x players
+    // Admin-tunable composition rule (v1.204). Parses the season's
+    // allowedCompositions JSON; NULL falls back to the code-shipped
+    // default set (same as pre-v1.204 behavior).
+    const allowedCompositionSet = parseAllowedCompositions(seasonRecord?.allowedCompositions ?? null);
     // (R11 derated pairing rule + its previous-week game prefetch retired in
     // v1.151 and fully removed in v1.155.)
 
@@ -580,10 +585,18 @@ export async function POST(request: NextRequest) {
           if (assignedPlayer?.doNotPair.includes(p.id)) return false;
         }
 
-        // ===== A+C COMPOSITION RULE =====
-        // The only allowed A+C composition is AACC (2 A's + 2 C's + 0 B's).
-        // Every other A+C variant — AAAC, AABC, ABBC, ABCC, ACCC — stays
-        // blocked. Slots may be left empty when no valid alternative exists.
+        // ===== COMPOSITION RULE (v1.204: admin-tunable) =====
+        // Which A/B/C compositions are legal is stored on the season as
+        // a JSON array. `allowedCompositionSet` (built once above from
+        // parseAllowedCompositions) is the runtime lookup. The pre-
+        // v1.204 hard-coded rule (same-tier + adjacent-tier bridges +
+        // AACC only) is preserved as the DEFAULT set, so unmigrated
+        // seasons behave identically until the admin ticks new boxes.
+        //
+        // The check is a partial-state feasibility test: after adding
+        // this candidate, can we still reach at least one allowed
+        // composition given the remaining slots AND the pool of
+        // available bodies on this day?
         {
           const assignedLevels = [...assignedInGame].map(
             (id) => playerData.find((pl) => pl.id === id)?.skillLevel ?? "?"
@@ -591,62 +604,28 @@ export async function POST(request: NextRequest) {
           const sa = assignedLevels.filter((l) => l === "A").length;
           const sb = assignedLevels.filter((l) => l === "B").length;
           const sc = assignedLevels.filter((l) => l === "C").length;
-          if (p.skillLevel === "A" && sc > 0) {
-            // Only allow adding an A to a C-containing game if it can still
-            // resolve to AACC: no B's already, exactly 2 C's, < 2 A's.
-            if (!(sb === 0 && sc === 2 && sa < 2)) return false;
-          }
-          if (p.skillLevel === "C" && sa > 0) {
-            if (!(sb === 0 && sa === 2 && sc < 2)) return false;
-          }
-          if (p.skillLevel === "B" && sa > 0 && sc > 0) {
-            // A B would ruin the AACC trajectory.
-            return false;
-          }
-
-          // R8 look-ahead (v1.154): if placing this player would commit
-          // the game to an AACC trajectory but the remaining capacity
-          // can't complete it, reject. Prevents week-7 game-#116-style
-          // deadlocks where a 2A+1C state is reached with no more C
-          // available to fill the 4th slot.
           const postSa = sa + (p.skillLevel === "A" ? 1 : 0);
           const postSb = sb + (p.skillLevel === "B" ? 1 : 0);
           const postSc = sc + (p.skillLevel === "C" ? 1 : 0);
-          const postFilled = postSa + postSb + postSc;
-          // Only check when we've created a mixed A+C state AND there are
-          // still open slots in this game.
-          if (postSa > 0 && postSc > 0 && postFilled < 4) {
-            // Required to complete as AACC
-            const needMoreA = 2 - postSa;
-            const needMoreC = 2 - postSc;
-            const slotsLeft = 4 - postFilled;
-            if (
-              needMoreA < 0 ||
-              needMoreC < 0 ||
-              postSb > 0 ||
-              needMoreA + needMoreC > slotsLeft
-            ) {
-              // Can't even reach AACC arithmetically
-              return false;
-            }
-            // Count A and C bodies available for this day's remaining slots:
-            // not in this game, not blocked, not on vacation, not already
-            // playing on this date.
-            const inGameSet = new Set([...assignedInGame, p.id]);
-            let availableA = 0;
-            let availableC = 0;
-            for (const pp of playerData) {
-              if (inGameSet.has(pp.id)) continue;
-              if (pp.skillLevel !== "A" && pp.skillLevel !== "C") continue;
-              if (pp.blockedDays.includes(game.dayOfWeek)) continue;
-              if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
-              if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
-              if (pp.skillLevel === "A") availableA++;
-              else availableC++;
-            }
-            if (availableA < needMoreA || availableC < needMoreC) {
-              return false;
-            }
+          const slotsLeft = 4 - (postSa + postSb + postSc);
+          if (slotsLeft < 0) return false;
+          // Pool of same-day-eligible A/B/C bodies not in this game.
+          const inGameSet = new Set([...assignedInGame, p.id]);
+          let availA = 0, availB = 0, availC = 0;
+          for (const pp of playerData) {
+            if (inGameSet.has(pp.id)) continue;
+            if (pp.blockedDays.includes(game.dayOfWeek)) continue;
+            if (pp.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) continue;
+            if ((assignedDates.get(pp.id) ?? new Set<string>()).has(game.date)) continue;
+            if (pp.skillLevel === "A") availA++;
+            else if (pp.skillLevel === "B") availB++;
+            else if (pp.skillLevel === "C") availC++;
+          }
+          if (!canReachAllowed(
+            postSa, postSb, postSc, slotsLeft, allowedCompositionSet,
+            { availA, availB, availC },
+          )) {
+            return false;
           }
         }
 
