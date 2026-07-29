@@ -889,6 +889,17 @@ export async function POST(request: NextRequest) {
         playerId: number,
         slotPos: number
       ): Promise<boolean> => {
+        // v1.213 last-line guard: refuse any insert that would put a
+        // player in two games on the same date (Don's OR Solo). The
+        // per-pass filters already exclude same-day players, but the
+        // guard catches any regression at the actual write site.
+        if ((assignedDates.get(playerId) ?? new Set<string>()).has(game.date)) {
+          log.push({
+            type: "error",
+            message: `[Pass 0] BLOCKED: player ${playerId} already assigned on ${game.date}; refusing to double-book into game #${game.gameNumber}`,
+          });
+          return false;
+        }
         try {
           const result = await database
             .insert(gameAssignments)
@@ -1096,6 +1107,15 @@ export async function POST(request: NextRequest) {
 
       // Helper: assign a player to a game slot
       async function assignPlayer(game: GameData, playerId: number, slotPos: number): Promise<boolean> {
+        // v1.213 last-line guard (see passZeroAssign for rationale).
+        if ((assignedDates.get(playerId) ?? new Set<string>()).has(game.date)) {
+          log.push({
+            type: "error",
+            day: DAYS[dow],
+            message: `BLOCKED: player ${playerId} already assigned on ${game.date}; refusing to double-book into game #${game.gameNumber}`,
+          });
+          return false;
+        }
         try {
           const result = await database.insert(gameAssignments).values({
             gameId: game.id,
@@ -1778,6 +1798,16 @@ export async function POST(request: NextRequest) {
           });
 
           const chosen = eligible[0];
+
+          // v1.213 last-line guard (see passZeroAssign for rationale).
+          if ((assignedDates.get(chosen.id) ?? new Set<string>()).has(game.date)) {
+            log.push({
+              type: "error",
+              day: DAYS[game.dayOfWeek],
+              message: `[End-of-week sweep] BLOCKED: ${chosen.lastName} already assigned on ${game.date}; refusing to double-book into game #${game.gameNumber}`,
+            });
+            continue;
+          }
 
           // Inline DB insert (mirrors assignPlayer; that function is
           // scoped inside the day loop and not reachable from here).
