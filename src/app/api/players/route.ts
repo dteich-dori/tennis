@@ -328,10 +328,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert vacations
+    // Insert vacations (deduped)
     if (vacations?.length) {
+      const uniqueVacations = Array.from(
+        new Map(
+          (vacations as { startDate: string; endDate: string }[]).map((v) => [`${v.startDate}|${v.endDate}`, v])
+        ).values()
+      );
       await database.insert(playerVacations).values(
-        vacations.map((v: { startDate: string; endDate: string }) => ({
+        uniqueVacations.map((v) => ({
           playerId: newPlayer.id,
           startDate: v.startDate,
           endDate: v.endDate,
@@ -564,12 +569,18 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Replace vacations
+    // Replace vacations (deduped — a double-submit shouldn't leave two
+    // identical rows for the same date range)
     if (vacations !== undefined) {
       await database.delete(playerVacations).where(eq(playerVacations.playerId, id));
-      if (vacations.length) {
+      const uniqueVacations = Array.from(
+        new Map(
+          (vacations as { startDate: string; endDate: string }[]).map((v) => [`${v.startDate}|${v.endDate}`, v])
+        ).values()
+      );
+      if (uniqueVacations.length) {
         await database.insert(playerVacations).values(
-          vacations.map((v: { startDate: string; endDate: string }) => ({
+          uniqueVacations.map((v) => ({
             playerId: id,
             startDate: v.startDate,
             endDate: v.endDate,
