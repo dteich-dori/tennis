@@ -1286,7 +1286,7 @@ export default function SchedulePage() {
                       <span className="mr-3"><strong>Negative</strong> = excess games.</span>
                       <span className="mr-3"><strong>Red</strong> = under contract.</span>
                       <span>
-                        <strong>X→Y</strong> = vacation-makeup week: contracted for X games/week but adjusted to Y for this week to make up for games lost to a vacation elsewhere.
+                        <strong>X→Y</strong> = front-loading for upcoming vacations: contracted for X games/week, but the algorithm bumped the weekly target to Y (max X+1) so you accumulate extra games <em>before</em> future vacations lock you out of them. Applies through the whole season, not just this week.
                       </span>
                     </div>
                   </div>
