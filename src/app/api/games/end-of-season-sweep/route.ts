@@ -60,6 +60,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, markers: 0, filled: 0, log });
     }
 
+    // Also load Solo assignments so the sweep never picks a player
+    // who is already on a Solo game the same date (v1.207 fix).
+    const soloAssignedByDate = new Map<string, Set<number>>();
+    {
+      const soloGameRows = await database
+        .select({ id: games.id, date: games.date })
+        .from(games)
+        .where(and(eq(games.seasonId, seasonId), eq(games.group, "solo"), eq(games.status, "normal")));
+      const soloIds = soloGameRows.map((g) => g.id);
+      if (soloIds.length > 0) {
+        const soloAssignments = await database
+          .select({ playerId: gameAssignments.playerId, gameId: gameAssignments.gameId })
+          .from(gameAssignments)
+          .where(inArray(gameAssignments.gameId, soloIds));
+        const dateById = new Map(soloGameRows.map((g) => [g.id, g.date]));
+        for (const a of soloAssignments) {
+          const date = dateById.get(a.gameId);
+          if (!date) continue;
+          const set = soloAssignedByDate.get(date) ?? new Set<number>();
+          set.add(a.playerId);
+          soloAssignedByDate.set(date, set);
+        }
+      }
+    }
+
     const markers = await database
       .select()
       .from(gameCappedSlots)
@@ -162,6 +187,10 @@ export async function POST(request: NextRequest) {
         if (g.date !== game.date) continue;
         const ids = assignmentsByGame.get(g.id) ?? [];
         for (const pid of ids) playersOnDate.add(pid);
+      }
+      // Include Solo assignments too — same-date-across-groups is not allowed.
+      for (const pid of (soloAssignedByDate.get(game.date) ?? new Set<number>())) {
+        playersOnDate.add(pid);
       }
       const candidates = allPlayers.filter((p) => {
         if (p.contractedFrequency === "0") return false;

@@ -1674,12 +1674,16 @@ export async function POST(request: NextRequest) {
       );
       let sweepFilled = 0;
       for (const game of emptyGames) {
-        // Build usedOnDay for this date
+        // Build usedOnDay for this date — includes BOTH Don's games AND
+        // Solo games (v1.207 fix: previously only Don's, which let the
+        // sweep pick a player who was already on a Solo game the same
+        // day — a rule violation).
         const usedOnDay = new Set<number>();
         for (const g of donsGames) {
           if (g.date !== game.date) continue;
           for (const pid of (gameAssignmentState.get(g.id) ?? [])) usedOnDay.add(pid);
         }
+        for (const pid of (soloAssignedByDate.get(game.date) ?? new Set<number>())) usedOnDay.add(pid);
         // Fill remaining slots one at a time
         while ((gameAssignmentState.get(game.id) ?? []).length < 4) {
           const currentAssigned = gameAssignmentState.get(game.id) ?? [];

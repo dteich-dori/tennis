@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { gameAssignments, gameCappedSlots, games } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
 
 /** Look up the seasonId for a given game id; null if game not found. */
@@ -40,6 +40,45 @@ export async function POST(request: NextRequest) {
 
     const database = await db();
 
+    // Same-date conflict check (v1.207): a player can't be assigned to
+    // TWO games (Solo + Don's, or any other combination) on the same
+    // date. The auto-assign paths respect this, but the manual assign
+    // POST previously had no guard, letting the Schedule dropdown pick
+    // a player who was already on another game that day.
+    const [thisGame] = await database
+      .select({ id: games.id, date: games.date, seasonId: games.seasonId })
+      .from(games)
+      .where(eq(games.id, gameId));
+    if (!thisGame) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+    const sameSeasonGamesOnDate = await database
+      .select({ id: games.id })
+      .from(games)
+      .where(and(
+        eq(games.seasonId, thisGame.seasonId),
+        eq(games.date, thisGame.date),
+        ne(games.id, gameId),
+      ));
+    if (sameSeasonGamesOnDate.length > 0) {
+      const otherIds = sameSeasonGamesOnDate.map((g) => g.id);
+      const conflicts = await database
+        .select({ gameId: gameAssignments.gameId })
+        .from(gameAssignments)
+        .where(and(
+          inArray(gameAssignments.gameId, otherIds),
+          eq(gameAssignments.playerId, playerId),
+        ));
+      if (conflicts.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Player is already assigned to another game on ${thisGame.date}. Remove that assignment first if you meant to move them.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const result = await database
       .insert(gameAssignments)
       .values({
@@ -58,8 +97,8 @@ export async function POST(request: NextRequest) {
         eq(gameCappedSlots.slotPosition, slotPosition),
       ));
 
-    const sid = await seasonIdForGame(database, gameId);
-    if (sid) await bumpScheduleVersion(sid);
+    // Reuse the season id we already looked up above.
+    await bumpScheduleVersion(thisGame.seasonId);
     return NextResponse.json(result[0], { status: 201 });
   } catch (err) {
     console.error("[games/assign POST] error:", err);
