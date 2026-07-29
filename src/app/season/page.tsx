@@ -1378,7 +1378,34 @@ export default function SeasonPage() {
                 <option value="0">Never</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                A+C games per season cap
+              </label>
+              <select
+                value={maxACGamesPerSeason}
+                onChange={(e) => setMaxACGamesPerSeason(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Maximum total A+C (AACC-style) games each cGamesOk A/B player can be in across the whole season. Bump this if games are sitting empty because eligible A/B players have all hit their season quota."
+              >
+                <option value="1">1 per season</option>
+                <option value="2">2 per season</option>
+                <option value="3">3 per season</option>
+                <option value="4">4 per season</option>
+                <option value="5">5 per season</option>
+                <option value="6">6 per season</option>
+                <option value="8">8 per season</option>
+                <option value="12">12 per season</option>
+                <option value="none">No limit</option>
+              </select>
+            </div>
           </div>
+          <p className="text-[11px] text-blue-800/70 mt-2">
+            First two: weekly frequency of C-adjacent games (per contract
+            tier). Third: total across the season. Bump the season cap
+            first when the C-Slot Diagnosis shows &ldquo;Season A+C cap
+            reached&rdquo; as the top blocker.
+          </p>
         </div>
 
         {/* Allowed compositions grid (v1.204) */}
