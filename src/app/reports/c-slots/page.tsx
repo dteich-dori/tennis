@@ -55,26 +55,26 @@ interface DiagnosisCandidate {
   detail?: string;
 }
 
+// Tunable rulings — surface these because the admin can act on them
+// (loosen a season limit, tweak a weekly cap, or acknowledge the
+// algorithmic AACC hard rule). Immutable rulings (blocked-day, on
+// vacation, playing same date, do-not-pair) are filtered out
+// entirely — showing them was noise since the admin can't do
+// anything about them from Season Setup.
 const RULE_LABELS: Record<string, string> = {
   eligible: "Eligible (should have filled)",
   seasonACapReached: "Season A+C cap reached",
   weeklyCCapReached: "Weekly C-game cap reached",
   compositionBlocked: "AACC composition blocked",
-  playedSameDate: "Playing another game same date",
-  doNotPair: "Do-not-pair conflict",
-  onVacation: "On vacation",
-  blockedDay: "Day blocked",
 };
 const RULE_COLORS: Record<string, string> = {
   eligible: "bg-green-100 text-green-800 border-green-300",
   seasonACapReached: "bg-red-100 text-red-800 border-red-300",
   weeklyCCapReached: "bg-orange-100 text-orange-800 border-orange-300",
   compositionBlocked: "bg-purple-100 text-purple-800 border-purple-300",
-  playedSameDate: "bg-blue-100 text-blue-800 border-blue-300",
-  doNotPair: "bg-pink-100 text-pink-800 border-pink-300",
-  onVacation: "bg-gray-100 text-gray-700 border-gray-300",
-  blockedDay: "bg-gray-100 text-gray-700 border-gray-300",
 };
+// Rulings we hide because the admin can't act on them.
+const IMMUTABLE_RULINGS = new Set(["blockedDay", "onVacation", "playedSameDate", "doNotPair"]);
 
 function formatDate(yyyymmdd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(yyyymmdd);
@@ -117,14 +117,23 @@ export default function CSlotDiagnosisPage() {
     if (seasonId) load(seasonId);
   }, [seasonId, load]);
 
-  const filteredGames = (diagnosis?.games ?? []).filter((g) => {
-    if (weekFilter != null && g.weekNumber !== weekFilter) return false;
-    if (rulingFilter !== "all") {
-      // Show game only if at least one candidate has this ruling
-      return g.candidates.some((c) => c.ruling === rulingFilter);
-    }
-    return true;
-  });
+  // Filter each game's candidates to just the tunable rulings (drop
+  // blocked-day / vacation / same-date / do-not-pair — those are out
+  // of the admin's control). Then keep only games whose remaining
+  // candidate list satisfies the week + ruling filters.
+  const filteredGames = (diagnosis?.games ?? [])
+    .map((g) => ({
+      ...g,
+      immutableCount: g.candidates.filter((c) => IMMUTABLE_RULINGS.has(c.ruling)).length,
+      candidates: g.candidates.filter((c) => !IMMUTABLE_RULINGS.has(c.ruling)),
+    }))
+    .filter((g) => {
+      if (weekFilter != null && g.weekNumber !== weekFilter) return false;
+      if (rulingFilter !== "all") return g.candidates.some((c) => c.ruling === rulingFilter);
+      // Also hide games where every candidate got filtered out — they'd
+      // be an empty card with no actionable info.
+      return g.candidates.length > 0;
+    });
 
   const weekOptions = diagnosis
     ? [...new Set(diagnosis.games.map((g) => g.weekNumber))].sort((a, b) => a - b)
@@ -229,14 +238,17 @@ export default function CSlotDiagnosisPage() {
                 Top blocker rules (aggregated across all games + candidates)
               </h3>
               <div className="flex flex-wrap gap-2">
-                {diagnosis.summary.topBlockers.slice(0, 8).map((b) => (
-                  <span
-                    key={b.rule}
-                    className={`text-xs px-2 py-1 rounded border ${RULE_COLORS[b.rule] ?? "bg-gray-100 text-gray-700 border-gray-300"}`}
-                  >
-                    {RULE_LABELS[b.rule] ?? b.rule}: <strong>{b.count}</strong>
-                  </span>
-                ))}
+                {diagnosis.summary.topBlockers
+                  .filter((b) => !IMMUTABLE_RULINGS.has(b.rule))
+                  .slice(0, 8)
+                  .map((b) => (
+                    <span
+                      key={b.rule}
+                      className={`text-xs px-2 py-1 rounded border ${RULE_COLORS[b.rule] ?? "bg-gray-100 text-gray-700 border-gray-300"}`}
+                    >
+                      {RULE_LABELS[b.rule] ?? b.rule}: <strong>{b.count}</strong>
+                    </span>
+                  ))}
               </div>
             </div>
           </section>
@@ -277,7 +289,12 @@ export default function CSlotDiagnosisPage() {
           {/* Games */}
           <div className="space-y-3">
             {filteredGames.map((g) => (
-              <GameCard key={g.gameNumber} game={g} rulingFilter={rulingFilter} />
+              <GameCard
+                key={g.gameNumber}
+                game={g}
+                rulingFilter={rulingFilter}
+                immutableCount={g.immutableCount}
+              />
             ))}
             {filteredGames.length === 0 && !loading && (
               <p className="text-sm text-muted italic">No games match the filter.</p>
@@ -289,7 +306,15 @@ export default function CSlotDiagnosisPage() {
   );
 }
 
-function GameCard({ game, rulingFilter }: { game: DiagnosisGame; rulingFilter: string }) {
+function GameCard({
+  game,
+  rulingFilter,
+  immutableCount,
+}: {
+  game: DiagnosisGame;
+  rulingFilter: string;
+  immutableCount: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const shownCandidates = rulingFilter === "all"
     ? game.candidates
@@ -320,6 +345,14 @@ function GameCard({ game, rulingFilter }: { game: DiagnosisGame; rulingFilter: s
           </span>
           <span className="text-xs text-gray-500">
             {expanded ? "▼" : "▶"} {shownCandidates.length} candidate{shownCandidates.length === 1 ? "" : "s"}
+            {immutableCount > 0 && (
+              <span
+                className="ml-1 text-gray-400"
+                title="Candidates blocked by rules the admin can't tune (blocked-day, vacation, playing same date, do-not-pair) — hidden here to focus on actionable causes."
+              >
+                (+{immutableCount} hidden)
+              </span>
+            )}
           </span>
         </div>
         <div className="mt-2 flex flex-wrap gap-1 text-xs">
