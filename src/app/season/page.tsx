@@ -1426,13 +1426,13 @@ export default function SeasonPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-blue-800 mb-1">
-                Min A+C for non-cGamesOk
+                C games minimum
               </label>
               <select
                 value={minACPerNonCGamesOk}
                 onChange={(e) => setMinACPerNonCGamesOk(e.target.value)}
                 className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Minimum A+C games per season for A/B players who have NOT ticked cGamesOk. Default 1 distributes one make-up C-game to every A/B player across the season. Set to 0 to fully respect the cGamesOk opt-in (pre-v1.210 behavior)."
+                title="Minimum A+C games per season for every A/B player. Non-cGamesOk players stop AT this number; cGamesOk players naturally exceed it via the other passes. Set to 0 to fully respect the cGamesOk opt-in gate (no floor for non-cGamesOk)."
               >
                 <option value="0">0 (opt-in only)</option>
                 <option value="1">1 per season (recommended)</option>
@@ -1443,9 +1443,8 @@ export default function SeasonPage() {
           </div>
           <p className="text-[11px] text-blue-800/70 mt-2">
             First two: weekly frequency of C-adjacent games (per contract
-            tier). Third: total across the season for cGamesOk players.
-            Fourth: minimum for players who did <em>not</em> tick
-            cGamesOk — set to 0 to preserve strict opt-in.
+            tier). Third: season ceiling for cGamesOk players. Fourth:
+            season floor for every A/B player.
           </p>
         </div>
 
