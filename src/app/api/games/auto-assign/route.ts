@@ -1294,27 +1294,25 @@ export async function POST(request: NextRequest) {
             if (hasCPlayer) {
               const cGameOkEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
-                // v1.210: non-cGamesOk A/B players are eligible ONLY
-                // if they haven't yet met the season minimum floor.
-                // cGamesOk players remain fully eligible as before.
-                if (!p.cGamesOk) {
-                  const seasonACCount = acGameCounts.get(p.id) ?? 0;
-                  if (seasonACCount >= minACPerNonCGamesOk) return false;
-                }
                 if (p.skillLevel === "C") return false; // C players don't need this pass
-                // Player-level A+C frequency limit (weeks between A+C games)
-                const playerInterval = p.cGamesLimit ?? Infinity;
-                const playerLastWeek = lastCGameWeek.get(p.id) ?? 0;
-                if (playerLastWeek > 0 && weekNumber - playerLastWeek < playerInterval) return false;
-                // Already assigned a C-game this week — block (at most 1 per week for any player)
+                // v1.212 simplified model:
+                //   - The cGamesOk hard gate is retired for Pass 2.8.
+                //   - The season maxCGamesPerWeek / maxCGamesPerWeek1x
+                //     weekly-interval checks are retired.
+                //   - The season maxACGamesPerSeason ceiling is retired.
+                //   - Every A/B player has ONE allowance:
+                //       cGamesLimit ?? seasonFloor (minACPerNonCGamesOk)
+                //     Where cGamesLimit is a per-player season max
+                //     (nullable — falls back to the season floor).
+                //     Admins can shield a specific player from C games
+                //     by setting their cGamesLimit to 0.
+                const seasonACCount = acGameCounts.get(p.id) ?? 0;
+                const allowance = p.cGamesLimit ?? minACPerNonCGamesOk;
+                if (seasonACCount >= allowance) return false;
+                // Keep the "at most 1 C game per week per player" hard
+                // cap — otherwise a willing player could absorb every
+                // C-adjacent slot in one week.
                 if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
-                // Check interval-based limit using recent history
-                const freq = weeklyContractedGames(p.contractedFrequency);
-                const interval = freq === 1 ? maxCGamesPerWeek1x : maxCGamesPerWeek;
-                if (interval != null && interval > 1) {
-                  const lastWeek = lastCGameWeek.get(p.id) ?? 0;
-                  if (lastWeek > 0 && weekNumber - lastWeek < interval) return false;
-                }
                 return true;
               });
               if (cGameOkEligible.length > 0) {

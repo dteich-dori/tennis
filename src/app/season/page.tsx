@@ -1360,70 +1360,14 @@ export default function SeasonPage() {
           </div>
         </div>
 
-        {/* C Games Settings — highlighted box. Derated picker removed in
-            v1.151 (concept retired); maxDeratedPerWeek column kept for
-            backward compatibility but auto-assign no longer enforces it. */}
+        {/* C-Games settings (v1.212 simplified). One knob: the season
+            floor for every A/B player. Per-player overrides live on the
+            player edit form via cGamesLimit. The old maxCGamesPerWeek,
+            maxCGamesPerWeek1x, and maxACGamesPerSeason DB columns are
+            retained for schema compatibility but the algorithm ignores
+            them; the setter dropdowns are removed to reduce confusion. */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
           <div className="flex gap-4 items-end">
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                C Games — 2x Players
-              </label>
-              <select
-                value={maxCGamesPerWeek}
-                onChange={(e) => setMaxCGamesPerWeek(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Frequency of C-player games for 2x cGamesOk players."
-              >
-                <option value="1">Once per week</option>
-                <option value="2">Once per 2 weeks</option>
-                <option value="3">Once per 3 weeks</option>
-                <option value="4">Once per 4 weeks</option>
-                <option value="5">Once per 5 weeks</option>
-                <option value="6">Once per 6 weeks</option>
-                <option value="0">Never</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                C Games — 1x Players
-              </label>
-              <select
-                value={maxCGamesPerWeek1x}
-                onChange={(e) => setMaxCGamesPerWeek1x(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Frequency of C-player games for 1x cGamesOk players. Value is weeks between C games (e.g., 4 = once per month)."
-              >
-                <option value="1">Once per week</option>
-                <option value="2">Once per 2 weeks</option>
-                <option value="3">Once per 3 weeks</option>
-                <option value="4">Once per 4 weeks</option>
-                <option value="5">Once per 5 weeks</option>
-                <option value="6">Once per 6 weeks</option>
-                <option value="0">Never</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                A+C games per season cap
-              </label>
-              <select
-                value={maxACGamesPerSeason}
-                onChange={(e) => setMaxACGamesPerSeason(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Maximum total A+C (AACC-style) games each cGamesOk A/B player can be in across the whole season. Bump this if games are sitting empty because eligible A/B players have all hit their season quota."
-              >
-                <option value="1">1 per season</option>
-                <option value="2">2 per season</option>
-                <option value="3">3 per season</option>
-                <option value="4">4 per season</option>
-                <option value="5">5 per season</option>
-                <option value="6">6 per season</option>
-                <option value="8">8 per season</option>
-                <option value="12">12 per season</option>
-                <option value="none">No limit</option>
-              </select>
-            </div>
             <div>
               <label className="block text-sm font-medium text-blue-800 mb-1">
                 C games minimum
@@ -1432,7 +1376,7 @@ export default function SeasonPage() {
                 value={minACPerNonCGamesOk}
                 onChange={(e) => setMinACPerNonCGamesOk(e.target.value)}
                 className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Minimum A+C games per season for every A/B player. Non-cGamesOk players stop AT this number; cGamesOk players naturally exceed it via the other passes. Set to 0 to fully respect the cGamesOk opt-in gate (no floor for non-cGamesOk)."
+                title="Minimum A+C games per season for every A/B player. Per-player overrides go on the player edit form (Max C-games per season). Hard cap of 1 C-game per week per player is always enforced."
               >
                 <option value="0">0 (opt-in only)</option>
                 <option value="1">1 per season (recommended)</option>
@@ -1442,9 +1386,11 @@ export default function SeasonPage() {
             </div>
           </div>
           <p className="text-[11px] text-blue-800/70 mt-2">
-            First two: weekly frequency of C-adjacent games (per contract
-            tier). Third: season ceiling for cGamesOk players. Fourth:
-            season floor for every A/B player.
+            Every A/B player plays at least this many C-adjacent games
+            per season. Per-player overrides live on the player edit
+            form as <strong>Max C-games per season</strong> — set that
+            higher for eager players, or 0 to shield someone entirely.
+            A hard cap of 1 C-game/week/player is always enforced.
           </p>
         </div>
 

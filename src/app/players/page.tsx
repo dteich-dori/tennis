@@ -82,7 +82,7 @@ const emptyPlayer = {
   isDerated: false,
   noEarlyGames: false,
   cGamesOk: false,
-  cGamesLimit: 1 as number | null,
+  cGamesLimit: null as number | null,
   soloGames: null as number | null,
   groupPct: 0,
   preassignedGamesWanted: null as number | null,
@@ -177,7 +177,7 @@ export default function PlayersPage() {
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
       cGamesOk: player.cGamesOk,
-      cGamesLimit: player.cGamesLimit ?? 1,
+      cGamesLimit: player.cGamesLimit ?? null,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
       groupAnchorId: player.groupAnchorId ?? null,
@@ -931,24 +931,30 @@ export default function PlayersPage() {
                 />
                 Do not text (SMS opt-out)
               </label>
-              {form.cGamesOk && (
-                <label className="flex items-center gap-2 text-sm ml-6">
-                  <span>C-games frequency:</span>
-                  <select
-                    value={form.cGamesLimit ?? 4}
-                    onChange={(e) => setForm({ ...form, cGamesLimit: parseInt(e.target.value) })}
-                    className="border border-border rounded px-2 py-1 text-sm w-36"
-                    title="Minimum weeks between A+C games for this cGamesOk player"
-                  >
-                    <option value={1}>Every week</option>
-                    <option value={2}>Every 2 weeks</option>
-                    <option value={3}>Every 3 weeks</option>
-                    <option value={4}>Every 4 weeks</option>
-                    <option value={5}>Every 5 weeks</option>
-                    <option value={6}>Every 6 weeks</option>
-                  </select>
-                </label>
-              )}
+              <label className="flex items-center gap-2 text-sm ml-6">
+                <span>Max C-games / season:</span>
+                <select
+                  value={form.cGamesLimit == null ? "" : String(form.cGamesLimit)}
+                  onChange={(e) => setForm({
+                    ...form,
+                    cGamesLimit: e.target.value === "" ? null : parseInt(e.target.value),
+                  })}
+                  className="border border-border rounded px-2 py-1 text-sm w-44"
+                  title="Cap this player's C-games at N per season. Blank = use the season floor. 0 shields the player from C-games entirely (Pass 2.8). Higher values open more C-games for players who want them."
+                >
+                  <option value="">Use season floor</option>
+                  <option value={0}>0 (never)</option>
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4</option>
+                  <option value={5}>5</option>
+                  <option value={6}>6</option>
+                  <option value={8}>8</option>
+                  <option value={10}>10</option>
+                  <option value={12}>12</option>
+                </select>
+              </label>
             </div>
           </div>
 
@@ -1384,7 +1390,7 @@ export default function PlayersPage() {
                 </td>
                 <td className="px-2 py-1">{player.isActive ? "Yes" : "No"}</td>
                 <td className="px-2 py-1">{player.isDerated ? "✓" : "-"}</td>
-                <td className="px-2 py-1">{player.cGamesOk ? (player.cGamesLimit ? `${player.cGamesLimit}wk` : "✓") : "-"}</td>
+                <td className="px-2 py-1" title="Max C-games per season for this player (blank = use season floor)">{player.cGamesLimit == null ? (player.cGamesOk ? "✓" : "—") : `${player.cGamesLimit}/season`}</td>
                 <td className="px-2 py-1">
                   {player.blockedDays.map((d) => DAYS[d]).join(", ") || "-"}
                 </td>
