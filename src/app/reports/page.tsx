@@ -882,6 +882,23 @@ export default function ReportsPage() {
           </button>
         </div>
 
+        {/* C-Slot Diagnosis Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">C-Slot Diagnosis</h2>
+          <p className="text-sm text-muted mb-4">
+            For every incomplete Don&apos;s game involving C players,
+            walks every cGamesOk A/B candidate and shows which rule blocked
+            them (season A+C cap, weekly C-cap, AACC composition, DNP,
+            vacation, blocked day). Use to tune Season Setup limits.
+          </p>
+          <a
+            href="/reports/c-slots"
+            className="inline-block bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+          >
+            Open Diagnostic
+          </a>
+        </div>
+
         {/* Incomplete Games Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Incomplete Games</h2>
