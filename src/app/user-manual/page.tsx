@@ -200,17 +200,38 @@ export default function UserManualPage() {
                 </li>
               </ul>
 
-              <h3 className="font-semibold mb-2">C Games Frequency for cGamesOk Players</h3>
+              <h3 className="font-semibold mb-2">C Games Minimum</h3>
               <p className="text-sm leading-relaxed mb-2">
-                Some A/B players are willing to play in games alongside C players (marked &ldquo;C games OK&rdquo; on their profile).
-                Two settings control how often these players are placed in C-player games:
+                As of v1.212 the C-games rules were collapsed to a single season-wide floor plus
+                an optional per-player ceiling &mdash; the old per-week/per-month frequency
+                dropdowns (2x players / 1x players) and the season-wide A+C games cap were retired.
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-2">
-                <li><span className="font-semibold">C Games &mdash; 2x Players</span> &mdash; How often a 2x cGamesOk player can be assigned to a C-player game. Options: Once per week (default), Once per 2 weeks, Once per 4 weeks, No limit.</li>
-                <li><span className="font-semibold">C Games &mdash; 1x Players</span> &mdash; How often a 1x cGamesOk player can be assigned to a C-player game. Options: Once per 4 weeks (default), Once per 3 weeks, Once per 2 weeks, No limit.</li>
+                <li>
+                  <span className="font-semibold">C games minimum</span> (season setting,
+                  default 1) &mdash; every A/B player takes at least this many A+C-adjacent games
+                  per season, regardless of whether their <em>C games OK</em> checkbox is on.
+                  Applies to everyone; it is a floor, not a per-player opt-in.
+                </li>
+                <li>
+                  <span className="font-semibold">Max C-games / season</span> (per-player field on
+                  the Players page) &mdash; overrides the season floor for an individual player.
+                  Leave blank to use the season minimum. Set to <code>0</code> to shield a specific
+                  player from C-adjacent games entirely.
+                </li>
               </ul>
               <p className="text-sm leading-relaxed mb-4">
-                Note: A players <em>without</em> the cGamesOk flag are never placed in games with C players. A players who <em>do</em> have cGamesOk enabled will be placed with C players at the configured frequency for their contract type.
+                A hard cap of <span className="font-semibold">1 C-adjacent game per player per
+                week</span> still applies regardless of these settings, so a willing player can&apos;t
+                absorb every open C-slot in a single week.
+              </p>
+
+              <h3 className="font-semibold mb-2">Allowed Skill-Level Compositions</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A checkbox grid on Season Setup lets you choose which skill-level combinations
+                (AAAA, AABB, AACC, ABBC, etc.) auto-assign is allowed to create. Changes take
+                effect on the next auto-assign run. If you deselect combinations that make a
+                season infeasible to fill, the app warns you before saving.
               </p>
 
               <h3 className="font-semibold mb-2">Managing Holidays</h3>
@@ -442,9 +463,18 @@ export default function UserManualPage() {
                   scheduling on back-to-back calendar days.
                 </li>
                 <li>
-                  <span className="font-semibold">C Games OK</span> &mdash; Indicates the player is willing to play in games with C-level players.
-                  The auto-assign algorithm will place these A/B players into C-player games when slots cannot be filled from the normal pool,
-                  subject to the frequency limits set in Season Setup. Note: 1x A players are never placed with C players regardless of this flag.
+                  <span className="font-semibold">C Games OK</span> &mdash; Indicates the player is
+                  explicitly willing to play in games with C-level players. Since v1.212 this flag
+                  no longer gates whether a player can be placed in a C-adjacent game &mdash; every
+                  A/B player is eligible up to the season&apos;s C games minimum (see Season Setup)
+                  or their own <em>Max C-games / season</em> ceiling if set. Note: 1x A players are
+                  never placed with C players regardless of this flag (composition rule).
+                </li>
+                <li>
+                  <span className="font-semibold">Max C-games / season</span> &mdash; Per-player
+                  override of the season&apos;s C games minimum (blank = use the season default).
+                  Set to 0 to shield a player from C-adjacent games entirely. See Season Setup for
+                  details.
                 </li>
                 <li>
                   <span className="font-semibold">No Early Games</span> &mdash; Prevents scheduling before 10:00 AM.
@@ -768,14 +798,13 @@ export default function UserManualPage() {
                     <td className="px-2 py-1 font-mono">R14</td>
                     <td className="px-2 py-1">
                       <strong>cGamesOk (C-games OK)</strong> — checkbox on the player record.
-                      Today its role is to <em>gate group membership</em>: an A or B player may
-                      join a C anchor&apos;s group only if their cGamesOk checkbox is on. C
-                      players can always join (no cGamesOk requirement for them). If a member
-                      unchecks cGamesOk, their group anchor is auto-cleared on save and a new
-                      auto-assign run is needed. The per-player C-games frequency (weeks between
-                      A+C games) only applies to AACC compositions; with the v1.127 hard A+C
-                      rule, this gate mostly serves the group-membership filter rather than
-                      composition selection.
+                      It gates <em>group membership</em>: an A or B player may join a C anchor&apos;s
+                      group only if their cGamesOk checkbox is on (C players can always join). If a
+                      member unchecks cGamesOk, their group anchor is auto-cleared on save and a
+                      new auto-assign run is needed. As of v1.212 it no longer gates Pass 2.8
+                      eligibility — every A/B player is eligible for C-adjacent games up to the
+                      season&apos;s C games minimum or their own per-player <em>Max C-games /
+                      season</em> ceiling (see Season Setup and Players sections).
                     </td>
                   </tr>
                 </tbody>
@@ -952,7 +981,10 @@ export default function UserManualPage() {
               <p className="text-sm leading-relaxed mb-4">
                 These rules are applied per-slot as the game fills, allowing natural groupings to
                 emerge: A/B games, B/C games, all-B games, and (rarely) mixed A+C games when at
-                least 2 B players provide a buffer.
+                least 2 B players provide a buffer. As of v1.204 the exact set of allowed
+                compositions is admin-tunable via the checkbox grid on Season Setup (see
+                &ldquo;Allowed Skill-Level Compositions&rdquo; above) &mdash; the description here
+                reflects the shipped default.
               </p>
 
               <h3 className="font-semibold mb-2">Step 6: Multi-Pass Assignment</h3>
@@ -975,9 +1007,12 @@ export default function UserManualPage() {
                   games before their absence. Applies to all contract types including 2+.
                 </li>
                 <li>
-                  <span className="font-semibold">Pass 2.8: cGamesOk</span> &mdash; Only fires when
-                  the game already has at least one C-level player. A/B players marked &ldquo;C games OK&rdquo;
-                  are eligible, subject to the per-week/per-month frequency limits set in Season Setup.
+                  <span className="font-semibold">Pass 2.8: C-adjacent fill</span> &mdash; Only fires
+                  when the game already has at least one C-level player. Any A/B player is eligible
+                  (the cGamesOk checkbox no longer gates this pass as of v1.212) as long as they
+                  haven&apos;t reached their season allowance &mdash; their per-player <em>Max
+                  C-games / season</em> if set, otherwise the season&apos;s C games minimum &mdash;
+                  and haven&apos;t already played a C-adjacent game this week (1-per-week hard cap).
                   1x A players are never eligible (hard composition block).
                 </li>
                 <li>
@@ -1341,11 +1376,48 @@ export default function UserManualPage() {
                 A printable roster of all active contract players and substitutes with contact info.
               </p>
 
-              <h3 className="font-semibold mb-2">Potential Players</h3>
+              <h3 className="font-semibold mb-2">Player List Internal Report</h3>
               <p className="text-sm leading-relaxed mb-4">
-                A planning report listing all players and subs with their skill level, contract
-                type, and blocked days. Useful for next-season planning and evaluating player
-                availability patterns.
+                All players and subs with skill level, contract type, and blocked days. Useful for
+                next-season planning and evaluating player availability patterns.
+              </p>
+
+              <h3 className="font-semibold mb-2">Player Availability</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                Active players with the tennis-week days they can play (blocked days excluded) and
+                their vacation date ranges, one row per player. Vacation lists wrap onto follow-up
+                lines for players with many entries.
+              </p>
+
+              <h3 className="font-semibold mb-2">C-Slot Diagnosis</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A permanent (non-PDF) diagnostic page at{" "}
+                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                  /reports/c-slots
+                </span>
+                . For every incomplete Don&apos;s game involving C players, walks every candidate
+                A/B player and shows which rule blocked them (season/per-player C-games ceiling,
+                weekly 1-per-week C cap, AACC composition, DNP, vacation, blocked day). Immutable
+                reasons &mdash; blocked day, vacation, played-same-date, do-not-pair &mdash; are
+                filtered out by default so only tunable, algorithmic causes remain visible. Use
+                this to tune the Season Setup C games minimum and per-player ceilings.
+              </p>
+
+              <h3 className="font-semibold mb-2">Incomplete Games</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                All games with fewer than 4 assigned players across the season. Shows week, game
+                number, court/time, currently assigned players, and the reason the game
+                wasn&apos;t fully filled (cap-blocked vs. no eligible candidates).
+              </p>
+
+              <h3 className="font-semibold mb-2">Twilio SMS Cost Estimate</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A live estimator page at{" "}
+                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                  /twilio-cost
+                </span>{" "}
+                showing accrued and projected Twilio cost &mdash; setup, monthly, and per-message
+                fees &mdash; based on actual SMS sends logged this season.
               </p>
 
               <h3 className="font-semibold mb-2">Court Schedule</h3>
