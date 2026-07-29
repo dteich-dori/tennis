@@ -304,6 +304,10 @@ export async function POST(request: NextRequest) {
     // allowedCompositions JSON; NULL falls back to the code-shipped
     // default set (same as pre-v1.204 behavior).
     const allowedCompositionSet = parseAllowedCompositions(seasonRecord?.allowedCompositions ?? null);
+    // v1.210: minimum A+C games per season for non-cGamesOk A/B
+    // players. Default 1 = every A/B player takes at least one C-
+    // adjacent game per season regardless of cGamesOk consent.
+    const minACPerNonCGamesOk = seasonRecord?.minACPerNonCGamesOk ?? 1;
     // (R11 derated pairing rule + its previous-week game prefetch retired in
     // v1.151 and fully removed in v1.155.)
 
@@ -1290,7 +1294,13 @@ export async function POST(request: NextRequest) {
             if (hasCPlayer) {
               const cGameOkEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
-                if (!p.cGamesOk) return false;
+                // v1.210: non-cGamesOk A/B players are eligible ONLY
+                // if they haven't yet met the season minimum floor.
+                // cGamesOk players remain fully eligible as before.
+                if (!p.cGamesOk) {
+                  const seasonACCount = acGameCounts.get(p.id) ?? 0;
+                  if (seasonACCount >= minACPerNonCGamesOk) return false;
+                }
                 if (p.skillLevel === "C") return false; // C players don't need this pass
                 // Player-level A+C frequency limit (weeks between A+C games)
                 const playerInterval = p.cGamesLimit ?? Infinity;

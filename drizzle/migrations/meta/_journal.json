@@ -106,6 +106,13 @@
       "when": 1783000000000,
       "tag": "0014_allowed_compositions",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1783100000000,
+      "tag": "0015_min_ac_per_non_c_games_ok",
+      "breakpoints": true
     }
   ]
 }

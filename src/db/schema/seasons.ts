@@ -36,4 +36,11 @@ export const seasons = sqliteTable("seasons", {
   // the auto-assign may produce. NULL = use lib/compositions.ts
   // DEFAULT_ALLOWED_KEYS (mirrors the pre-v1.204 hard-coded rule).
   allowedCompositions: text("allowed_compositions"),
+  // v1.210: minimum A+C games per season for A/B players who have NOT
+  // ticked the "cGamesOk" checkbox. Set to 0 to preserve the
+  // pre-v1.210 behavior (non-cGamesOk players are only placed in C
+  // games by accident via base-contract fill). Default 1 = ensure
+  // every A/B player takes at least one C-adjacent game per season
+  // so the burden is distributed evenly.
+  minACPerNonCGamesOk: integer("min_ac_per_non_c_games_ok").notNull().default(1),
 });

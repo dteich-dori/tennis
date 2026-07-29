@@ -17,6 +17,7 @@ interface Season {
   daysPerWeek?: number;
   allowCapOverrideAtSeasonEnd?: boolean;
   allowedCompositions?: string | null;
+  minACPerNonCGamesOk?: number;
 }
 
 interface Holiday {
@@ -67,6 +68,8 @@ export default function SeasonPage() {
     new Set()
   );
   const [compositionsMessage, setCompositionsMessage] = useState<string>("");
+  // v1.210: minimum A+C games per season for non-cGamesOk A/B players.
+  const [minACPerNonCGamesOk, setMinACPerNonCGamesOk] = useState<string>("1");
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -148,6 +151,9 @@ export default function SeasonPage() {
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
       setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
       setAllowCapOverrideAtSeasonEnd(!!latest.allowCapOverrideAtSeasonEnd);
+      setMinACPerNonCGamesOk(
+        latest.minACPerNonCGamesOk != null ? String(latest.minACPerNonCGamesOk) : "1"
+      );
       // Parse allowed compositions (JSON array), fall back to defaults if
       // NULL or malformed.
       try {
@@ -331,6 +337,25 @@ export default function SeasonPage() {
       }),
     });
   }, [allowCapOverrideAtSeasonEnd, activeSeason]);
+
+  // Auto-save minACPerNonCGamesOk selector (v1.210)
+  const minACInitialized = useRef(false);
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!minACInitialized.current) {
+      minACInitialized.current = true;
+      return;
+    }
+    fetch("/api/seasons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: activeSeason.id,
+        startDate: activeSeason.startDate,
+        minACPerNonCGamesOk: parseInt(minACPerNonCGamesOk) || 0,
+      }),
+    });
+  }, [minACPerNonCGamesOk, activeSeason]);
 
   // Auto-save allowedCompositions grid. If the save succeeds we clear
   // the "Saved." tick after 1.5s; if it fails we KEEP the red banner
@@ -1399,12 +1424,28 @@ export default function SeasonPage() {
                 <option value="none">No limit</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-blue-800 mb-1">
+                Min A+C for non-cGamesOk
+              </label>
+              <select
+                value={minACPerNonCGamesOk}
+                onChange={(e) => setMinACPerNonCGamesOk(e.target.value)}
+                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
+                title="Minimum A+C games per season for A/B players who have NOT ticked cGamesOk. Default 1 distributes one make-up C-game to every A/B player across the season. Set to 0 to fully respect the cGamesOk opt-in (pre-v1.210 behavior)."
+              >
+                <option value="0">0 (opt-in only)</option>
+                <option value="1">1 per season (recommended)</option>
+                <option value="2">2 per season</option>
+                <option value="3">3 per season</option>
+              </select>
+            </div>
           </div>
           <p className="text-[11px] text-blue-800/70 mt-2">
             First two: weekly frequency of C-adjacent games (per contract
-            tier). Third: total across the season. Bump the season cap
-            first when the C-Slot Diagnosis shows &ldquo;Season A+C cap
-            reached&rdquo; as the top blocker.
+            tier). Third: total across the season for cGamesOk players.
+            Fourth: minimum for players who did <em>not</em> tick
+            cGamesOk — set to 0 to preserve strict opt-in.
           </p>
         </div>
 
