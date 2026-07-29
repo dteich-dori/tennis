@@ -1274,19 +1274,25 @@ export default function SchedulePage() {
 
             return (
               <div className="bg-blue-50 border border-blue-200 rounded px-4 py-3 mb-4">
-                <div className="text-xs font-semibold text-black mb-2 flex items-center justify-between">
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <span>Don&apos;s Group — Player Status (Week {currentWeek})</span>
-                    <span className="font-bold">
-                      Contract / Owed WTD / Owed YTD | Name
-                    </span>
-                    <span>
-                      Negative = excess games. Red = under contract
-                    </span>
+                <div className="text-xs font-semibold text-black mb-2 flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-3 flex-wrap">
+                      <span>Don&apos;s Group — Player Status (Week {currentWeek})</span>
+                      <span className="font-bold">
+                        Contract / Owed WTD / Owed YTD | Name
+                      </span>
+                    </div>
+                    <div className="font-normal text-[11px] text-gray-700">
+                      <span className="mr-3"><strong>Negative</strong> = excess games.</span>
+                      <span className="mr-3"><strong>Red</strong> = under contract.</span>
+                      <span>
+                        <strong>X→Y</strong> = vacation-makeup week: contracted for X games/week but adjusted to Y for this week to make up for games lost to a vacation elsewhere.
+                      </span>
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowPlayerInfo(false)}
-                    className="text-xs text-muted hover:underline"
+                    className="text-xs text-muted hover:underline flex-shrink-0"
                   >
                     Dismiss
                   </button>
