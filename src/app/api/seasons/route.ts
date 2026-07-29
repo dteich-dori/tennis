@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { seasons, holidays, games } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -79,6 +79,24 @@ export async function PUT(request: NextRequest) {
 
     const endDate = new Date(date);
     endDate.setDate(endDate.getDate() + totalWeeks * 7 - 1);
+
+    // v1.208: if this PUT sets allowedCompositions but the column
+    // doesn't exist yet, add it in-flight. Ensures manual toggles on
+    // the Season Setup grid persist even if the admin never ran the
+    // ensure-allowed-compositions-column endpoint.
+    if (allowedCompositions !== undefined) {
+      try {
+        const info = (await database.run(sql`PRAGMA table_info(seasons)`)) as unknown as {
+          rows: { name: string }[];
+        };
+        const cols = new Set((info.rows ?? []).map((r) => r.name));
+        if (!cols.has("allowed_compositions")) {
+          await database.run(sql`ALTER TABLE \`seasons\` ADD COLUMN \`allowed_compositions\` text`);
+        }
+      } catch (err) {
+        console.warn("[seasons PUT] failed to ensure allowed_compositions column:", err);
+      }
+    }
 
     const result = await database
       .update(seasons)

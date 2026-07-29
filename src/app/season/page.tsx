@@ -332,7 +332,9 @@ export default function SeasonPage() {
     });
   }, [allowCapOverrideAtSeasonEnd, activeSeason]);
 
-  // Auto-save allowedCompositions grid
+  // Auto-save allowedCompositions grid. If the save succeeds we clear
+  // the "Saved." tick after 1.5s; if it fails we KEEP the red banner
+  // visible until the next toggle so the admin actually notices.
   const compositionsInitialized = useRef(false);
   useEffect(() => {
     if (!activeSeason) return;
@@ -341,6 +343,7 @@ export default function SeasonPage() {
       return;
     }
     setCompositionsMessage("Saving…");
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
     fetch("/api/seasons", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -350,10 +353,17 @@ export default function SeasonPage() {
         allowedCompositions: [...allowedCompositions].sort(),
       }),
     })
-      .then((r) => r.ok ? setCompositionsMessage("Saved.") : setCompositionsMessage("Save failed."))
-      .catch(() => setCompositionsMessage("Save failed."));
-    const t = setTimeout(() => setCompositionsMessage(""), 1500);
-    return () => clearTimeout(t);
+      .then(async (r) => {
+        if (r.ok) {
+          setCompositionsMessage("Saved.");
+          clearTimer = setTimeout(() => setCompositionsMessage(""), 1500);
+        } else {
+          const detail = await r.text().catch(() => "");
+          setCompositionsMessage(`Save failed (HTTP ${r.status}). ${detail.slice(0, 200)}`);
+        }
+      })
+      .catch((err) => setCompositionsMessage(`Save failed: ${String(err)}`));
+    return () => { if (clearTimer) clearTimeout(clearTimer); };
   }, [allowedCompositions, activeSeason]);
 
   const validateMonday = (dateStr: string): boolean => {
