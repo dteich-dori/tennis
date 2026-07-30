@@ -63,6 +63,7 @@ export default function ReportsPage() {
   const [error, setError] = useState("");
   const [gamesWeekStart, setGamesWeekStart] = useState(1);
   const [gamesWeekEnd, setGamesWeekEnd] = useState(36);
+  const [excludeAAPairings, setExcludeAAPairings] = useState(false);
 
   const loadSeason = useCallback(async () => {
     try {
@@ -356,7 +357,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season, season.scheduleVersion);
+      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season, season.scheduleVersion, excludeAAPairings);
     } catch {
       setError("Failed to generate Pairing Matrix report.");
     }
@@ -813,6 +814,14 @@ export default function ReportsPage() {
           <p className="text-sm text-muted mb-4">
             Shows how many Don&apos;s group games each player shared with every other player. Do-not-pair violations highlighted in red.
           </p>
+          <label className="flex items-center gap-2 text-sm mb-3">
+            <input
+              type="checkbox"
+              checked={excludeAAPairings}
+              onChange={(e) => setExcludeAAPairings(e.target.checked)}
+            />
+            Exclude A+A pairings (declutter — focus on B/C pairing)
+          </label>
           <button
             onClick={handlePairingMatrixReport}
             disabled={generating === "pairingMatrix"}

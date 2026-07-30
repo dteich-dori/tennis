@@ -31,7 +31,8 @@ export function generatePairingMatrixPdf(
   pairings: Pairing[],
   doNotPairs: DoNotPair[],
   season: Season,
-  scheduleMark?: number
+  scheduleMark?: number,
+  excludeAAPairings?: boolean
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -128,7 +129,8 @@ export function generatePairingMatrixPdf(
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    const title = `Player Pairing Matrix \u2014 ${subtitle} ${startYear} - ${endYear}`;
+    const filterSuffix = excludeAAPairings ? " (A+A pairings hidden)" : "";
+    const title = `Player Pairing Matrix \u2014 ${subtitle} ${startYear} - ${endYear}${filterSuffix}`;
     doc.text(title, pageWidth / 2, 14, { align: "center" });
 
     // Cell size based on available space
@@ -177,6 +179,11 @@ export function generatePairingMatrixPdf(
         if (rowPlayer.id === colPlayer.id) {
           // Diagonal — gray
           doc.setFillColor(210, 210, 210);
+          doc.rect(x, y, cellSize, cellSize, "F");
+        } else if (excludeAAPairings && rowPlayer.skillLevel === "A" && colPlayer.skillLevel === "A") {
+          // A+A pairing hidden — render as a plain hatched-out cell so the
+          // grid stays visually complete without competing for attention.
+          doc.setFillColor(245, 245, 245);
           doc.rect(x, y, cellSize, cellSize, "F");
         } else {
           const p1 = rowPlayer.id;

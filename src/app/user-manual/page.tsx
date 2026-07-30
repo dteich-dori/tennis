@@ -1369,6 +1369,12 @@ export default function UserManualPage() {
                 <li>
                   Do-not-pair violations are highlighted in red.
                 </li>
+                <li>
+                  <span className="font-semibold">Exclude A+A pairings</span> checkbox &mdash;
+                  A-level players are the largest group and pair with each other constantly,
+                  which can crowd out the B/C pairing detail. Check this to blank out A+A cells
+                  (shown as light gray) so the matrix highlights B and C pairing patterns instead.
+                </li>
               </ul>
 
               <h3 className="font-semibold mb-2">Composition Analysis</h3>
