@@ -159,6 +159,26 @@ export async function POST(request: NextRequest) {
     const contractWeeks = 36;
     let filled = 0;
 
+    // Season C-games cap (v1.223): the sweep is documented to lift the
+    // WEEKLY cap only ("tries to fill each slot with the weekly cap
+    // lifted") — it never checked any cap at all, so it was also lifting
+    // each non-C player's season-total cGamesLimit/minACPerNonCGamesOk
+    // allowance, undoing the cap that auto-assign enforces per week. Count
+    // each non-C player's existing C-adjacent games this season so the
+    // candidate filter below can keep that season limit in force.
+    const acGameCountByPlayer = new Map<number, number>();
+    for (const [, pids] of assignmentsByGame) {
+      const hasC = pids.some((pid) => playerById.get(pid)?.skillLevel === "C");
+      if (!hasC) continue;
+      for (const pid of pids) {
+        const pl = playerById.get(pid);
+        if (pl && pl.skillLevel !== "C") {
+          acGameCountByPlayer.set(pid, (acGameCountByPlayer.get(pid) ?? 0) + 1);
+        }
+      }
+    }
+    const minACPerNonCGamesOk = season.minACPerNonCGamesOk ?? 1;
+
     // Sort markers by date+game so logs are time-ordered
     const sortedMarkers = [...markers].sort((a, b) => {
       const ga = gameById.get(a.gameId);
@@ -217,6 +237,14 @@ export async function POST(request: NextRequest) {
           if (!(sb === 0 && sa === 2 && sc < 2)) return false;
         }
         if (p.skillLevel === "B" && sa > 0 && sc > 0) return false;
+        // Season C-games cap stays in force even with the weekly cap
+        // lifted — cGamesLimit (or the season floor) is a hard per-
+        // player season-total boundary, not a weekly scheduling nicety.
+        if (p.skillLevel !== "C" && sc > 0) {
+          const seasonACCount = acGameCountByPlayer.get(p.id) ?? 0;
+          const allowance = p.cGamesLimit ?? minACPerNonCGamesOk;
+          if (seasonACCount >= allowance) return false;
+        }
         // Cap-lifted intent: only invite players who are still in
         // STD-deficit (the season target hasn't been met). This makes
         // the override "give them a make-up game" rather than "fill
@@ -258,6 +286,9 @@ export async function POST(request: NextRequest) {
       currentAssigned.push(chosen.id);
       assignmentsByGame.set(game.id, currentAssigned);
       stdCountByPlayer.set(chosen.id, (stdCountByPlayer.get(chosen.id) ?? 0) + 1);
+      if (chosen.skillLevel !== "C" && currentAssigned.some((pid) => playerById.get(pid)?.skillLevel === "C")) {
+        acGameCountByPlayer.set(chosen.id, (acGameCountByPlayer.get(chosen.id) ?? 0) + 1);
+      }
       const dates = datesPlayedByPlayer.get(chosen.id) ?? new Set<string>();
       dates.add(game.date);
       datesPlayedByPlayer.set(chosen.id, dates);
