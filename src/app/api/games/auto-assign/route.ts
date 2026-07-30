@@ -1075,10 +1075,15 @@ export async function POST(request: NextRequest) {
               message: `[Pass 0] Game #${game.gameNumber} slot ${nextSlot}: ${anchor.lastName} placed as anchor`,
             });
 
-            // Fill remaining slots with anchor's members, highest pct first
+            // Fill remaining slots with anchor's members, highest pct first.
+            // v1.221: a member with groupPct === 0 is shown in the UI as
+            // "inactive — members preserved" — they opted out of this
+            // group's fill-in. Exclude them here instead of just sorting
+            // them last, or they still get swept in as a fallback filler
+            // whenever no higher-pct member is available.
             const members = anchor.groupMembers
               .map((mid) => playerData.find((p) => p.id === mid))
-              .filter((m): m is PlayerData => m != null)
+              .filter((m): m is PlayerData => m != null && (m.groupPct ?? 0) > 0)
               .sort((a, b) => (b.groupPct ?? 0) - (a.groupPct ?? 0));
             for (const member of members) {
               const stateNow = gameAssignmentState.get(game.id) ?? [];
@@ -1273,8 +1278,12 @@ export async function POST(request: NextRequest) {
             const currentRatio = total > 0 ? grp / total : 0;
 
             if (currentRatio < targetRatio) {
-              // Try group-exclusive filling
-              const groupMemberSet = new Set(headPlayer.groupMembers);
+              // Try group-exclusive filling. v1.221: exclude members who
+              // set their own groupPct to 0 (opted out / "inactive" in
+              // the UI) — they shouldn't be pulled in as fallback fillers.
+              const groupMemberSet = new Set(
+                headPlayer.groupMembers.filter((mid) => (playerData.find((p) => p.id === mid)?.groupPct ?? 0) > 0)
+              );
               const groupPool = contractedPlayers.filter((p) => groupMemberSet.has(p.id));
               let groupEligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: groupPool }).filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
