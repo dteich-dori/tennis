@@ -8,6 +8,11 @@ import { downgradeContractIfNeeded, clampDaysPerWeek } from "@/lib/playerAvailab
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PlayerBody = any;
 
+// Player data changes constantly (active/inactive toggles, edits) and
+// must never be served from a stale cache — force this route to be
+// evaluated fresh on every request.
+export const dynamic = "force-dynamic";
+
 /**
  * Resolve / sanitise the incoming groupAnchorId value.
  *

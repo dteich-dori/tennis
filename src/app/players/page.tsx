@@ -127,7 +127,7 @@ export default function PlayersPage() {
   }, []);
 
   const loadPlayers = useCallback(async (seasonId: number) => {
-    const res = await fetch(`/api/players?seasonId=${seasonId}`);
+    const res = await fetch(`/api/players?seasonId=${seasonId}`, { cache: "no-store" });
     const data = (await res.json()) as Player[];
     setPlayers(data);
   }, []);
