@@ -94,6 +94,8 @@ export default function SeasonPage() {
   const [donsAssignExtra, setDonsAssignExtra] = useState(true);
   const [donsAssignSubs, setDonsAssignSubs] = useState(false);
   const [donsAssignStdCatchup, setDonsAssignStdCatchup] = useState(true);
+  const [donsAssignBalancePairings, setDonsAssignBalancePairings] = useState(true);
+  const [donsAssignBalanceBalls, setDonsAssignBalanceBalls] = useState(true);
 
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
@@ -109,17 +111,6 @@ export default function SeasonPage() {
     { playerId: number; totalGames: number; ballsBrought: number; expected: number }[] | null
   >(null);
   const [playerNameMap, setPlayerNameMap] = useState<Map<number, string>>(new Map());
-
-  // Don's balls balance state
-  const [donsBallsBalancing, setDonsBallsBalancing] = useState(false);
-  const [donsBallsMessage, setDonsBallsMessage] = useState("");
-  const [donsBallsSummary, setDonsBallsSummary] = useState<
-    { playerId: number; totalGames: number; ballsBrought: number; expected: number }[] | null
-  >(null);
-
-  // Don's pairings balance state
-  const [donsPairingsBalancing, setDonsPairingsBalancing] = useState(false);
-  const [donsPairingsMessage, setDonsPairingsMessage] = useState("");
 
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
@@ -885,7 +876,7 @@ export default function SeasonPage() {
       }
 
       // Balance Pairings: swap same-level players between same-day games to reduce pairing concentrations
-      if (!donsStopRef.current && weeksAssignedCount > 0) {
+      if (!donsStopRef.current && weeksAssignedCount > 0 && donsAssignBalancePairings) {
         log.push({ type: "info", message: "--- Balance Pairings: reducing pairing concentrations ---" });
         setDonsAssignLog([...log]);
         setDonsAssigningWeek(null);
@@ -907,29 +898,30 @@ export default function SeasonPage() {
         } catch (err) {
           log.push({ type: "error", message: `Balance Pairings: ${String(err)}` });
         }
+      }
 
-        // Balance Don's Balls
-        if (!donsStopRef.current) {
-          log.push({ type: "info", message: "--- Balance Balls: redistributing ball-bringing duty ---" });
-          setDonsAssignLog([...log]);
-          try {
-            const bbRes = await fetch("/api/games/balance-balls", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ seasonId: activeSeason.id, group: "dons", allWeeks: true }),
+      // Balance Don's Balls
+      if (!donsStopRef.current && weeksAssignedCount > 0 && donsAssignBalanceBalls) {
+        log.push({ type: "info", message: "--- Balance Balls: redistributing ball-bringing duty ---" });
+        setDonsAssignLog([...log]);
+        setDonsAssigningWeek(null);
+        try {
+          const bbRes = await fetch("/api/games/balance-balls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seasonId: activeSeason.id, group: "dons", allWeeks: true }),
+          });
+          const bbData = await bbRes.json();
+          if (bbRes.ok) {
+            log.push({
+              type: "info",
+              message: `Balance Balls: ${bbData.swaps ?? 0} swaps, imbalance score ${bbData.imbalance ?? 0}`,
             });
-            const bbData = await bbRes.json();
-            if (bbRes.ok) {
-              log.push({
-                type: "info",
-                message: `Balance Balls: ${bbData.swaps ?? 0} swaps, imbalance score ${bbData.imbalance ?? 0}`,
-              });
-            } else {
-              log.push({ type: "error", message: `Balance Balls failed: ${bbData.error ?? "unknown error"}` });
-            }
-          } catch (err) {
-            log.push({ type: "error", message: `Balance Balls: ${String(err)}` });
+          } else {
+            log.push({ type: "error", message: `Balance Balls failed: ${bbData.error ?? "unknown error"}` });
           }
+        } catch (err) {
+          log.push({ type: "error", message: `Balance Balls: ${String(err)}` });
         }
       }
 
@@ -1077,82 +1069,6 @@ export default function SeasonPage() {
       setSoloBallsMessage("Failed to balance solo balls.");
     }
     setSoloBallsBalancing(false);
-  };
-
-  const handleBalanceDonsBalls = async () => {
-    if (!activeSeason) return;
-    setDonsBallsBalancing(true);
-    setDonsBallsMessage("");
-    setDonsBallsSummary(null);
-    try {
-      // Load player names for the summary display (reuse playerNameMap if already loaded)
-      if (playerNameMap.size === 0) {
-        const playersRes = await fetch(`/api/players?seasonId=${activeSeason.id}`);
-        const playersData = (await playersRes.json()) as { id: number; firstName: string; lastName: string }[];
-        const nameMap = new Map<number, string>();
-        for (const p of playersData) {
-          nameMap.set(p.id, `${p.firstName} ${p.lastName}`);
-        }
-        setPlayerNameMap(nameMap);
-      }
-
-      const res = await fetch("/api/games/balance-balls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: activeSeason.id, group: "dons", allWeeks: true }),
-      });
-      const data = (await res.json()) as {
-        swaps?: number;
-        imbalance?: number;
-        error?: string;
-        playerSummary?: { playerId: number; totalGames: number; ballsBrought: number; expected: number }[];
-      };
-      if (!res.ok) {
-        setDonsBallsMessage(`Error: ${data.error}`);
-      } else {
-        setDonsBallsMessage(
-          `Balanced Don's balls across all weeks: ${data.swaps} swap${data.swaps !== 1 ? "s" : ""} applied.`
-        );
-        if (data.playerSummary) setDonsBallsSummary(data.playerSummary);
-      }
-    } catch {
-      setDonsBallsMessage("Failed to balance Don's balls.");
-    }
-    setDonsBallsBalancing(false);
-  };
-
-  const handleBalanceDonsPairings = async () => {
-    if (!activeSeason) return;
-    setDonsPairingsBalancing(true);
-    setDonsPairingsMessage("");
-    try {
-      const res = await fetch("/api/games/balance-pairings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId: activeSeason.id }),
-      });
-      const data = (await res.json()) as {
-        swaps?: number;
-        mutations?: number;
-        imbalanceBefore?: number;
-        imbalanceAfter?: number;
-        error?: string;
-      };
-      if (!res.ok) {
-        setDonsPairingsMessage(`Error: ${data.error}`);
-      } else {
-        const improvement =
-          data.imbalanceBefore && data.imbalanceAfter
-            ? ` Imbalance: ${data.imbalanceBefore} → ${data.imbalanceAfter}`
-            : "";
-        setDonsPairingsMessage(
-          `Balanced pairings: ${data.swaps} swap${data.swaps !== 1 ? "s" : ""}, ${data.mutations} assignment${data.mutations !== 1 ? "s" : ""} updated.${improvement}`
-        );
-      }
-    } catch {
-      setDonsPairingsMessage("Failed to balance pairings.");
-    }
-    setDonsPairingsBalancing(false);
   };
 
   const totalWeeks = activeSeason?.totalWeeks ?? 36;
@@ -2094,22 +2010,30 @@ export default function SeasonPage() {
               />
               Allow cap override at season end
             </label>
-            <button
-              onClick={handleBalanceDonsBalls}
-              disabled={donsBallsBalancing || donsAssigning}
-              title="Redistributes ball-bringing duty across all Don's games for the entire season so each player brings balls for about 1/4 of their games."
-              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+            <label
+              className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none"
+              title="After all weeks are assigned, swap same-level players between same-day games to even out pairing frequencies across the season. Uncheck to skip this step and save time, e.g. while testing auto-assign settings."
             >
-              {donsBallsBalancing ? "Balancing..." : "Balance Don\u2019s Balls"}
-            </button>
-            <button
-              onClick={handleBalanceDonsPairings}
-              disabled={donsPairingsBalancing || donsAssigning}
-              title="Swaps same-level players between same-day games to even out pairing frequencies across the season. Run after auto-assign. Re-run Balance Balls after if needed."
-              className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+              <input
+                type="checkbox"
+                checked={donsAssignBalancePairings}
+                onChange={(e) => setDonsAssignBalancePairings(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Balance pairings
+            </label>
+            <label
+              className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none"
+              title="After all weeks are assigned, redistribute ball-bringing duty across all Don's games so each player brings balls for about 1/4 of their games. Uncheck to skip this step and save time, e.g. while testing auto-assign settings."
             >
-              {donsPairingsBalancing ? "Balancing..." : "Balance Pairings"}
-            </button>
+              <input
+                type="checkbox"
+                checked={donsAssignBalanceBalls}
+                onChange={(e) => setDonsAssignBalanceBalls(e.target.checked)}
+                className="accent-indigo-500"
+              />
+              Balance Don&apos;s balls
+            </label>
             <button
               onClick={handleClearDonsAssignAll}
               disabled={donsAssigning}
@@ -2155,63 +2079,6 @@ export default function SeasonPage() {
             </div>
           )}
 
-          {donsBallsMessage && (
-            <div
-              className={`border rounded px-4 py-2 mt-3 text-sm ${
-                donsBallsMessage.startsWith("Error") ||
-                donsBallsMessage.startsWith("Failed")
-                  ? "bg-red-50 border-red-200 text-red-800"
-                  : "bg-green-50 border-green-200 text-green-800"
-              }`}
-            >
-              {donsBallsMessage}
-            </div>
-          )}
-
-          {donsBallsSummary && donsBallsSummary.length > 0 && (
-            <div className="mt-3 border border-border rounded overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-3 py-2 border-b border-border">Player</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Games</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Expected</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Balls</th>
-                    <th className="text-right px-3 py-2 border-b border-border">Diff</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {donsBallsSummary.map((row) => {
-                    const diff = row.ballsBrought - row.expected;
-                    return (
-                      <tr key={row.playerId} className="border-b border-border">
-                        <td className="px-3 py-1.5">{playerNameMap.get(row.playerId) ?? `Player #${row.playerId}`}</td>
-                        <td className="text-right px-3 py-1.5">{row.totalGames}</td>
-                        <td className="text-right px-3 py-1.5">{row.expected}</td>
-                        <td className="text-right px-3 py-1.5 font-medium">{row.ballsBrought}</td>
-                        <td className={`text-right px-3 py-1.5 font-medium ${diff > 0 ? "text-red-600" : diff < 0 ? "text-amber-600" : "text-green-600"}`}>
-                          {diff > 0 ? `+${diff}` : diff}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {donsPairingsMessage && (
-            <div
-              className={`border rounded px-4 py-2 mt-3 text-sm ${
-                donsPairingsMessage.startsWith("Error") ||
-                donsPairingsMessage.startsWith("Failed")
-                  ? "bg-red-50 border-red-200 text-red-800"
-                  : "bg-green-50 border-green-200 text-green-800"
-              }`}
-            >
-              {donsPairingsMessage}
-            </div>
-          )}
         </div>
       )}
 

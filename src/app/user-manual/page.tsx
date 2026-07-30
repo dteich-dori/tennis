@@ -158,8 +158,8 @@ export default function UserManualPage() {
                 </li>
                 <li>
                   <span className="font-semibold">Balance Balls</span> &mdash; On the Season Setup
-                  page, use &ldquo;Balance Solo Balls&rdquo; and &ldquo;Balance Don&apos;s Balls&rdquo;
-                  to redistribute ball-bringing duty across the entire season.
+                  page, run &ldquo;Balance Solo Balls&rdquo; for Solo games; Don&apos;s balls balance
+                  automatically as part of Auto-Assign Don&apos;s (toggle its checkbox to skip).
                 </li>
                 <li>
                   <span className="font-semibold">Generate Reports</span> &mdash; Go to{" "}
@@ -292,17 +292,20 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">Auto-Assign Don&apos;s</span> &mdash; Fills all
                   Don&apos;s game slots for the entire season. Weeks that already have assignments are
-                  skipped. Three checkboxes control optional passes:
+                  skipped. Checkboxes control optional passes:
                   <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
                     <li><span className="font-semibold">STD catchup</span> (on by default) &mdash; After the initial assignment completes, runs a second pass over all weeks to fill remaining empty slots with players who have a season-total deficit (behind on their 36-week contract).</li>
                     <li><span className="font-semibold">Assign extra</span> &mdash; Allows 2+ contract players to play beyond their weekly minimum of 2 games.</li>
                     <li><span className="font-semibold">Assign subs</span> &mdash; Off by default. When on, substitute players whose &ldquo;Include in auto-assign&rdquo; flag is set may fill any remaining empty slots.</li>
+                    <li><span className="font-semibold">Allow cap override at season end</span> &mdash; At the end of the run, fills cap-empty slots by lifting the season contract cap for players still in season deficit.</li>
+                    <li><span className="font-semibold">Balance pairings / Balance Don&apos;s balls</span> (on by default) &mdash; After all weeks are assigned, run the pairing-balance and ball-duty-balance passes described below. Turn these off to skip them and speed up a test run.</li>
                   </ul>
                   A <span className="font-semibold">Stop</span> button appears during the run to cancel the assignment mid-season.
                 </li>
                 <li>
-                  <span className="font-semibold">Balance Solo Balls / Balance Don&apos;s Balls</span>{" "}
-                  &mdash; Rebalances ball-bringing duty across the entire season for each group.
+                  <span className="font-semibold">Balance Solo Balls</span>{" "}
+                  &mdash; Rebalances ball-bringing duty across the entire season for Solo games. (Don&apos;s balls
+                  balancing runs as part of Auto-Assign Don&apos;s, controlled by its checkbox above.)
                 </li>
                 <li>
                   <span className="font-semibold">Clear Solo/Don&apos;s/All Assignments</span>{" "}
@@ -1187,9 +1190,10 @@ export default function UserManualPage() {
 
               <h3 className="font-semibold mb-2">Where to Run It</h3>
               <p className="text-sm leading-relaxed mb-4">
-                Use the &ldquo;Balance Solo Balls&rdquo; and &ldquo;Balance Don&apos;s Balls&rdquo; buttons on the
-                Season Setup page. These apply changes season-wide and show a per-player summary table.
-                Ball balancing also runs automatically as the final step of full-season Don&apos;s auto-assign.
+                For Solo games, use the &ldquo;Balance Solo Balls&rdquo; button on the Season Setup page &mdash;
+                it applies changes season-wide and shows a per-player summary table. For Don&apos;s games, ball
+                balancing runs automatically as the final step of full-season Don&apos;s auto-assign, controlled
+                by the &ldquo;Balance Don&apos;s balls&rdquo; checkbox next to the Auto-Assign Don&apos;s button.
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded px-4 py-3 text-sm">
                 <span className="font-semibold">Tip:</span> Run ball balancing after all player
