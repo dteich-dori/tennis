@@ -1023,6 +1023,20 @@ export async function POST(request: NextRequest) {
           if (!(sb === 0 && sa === 2 && sc < 2)) return false;
         }
         if (candidate.skillLevel === "B" && sa > 0 && sc > 0) return false;
+
+        // v1.221: season C-games cap (cGamesLimit / minACPerNonCGamesOk)
+        // was never applied to group-member fill-in here, so a non-C
+        // member of a C anchor's group (e.g. a B player parked on a C
+        // anchor's roster) could be swept into that anchor's game every
+        // week all season, blowing past the cap that Pass 1/2 already
+        // enforces for the same player via the ordinary pool. Apply the
+        // same allowance + weekly cap here, mirroring the Pass 1/2 check.
+        if (candidate.skillLevel !== "C" && sc > 0) {
+          const seasonACCount = acGameCounts.get(candidate.id) ?? 0;
+          const allowance = candidate.cGamesLimit ?? minACPerNonCGamesOk;
+          if (seasonACCount >= allowance) return false;
+          if ((cGameWtdCounts.get(candidate.id) ?? 0) > 0) return false;
+        }
         return true;
       };
 
