@@ -40,6 +40,7 @@ interface Player {
   noConsecutiveDays: boolean;
   isDerated: boolean;
   noEarlyGames: boolean;
+  noVacationMakeup: boolean;
   cGamesOk: boolean;
   cGamesLimit: number | null;
   soloGames: number | null;
@@ -81,6 +82,7 @@ const emptyPlayer = {
   noConsecutiveDays: false,
   isDerated: false,
   noEarlyGames: false,
+  noVacationMakeup: false,
   cGamesOk: false,
   cGamesLimit: null as number | null,
   soloGames: null as number | null,
@@ -176,6 +178,7 @@ export default function PlayersPage() {
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
+      noVacationMakeup: player.noVacationMakeup ?? false,
       cGamesOk: player.cGamesOk,
       cGamesLimit: player.cGamesLimit ?? null,
       soloGames: player.soloGames ?? null,
@@ -900,6 +903,17 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, noEarlyGames: e.target.checked })}
                 />
                 No early games
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="When checked, auto-assign will not front-load extra games ahead of this player's vacations to make up for missed weeks. They simply lose the games they miss."
+              >
+                <input
+                  type="checkbox"
+                  checked={form.noVacationMakeup}
+                  onChange={(e) => setForm({ ...form, noVacationMakeup: e.target.checked })}
+                />
+                No vacation makeup
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input

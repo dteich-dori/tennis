@@ -14,6 +14,7 @@ interface PlayerData {
   skillLevel: string;
   noConsecutiveDays: boolean;
   noEarlyGames: boolean;
+  noVacationMakeup: boolean;
   cGamesOk: boolean;
   cGamesLimit: number | null;
   soloGames: number | null;
@@ -349,6 +350,15 @@ export async function POST(request: NextRequest) {
       // with vacation absences still needs makeup games, and the new
       // no-A+C policy means their makeup slots are always C+C+C or
       // C+C+B+B — no compositional reason to exclude them.)
+
+      // v1.216: players who opted out of vacation makeup via
+      // noVacationMakeup keep their normal weekly target — they simply
+      // lose the games they miss on vacation instead of front-loading
+      // extra games beforehand.
+      if (p.noVacationMakeup) {
+        adjustedFreqMap.set(p.id, freq);
+        continue;
+      }
 
       const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
       const totalTarget = freq * contractWeeks;

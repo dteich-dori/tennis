@@ -479,6 +479,13 @@ export default function UserManualPage() {
                 <li>
                   <span className="font-semibold">No Early Games</span> &mdash; Prevents scheduling before 10:00 AM.
                 </li>
+                <li>
+                  <span className="font-semibold">No Vacation Makeup</span> &mdash; When checked,
+                  auto-assign&apos;s Pass 2.5 front-loading (boosting this player&apos;s weekly
+                  target ahead of an upcoming vacation to make up missed games) is skipped. The
+                  player simply loses the games they miss on vacation instead of playing extra
+                  games beforehand to compensate.
+                </li>
               </ul>
 
               <h3 className="font-semibold mb-2">Player Groups</h3>

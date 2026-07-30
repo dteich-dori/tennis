@@ -18,6 +18,11 @@ export const players = sqliteTable("players", {
   skillLevel: text("skill_level").notNull().default("C"), // "A", "B", "C", "D"
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
+  // When true, auto-assign's Pass 2.5 front-loading (boosting a player's
+  // weekly target ahead of an upcoming vacation to make up missed games)
+  // is skipped for this player. They simply play their normal contract
+  // and lose the games they miss on vacation, same as pre-v1.2xx behavior.
+  noVacationMakeup: integer("no_vacation_makeup", { mode: "boolean" }).notNull().default(false),
   cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
   cGamesLimit: integer("c_games_limit").default(1), // max A+C games per season for this cGamesOk player; null = use season default
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
