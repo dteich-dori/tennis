@@ -641,6 +641,22 @@ export async function POST(request: NextRequest) {
           )) {
             return false;
           }
+
+          // v1.220: season C-games cap now applies to B just like A.
+          // Composition rules never restrict B from joining a game that
+          // already has a C player (only A is restricted, via the
+          // AACC-only rule), so without this check a B player could
+          // join unlimited B+C games through the ordinary pool — never
+          // touching Pass 2.8's cap because Pass 2.8 only fires when
+          // the ordinary pool comes up empty. Applying the same
+          // allowance + weekly cap here, to any non-C candidate joining
+          // a game that already has a C player, closes that gap.
+          if (p.skillLevel !== "C" && sc > 0) {
+            const seasonACCount = acGameCounts.get(p.id) ?? 0;
+            const allowance = p.cGamesLimit ?? minACPerNonCGamesOk;
+            if (seasonACCount >= allowance) return false;
+            if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
+          }
         }
 
         // (R11 derated pairing limit retired in v1.151; column dropped in v1.155.)
@@ -769,6 +785,40 @@ export async function POST(request: NextRequest) {
     let pass4Count = 0;
     // Track how many C-player games each cGamesOk player has been assigned this week
     const cGameWtdCounts = new Map<number, number>();
+
+    // v1.220: B players were slipping into B+C games uncapped, because
+    // composition rules never restrict B from joining a C-containing
+    // game (only A is restricted, via the AACC-only rule) — so a B
+    // player commonly lands in a C-game through the ordinary Pass 1/2
+    // pool, never touching Pass 2.8's cap check at all. Track every
+    // non-C player's presence in a C-adjacent game AT INSERTION TIME,
+    // regardless of which pass placed them, so the season cap
+    // (cGamesLimit / minACPerNonCGamesOk) and the 1-per-week cap apply
+    // equally to A and B. `cGameCountedForGame` guards against double-
+    // counting the same game for the same player (insertion order can
+    // place the C player before or after the A/B player).
+    const cGameCountedForGame = new Map<number, Set<number>>();
+    function bumpCGameCount(gameId: number, playerId: number) {
+      const counted = cGameCountedForGame.get(gameId) ?? new Set<number>();
+      if (counted.has(playerId)) return;
+      counted.add(playerId);
+      cGameCountedForGame.set(gameId, counted);
+      cGameWtdCounts.set(playerId, (cGameWtdCounts.get(playerId) ?? 0) + 1);
+      lastCGameWeek.set(playerId, weekNumber);
+      acGameCounts.set(playerId, (acGameCounts.get(playerId) ?? 0) + 1);
+    }
+    // Called right after any player is added to a game's roster: if the
+    // game now contains both a C player and a non-C player, make sure
+    // every non-C member has been counted for this game exactly once.
+    function trackCGameMembership(gameId: number, roster: number[]) {
+      const hasC = roster.some((pid) => playerData.find((pl) => pl.id === pid)?.skillLevel === "C");
+      if (!hasC) return;
+      for (const pid of roster) {
+        const pl = playerData.find((p) => p.id === pid);
+        if (pl && pl.skillLevel !== "C") bumpCGameCount(gameId, pid);
+      }
+    }
+
     for (const [date, dateGames] of gamesByDate) {
       const dow = dateGames[0].dayOfWeek;
       const slotsNeeded = dateGames.length * 4;
@@ -920,6 +970,7 @@ export async function POST(request: NextRequest) {
           recordPairings(playerId, state);
           state.push(playerId);
           gameAssignmentState.set(game.id, state);
+          trackCGameMembership(game.id, state);
           wtdDonsCounts.set(playerId, (wtdDonsCounts.get(playerId) ?? 0) + 1);
           const dates = assignedDates.get(playerId) ?? new Set<string>();
           dates.add(game.date);
@@ -1140,6 +1191,7 @@ export async function POST(request: NextRequest) {
           recordPairings(playerId, state);
           state.push(playerId);
           gameAssignmentState.set(game.id, state);
+          trackCGameMembership(game.id, state);
 
           // Update tracking
           const wtd = (wtdDonsCounts.get(playerId) ?? 0) + 1;
@@ -1322,27 +1374,20 @@ export async function POST(request: NextRequest) {
               return pl?.skillLevel === "C";
             });
             if (hasCPlayer) {
+              // v1.212 simplified model, v1.220 extended to B:
+              //   - Every non-C player has ONE allowance:
+              //       cGamesLimit ?? seasonFloor (minACPerNonCGamesOk)
+              //     Where cGamesLimit is a per-player season max
+              //     (nullable — falls back to the season floor).
+              //     Admins can shield a specific player from C games
+              //     by setting their cGamesLimit to 0.
+              //   - The season cap and the 1-per-week cap are already
+              //     enforced inside getAvailablePlayers (applies to any
+              //     pass, not just this one) — this filter just excludes
+              //     C players, who don't need this fallback pass.
               const cGameOkEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
                 if (p.skillLevel === "C") return false; // C players don't need this pass
-                // v1.212 simplified model:
-                //   - The cGamesOk hard gate is retired for Pass 2.8.
-                //   - The season maxCGamesPerWeek / maxCGamesPerWeek1x
-                //     weekly-interval checks are retired.
-                //   - The season maxACGamesPerSeason ceiling is retired.
-                //   - Every A/B player has ONE allowance:
-                //       cGamesLimit ?? seasonFloor (minACPerNonCGamesOk)
-                //     Where cGamesLimit is a per-player season max
-                //     (nullable — falls back to the season floor).
-                //     Admins can shield a specific player from C games
-                //     by setting their cGamesLimit to 0.
-                const seasonACCount = acGameCounts.get(p.id) ?? 0;
-                const allowance = p.cGamesLimit ?? minACPerNonCGamesOk;
-                if (seasonACCount >= allowance) return false;
-                // Keep the "at most 1 C game per week per player" hard
-                // cap — otherwise a willing player could absorb every
-                // C-adjacent slot in one week.
-                if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
                 return true;
               });
               if (cGameOkEligible.length > 0) {
@@ -1393,10 +1438,11 @@ export async function POST(request: NextRequest) {
             if (passUsed === 2.5) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
             } else if (passUsed === 2.8) {
+              // Counter bumps (cGameWtdCounts / lastCGameWeek / acGameCounts)
+              // now happen centrally in trackCGameMembership, called from
+              // assignPlayer right after this candidate is inserted below —
+              // that covers every pass uniformly, not just this one.
               pass28Count++;
-              cGameWtdCounts.set(chosen.id, (cGameWtdCounts.get(chosen.id) ?? 0) + 1);
-              lastCGameWeek.set(chosen.id, weekNumber);
-              acGameCounts.set(chosen.id, (acGameCounts.get(chosen.id) ?? 0) + 1);
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
             } else if (passUsed === 3) {
               pass3Count++;
@@ -1830,6 +1876,7 @@ export async function POST(request: NextRequest) {
           createdAssignmentIds.push(result[0].id);
           currentAssigned.push(chosen.id);
           gameAssignmentState.set(game.id, currentAssigned);
+          trackCGameMembership(game.id, currentAssigned);
           wtdDonsCounts.set(chosen.id, (wtdDonsCounts.get(chosen.id) ?? 0) + 1);
           const dates = assignedDates.get(chosen.id) ?? new Set<string>();
           dates.add(game.date);

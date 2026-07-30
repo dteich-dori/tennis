@@ -1020,7 +1020,12 @@ export default function UserManualPage() {
                   haven&apos;t reached their season allowance &mdash; their per-player <em>Max
                   C-games / season</em> if set, otherwise the season&apos;s C games minimum &mdash;
                   and haven&apos;t already played a C-adjacent game this week (1-per-week hard cap).
-                  1x A players are never eligible (hard composition block).
+                  1x A players are never eligible (hard composition block). As of v1.220 this same
+                  allowance and weekly cap is enforced for B players in <em>every</em> pass, not
+                  just 2.8 &mdash; composition rules never restricted B from joining a B+C game, so
+                  previously a B player could rack up unlimited C-adjacent games through the
+                  ordinary pool without ever touching this pass&apos;s cap. A and B are now capped
+                  identically.
                 </li>
                 <li>
                   <span className="font-semibold">Pass 3: Extras</span> (optional, checkbox) &mdash; Allows
