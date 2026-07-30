@@ -32,7 +32,7 @@ export function generatePairingMatrixPdf(
   doNotPairs: DoNotPair[],
   season: Season,
   scheduleMark?: number,
-  excludeAAPairings?: boolean
+  hideAColumns?: boolean
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -67,6 +67,11 @@ export function generatePairingMatrixPdf(
   // Split into contract players and subs
   const contractPlayers = sortedPlayers.filter((p) => p.contractedFrequency !== "0");
   const subPlayers = sortedPlayers.filter((p) => p.contractedFrequency === "0");
+
+  // Columns: optionally drop A-level players entirely to declutter the
+  // matrix. Rows are untouched, so A-player rows still show their pairing
+  // counts against the remaining B/C columns (A+C combos stay visible).
+  const colPlayers = hideAColumns ? sortedPlayers.filter((p) => p.skillLevel !== "A") : sortedPlayers;
 
   // Build lookup maps
   const pairCountMap = new Map<string, number>();
@@ -105,7 +110,7 @@ export function generatePairingMatrixPdf(
   }
 
   // --- Draw a matrix page ---
-  // colPlayers = all players (columns/top header)
+  // colPlayers = column set (all players, or B/C only when hideAColumns)
   // rowPlayers = subset of players (rows/left header)
   function drawMatrixPage(
     colPlayers: PlayerInfo[],
@@ -129,7 +134,7 @@ export function generatePairingMatrixPdf(
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    const filterSuffix = excludeAAPairings ? " (A+A pairings hidden)" : "";
+    const filterSuffix = hideAColumns ? " (A-level columns hidden)" : "";
     const title = `Player Pairing Matrix \u2014 ${subtitle} ${startYear} - ${endYear}${filterSuffix}`;
     doc.text(title, pageWidth / 2, 14, { align: "center" });
 
@@ -180,11 +185,6 @@ export function generatePairingMatrixPdf(
           // Diagonal — gray
           doc.setFillColor(210, 210, 210);
           doc.rect(x, y, cellSize, cellSize, "F");
-        } else if (excludeAAPairings && rowPlayer.skillLevel === "A" && colPlayer.skillLevel === "A") {
-          // A+A pairing hidden — render as a plain hatched-out cell so the
-          // grid stays visually complete without competing for attention.
-          doc.setFillColor(245, 245, 245);
-          doc.rect(x, y, cellSize, cellSize, "F");
         } else {
           const p1 = rowPlayer.id;
           const p2 = colPlayer.id;
@@ -221,12 +221,12 @@ export function generatePairingMatrixPdf(
     }
   }
 
-  // Page 1: Contract players (rows) × All players (columns)
-  drawMatrixPage(sortedPlayers, contractPlayers, `Contract Players (${contractPlayers.length})`, true);
+  // Page 1: Contract players (rows) × columns (all, or B/C only)
+  drawMatrixPage(colPlayers, contractPlayers, `Contract Players (${contractPlayers.length})`, true);
 
-  // Page 2: Subs (rows) × All players (columns) — only if there are subs
+  // Page 2: Subs (rows) × columns — only if there are subs
   if (subPlayers.length > 0) {
-    drawMatrixPage(sortedPlayers, subPlayers, `Substitutes (${subPlayers.length})`, false);
+    drawMatrixPage(colPlayers, subPlayers, `Substitutes (${subPlayers.length})`, false);
   }
 
   openPdfWithName(

@@ -63,7 +63,7 @@ export default function ReportsPage() {
   const [error, setError] = useState("");
   const [gamesWeekStart, setGamesWeekStart] = useState(1);
   const [gamesWeekEnd, setGamesWeekEnd] = useState(36);
-  const [excludeAAPairings, setExcludeAAPairings] = useState(false);
+  const [hideAColumns, setHideAColumns] = useState(false);
 
   const loadSeason = useCallback(async () => {
     try {
@@ -357,7 +357,7 @@ export default function ReportsPage() {
         return;
       }
 
-      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season, season.scheduleVersion, excludeAAPairings);
+      generatePairingMatrixPdf(data.players, data.pairings, data.doNotPairs, season, season.scheduleVersion, hideAColumns);
     } catch {
       setError("Failed to generate Pairing Matrix report.");
     }
@@ -817,10 +817,10 @@ export default function ReportsPage() {
           <label className="flex items-center gap-2 text-sm mb-3">
             <input
               type="checkbox"
-              checked={excludeAAPairings}
-              onChange={(e) => setExcludeAAPairings(e.target.checked)}
+              checked={hideAColumns}
+              onChange={(e) => setHideAColumns(e.target.checked)}
             />
-            Exclude A+A pairings (declutter — focus on B/C pairing)
+            Hide A-level columns (declutter — A rows still show A+C pairing)
           </label>
           <button
             onClick={handlePairingMatrixReport}

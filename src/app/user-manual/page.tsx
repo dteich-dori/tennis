@@ -1370,10 +1370,12 @@ export default function UserManualPage() {
                   Do-not-pair violations are highlighted in red.
                 </li>
                 <li>
-                  <span className="font-semibold">Exclude A+A pairings</span> checkbox &mdash;
+                  <span className="font-semibold">Hide A-level columns</span> checkbox &mdash;
                   A-level players are the largest group and pair with each other constantly,
-                  which can crowd out the B/C pairing detail. Check this to blank out A+A cells
-                  (shown as light gray) so the matrix highlights B and C pairing patterns instead.
+                  which can crowd out the B/C pairing detail. Check this to drop A-level players
+                  from the column axis entirely, shrinking the grid to B/C columns only. Rows are
+                  unaffected, so A-player rows still show their A+C and A+B pairing counts against
+                  the remaining columns &mdash; only the A+A columns disappear.
                 </li>
               </ul>
 
