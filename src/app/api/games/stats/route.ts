@@ -284,6 +284,13 @@ export async function GET(request: NextRequest) {
             // contract is 2) AND partial-vacation weeks where the player
             // squeezed in a non-blocked day — situations the per-week
             // surplus calc missed.
+            // v1.225: players who opted out via noVacationMakeup never get
+            // front-loaded makeup games (see auto-assign's Pass 2.5) — any
+            // "surplus" this heuristic finds for them is a false positive
+            // (e.g. vacLost overcounting a date they were never scheduled
+            // to play, or the season's bonus makeup week), not an actual
+            // makeup game.
+            if (p.noVacationMakeup) return 0;
             const freq = p.contractedFrequency === "2+" ? 2 : (parseInt(p.contractedFrequency) || 0);
             if (freq === 0) return 0;
             const vacLost = vacationGamesLostMap.get(p.id) ?? 0;
