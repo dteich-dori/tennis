@@ -911,36 +911,42 @@ export async function POST(request: NextRequest) {
       return true;
     }
 
-    // ===== Pass 0: Anchor games =====
-    // Before the day-by-day loop, place each C anchor (with members +
-    // groupPct > 0) in a game on one of their available days, and pre-fill
-    // that game with eligible group members. Cross-week scope: a Wednesday
-    // anchor's game gets filled before any Tuesday non-anchor game even
-    // if the day-tightness sort would otherwise prefer Tuesday first.
+    // ===== Pass 0: C-tier concentration =====
+    // Before the day-by-day loop, try to concentrate available C players
+    // into as few games as possible each week (ideally one CCCC), instead
+    // of letting the generic day-tightness sort scatter them.
     //
-    // Anchor placement is greedy: pick the first compatible day, the
-    // first compatible game, and the highest-pct members. The remaining
-    // slots on the anchor's day (and other days) are then filled by the
-    // normal Pass 1-4 below.
+    // v1.227: this used to require an admin-configured C-anchor group
+    // (groupAnchorId/groupPct). With groups gone, it now runs
+    // automatically for the whole C tier every week. The reason it's
+    // needed: the day-tightness sort below picks the day to fill first
+    // based on the WHOLE pool's surplus, with no notion of skill-tier
+    // scarcity. With only a handful of C players, that routinely means a
+    // flexible C player gets swept onto whichever day is short on A/B
+    // players — before the day a less-flexible C player is FORCED to
+    // play (by their own blocked days) is even reached — so a same-tier
+    // game gets missed even when every C player was actually free that
+    // week. This mirrors the pre-Scheduler manual process: fill the
+    // "trouble" games (C games) first, before the rest of the week.
+    //
+    // Mechanism: repeatedly take the still-unplaced C player with the
+    // FEWEST playable days this week (most constrained — often pinned to
+    // one specific day), seat them on their best remaining day, then fill
+    // the rest of that game with other still-unplaced C players (also
+    // most-constrained-first). Remaining slots (and any C players who
+    // don't fit) fall through to the normal Pass 1-4 pool below.
     {
-      const cAnchors = contractedPlayers.filter(
-        (p) =>
-          p.skillLevel === "C" &&
-          p.groupMembers.length > 0 &&
-          p.groupPct > 0
-      );
-      // Sort anchors: most-constrained (fewest playable days this week) first
-      const countPlayableDates = (anchor: PlayerData): number => {
+      // Most-constrained-first: fewest playable days this week
+      const countPlayableDates = (pl: PlayerData): number => {
         let n = 0;
         for (const [date, dgs] of gamesByDate) {
           const dow = dgs[0]?.dayOfWeek ?? -1;
-          if (anchor.blockedDays.includes(dow)) continue;
-          if (anchor.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
+          if (pl.blockedDays.includes(dow)) continue;
+          if (pl.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
           n++;
         }
         return n;
       };
-      cAnchors.sort((a, b) => countPlayableDates(a) - countPlayableDates(b));
 
       // Helper: assign a player directly (outer scope; updates everything
       // assignPlayer does except usedOnDay which is per-day-scoped).
@@ -1040,17 +1046,32 @@ export async function POST(request: NextRequest) {
         return true;
       };
 
-      for (const anchor of cAnchors) {
-        const baseFreq = weeklyContractedGames(anchor.contractedFrequency);
-        // Pass 0 only places the anchor up to their BASE weekly contract.
-        // Front-load / makeup extras are handled by the gated Pass 2.5
-        // after all base contracts are settled, per the user's rule:
-        // "no extras while any contracted player has unmet weekly contract".
-        const placeUpTo = baseFreq;
-        // Look at each playable date for the anchor and try to place them
+      // Pass 0 only places players up to their BASE weekly contract.
+      // Front-load / makeup extras are handled by the gated Pass 2.5
+      // after all base contracts are settled, per the user's rule:
+      // "no extras while any contracted player has unmet weekly contract".
+      const cPool = contractedPlayers.filter((p) => p.skillLevel === "C");
+      const stillNeedsBase = (p: PlayerData): boolean =>
+        (wtdDonsCounts.get(p.id) ?? 0) < weeklyContractedGames(p.contractedFrequency);
+
+      // Players who couldn't be seated this pass (no playable day left, or
+      // every eligible game rejected them) — don't retry, but anyone who
+      // WAS seated stays eligible for re-selection (covers 2x/week C's;
+      // stillNeedsBase will naturally exclude them once their quota is met).
+      const stuck = new Set<number>();
+      let guard = 0;
+      while (guard++ < cPool.length + 4) {
+        const remaining = cPool.filter((p) => !stuck.has(p.id) && stillNeedsBase(p));
+        if (remaining.length === 0) break;
+        remaining.sort((a, b) => countPlayableDates(a) - countPlayableDates(b));
+        const anchor = remaining[0];
+        if (countPlayableDates(anchor) === 0) {
+          stuck.add(anchor.id);
+          continue;
+        }
+
+        let seated = false;
         for (const [date, dgs] of gamesByDate) {
-          const wtd = wtdDonsCounts.get(anchor.id) ?? 0;
-          if (wtd >= placeUpTo) break;
           const dow = dgs[0]?.dayOfWeek ?? -1;
           if (anchor.blockedDays.includes(dow)) continue;
           if (anchor.vacations.some((v) => date >= v.startDate && date <= v.endDate)) continue;
@@ -1072,44 +1093,34 @@ export async function POST(request: NextRequest) {
             log.push({
               type: "info",
               day: DAYS[dow],
-              message: `[Pass 0] Game #${game.gameNumber} slot ${nextSlot}: ${anchor.lastName} placed as anchor`,
+              message: `[Pass 0] Game #${game.gameNumber} slot ${nextSlot}: ${anchor.lastName} placed (most-constrained C, ${countPlayableDates(anchor)} playable day(s) left this week)`,
             });
 
-            // Fill remaining slots with anchor's members, highest pct first.
-            // v1.221: a member with groupPct === 0 is shown in the UI as
-            // "inactive — members preserved" — they opted out of this
-            // group's fill-in. Exclude them here instead of just sorting
-            // them last, or they still get swept in as a fallback filler
-            // whenever no higher-pct member is available.
-            const members = anchor.groupMembers
-              .map((mid) => playerData.find((p) => p.id === mid))
-              .filter((m): m is PlayerData => m != null && (m.groupPct ?? 0) > 0)
-              .sort((a, b) => (b.groupPct ?? 0) - (a.groupPct ?? 0));
-            for (const member of members) {
+            // Fill remaining slots with other still-unplaced C players,
+            // most-constrained-first, before falling through to A/B.
+            const otherC = cPool
+              .filter((p) => p.id !== anchor.id && !stuck.has(p.id) && stillNeedsBase(p))
+              .sort((a, b) => countPlayableDates(a) - countPlayableDates(b));
+            for (const member of otherC) {
               const stateNow = gameAssignmentState.get(game.id) ?? [];
               if (stateNow.length >= 4) break;
               if (!isEligibleForGame(member, game)) continue;
-              // Don't over-assign members: only place if this member is
-              // still under their own base weekly contract. Extras come
-              // through the gated Pass 2.5+ if appropriate.
-              const memberBase = weeklyContractedGames(member.contractedFrequency);
-              if (memberBase > 0) {
-                const memberWtd = wtdDonsCounts.get(member.id) ?? 0;
-                if (memberWtd >= memberBase) continue;
-              }
               const ms = stateNow.length + 1;
               const ok2 = await passZeroAssign(game, member.id, ms);
               if (ok2) {
                 log.push({
                   type: "info",
                   day: DAYS[dow],
-                  message: `[Pass 0] Game #${game.gameNumber} slot ${ms}: ${member.lastName} placed as group member of ${anchor.lastName} (pct ${member.groupPct})`,
+                  message: `[Pass 0] Game #${game.gameNumber} slot ${ms}: ${member.lastName} placed (C-tier concentration with ${anchor.lastName})`,
                 });
               }
             }
-            break; // anchor placed for this date; move to next date
+            seated = true;
+            break;
           }
+          if (seated) break;
         }
+        if (!seated) stuck.add(anchor.id);
       }
     }
 
