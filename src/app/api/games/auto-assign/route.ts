@@ -1142,10 +1142,21 @@ export async function POST(request: NextRequest) {
           const cCount = levels.filter((l) => l === "C").length;
           const hasA = aCount > 0;
           const hasC = cCount > 0;
-          if (!hasA || !hasC) return 0; // no A+C gap, no penalty
-          if (bCount >= 2) return 1; // bridged but still A+C
-          if (bCount === 1) return 2; // weakly bridged
-          return 3; // no bridge — worst
+          if (!hasA || !hasC) {
+            // v1.226: no A+C gap, but still prefer a fully same-tier roster
+            // (CCCC/AAAA/BBBB) over a partially-bridged one (e.g. BCCC).
+            // Without this, a same-tier candidate and an off-tier bridge
+            // candidate score identically, so a scarce tier (e.g. only 4 C
+            // players total) rarely completes an all-same-tier game even
+            // when every member of that tier is available that day — the
+            // last slot just goes to whichever B/A wins the generic
+            // owed/pairing tiebreakers instead.
+            const distinctTiers = new Set(levels).size;
+            return distinctTiers === 1 ? 0 : 1;
+          }
+          if (bCount >= 2) return 2; // bridged but still A+C
+          if (bCount === 1) return 3; // weakly bridged
+          return 4; // no bridge — worst
         }
 
         return [...players].sort((a, b) => {
