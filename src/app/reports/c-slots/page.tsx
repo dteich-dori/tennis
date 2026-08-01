@@ -14,9 +14,6 @@ interface Diagnosis {
     id: number;
     startDate: string;
     endDate: string;
-    maxACGamesPerSeason: number | null;
-    maxCGamesPerWeek: number | null;
-    maxCGamesPerWeek1x: number | null;
   };
   candidatePool: {
     total: number;
@@ -189,16 +186,12 @@ export default function CSlotDiagnosisPage() {
             <h2 className="font-semibold text-sm mb-2">Current C-related settings</h2>
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <div>
-                <dt className="text-xs text-gray-500">A+C games per season (cap)</dt>
-                <dd className="font-mono">{diagnosis.season.maxACGamesPerSeason ?? "no limit"}</dd>
+                <dt className="text-xs text-gray-500">Season C-game cap</dt>
+                <dd className="font-mono">Per-player (see &ldquo;Max C-games / season&rdquo; on each player)</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Weekly C-cap (2x players)</dt>
-                <dd className="font-mono">{diagnosis.season.maxCGamesPerWeek ?? "no limit"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-gray-500">Weekly C-cap (1x players)</dt>
-                <dd className="font-mono">{diagnosis.season.maxCGamesPerWeek1x ?? "no limit"} (once per N weeks)</dd>
+                <dt className="text-xs text-gray-500">Weekly C-cap</dt>
+                <dd className="font-mono">1 / week (always enforced)</dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500">cGamesOk A/B pool</dt>

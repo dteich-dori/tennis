@@ -10,7 +10,6 @@ import {
   seasons,
 } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { weeklyContractedGames } from "@/lib/contractFrequency";
 
 /**
  * GET /api/reports/c-slot-diagnosis?seasonId=N
@@ -22,13 +21,18 @@ import { weeklyContractedGames } from "@/lib/contractFrequency";
  * walks every cGamesOk A/B player and records which rule would block
  * that candidate from filling an empty slot.
  *
- * The rule ladder each candidate is checked against (first hit wins):
+ * The rule ladder each candidate is checked against (first hit wins).
+ * v1.237: rules 5-6 rewritten to match what auto-assign actually
+ * enforces today — the season floor (minACPerNonCGamesOk) and the
+ * configurable weekly caps (maxCGamesPerWeek/maxCGamesPerWeek1x) were
+ * retired; only each player's own cGamesLimit (null = Unlimited) and a
+ * flat 1-per-week cap apply now, regardless of contract frequency.
  *   1. Not active OR excluded from auto-assign (baseline)
  *   2. Blocked-day (blockedDays includes game.dayOfWeek)
  *   3. On vacation covering game.date
  *   4. Already playing another game on the same date
- *   5. Season A+C game cap (maxACGamesPerSeason) already reached
- *   6. Weekly C-game cap (maxCGamesPerWeek for 2x / maxCGamesPerWeek1x for 1x)
+ *   5. Season C-game cap (per-player cGamesLimit) already reached
+ *   6. Weekly C-game cap (hard 1-per-week, always enforced)
  *   7. AACC composition trajectory blocked (game state can't reach AACC
  *      with this candidate — e.g., a B is already assigned)
  *   8. Do-not-pair conflict with someone already in this game
@@ -38,7 +42,7 @@ import { weeklyContractedGames } from "@/lib/contractFrequency";
  *
  * Response:
  * {
- *   season: { id, startDate, endDate, maxACGamesPerSeason, maxCGamesPerWeek, maxCGamesPerWeek1x },
+ *   season: { id, startDate, endDate },
  *   candidatePool: {
  *     total: number,               // total cGamesOk active A/B players
  *     byContract: { "2+": n, "2": n, "1+": n, "1": n },
@@ -158,7 +162,9 @@ export async function GET(request: NextRequest) {
     }
     // Per-player date -> set (for played-same-date)
     const datesPlayedByPlayer = new Map<number, Set<string>>();
-    // Season A+C game count per player
+    // Season C-adjacent game count per player — mirrors auto-assign's
+    // acGameCounts: any game containing a C counts against a non-C
+    // player's cGamesLimit, not just games that also contain an A.
     const seasonACountByPlayer = new Map<number, number>();
     // Weekly C-game count per player: key `${playerId}|${weekNumber}`
     const weeklyCCountByKey = new Map<string, number>();
@@ -168,16 +174,12 @@ export async function GET(request: NextRequest) {
       const dates = datesPlayedByPlayer.get(a.playerId) ?? new Set<string>();
       dates.add(g.date);
       datesPlayedByPlayer.set(a.playerId, dates);
-      // Compute this game's composition to count A+C for this player
       const idsInGame = allAssignments.filter((x) => x.gameId === a.gameId).map((x) => x.playerId);
       const levels = idsInGame.map((id) => playerById.get(id)?.skillLevel ?? "?");
-      const hasA = levels.includes("A");
       const hasC = levels.includes("C");
       const p = playerById.get(a.playerId);
-      if (p?.cGamesOk && p.skillLevel !== "C" && hasA && hasC) {
-        seasonACountByPlayer.set(a.playerId, (seasonACountByPlayer.get(a.playerId) ?? 0) + 1);
-      }
       if (p?.cGamesOk && p.skillLevel !== "C" && hasC) {
+        seasonACountByPlayer.set(a.playerId, (seasonACountByPlayer.get(a.playerId) ?? 0) + 1);
         const key = `${a.playerId}|${g.weekNumber}`;
         weeklyCCountByKey.set(key, (weeklyCCountByKey.get(key) ?? 0) + 1);
       }
@@ -185,11 +187,6 @@ export async function GET(request: NextRequest) {
 
     // The cGamesOk A/B candidate pool (only these can EVER be in a C game)
     const candidatePool = allPlayers.filter((p) => p.cGamesOk && p.skillLevel !== "C");
-
-    // Season limits
-    const maxACGamesPerSeason = season.maxACGamesPerSeason;
-    const maxCGamesPerWeek = season.maxCGamesPerWeek;
-    const maxCGamesPerWeek1x = season.maxCGamesPerWeek1x;
 
     // Walk each incomplete game and diagnose
     const rows: DiagnosticGameRow[] = [];
@@ -260,40 +257,23 @@ export async function GET(request: NextRequest) {
           ruling = "playedSameDate";
           detail = "Already playing another game on this date";
         }
-        // 5. Season A+C game cap
+        // 5. Season C-game cap — per-player cGamesLimit; null = Unlimited.
         else if (
           cCount > 0 &&
-          maxACGamesPerSeason != null &&
-          (seasonACountByPlayer.get(cand.id) ?? 0) >= maxACGamesPerSeason
+          cand.cGamesLimit != null &&
+          (seasonACountByPlayer.get(cand.id) ?? 0) >= cand.cGamesLimit
         ) {
           ruling = "seasonACapReached";
-          const perPlayerLimit = cand.cGamesLimit ?? maxACGamesPerSeason;
-          detail = `Already in ${seasonACountByPlayer.get(cand.id)} A+C game(s) this season (limit ${perPlayerLimit})`;
+          detail = `Already in ${seasonACountByPlayer.get(cand.id)} C-adjacent game(s) this season (limit ${cand.cGamesLimit})`;
         }
-        // 6. Weekly C-game cap
+        // 6. Weekly C-game cap — flat 1-per-week, always enforced,
+        // regardless of contract frequency.
         else if (
           cCount > 0 &&
-          (() => {
-            const freq = weeklyContractedGames(cand.contractedFrequency);
-            const weeklyCap = freq >= 2 ? maxCGamesPerWeek : maxCGamesPerWeek1x;
-            if (weeklyCap == null) return false;
-            const key = `${cand.id}|${g.weekNumber}`;
-            const cur = weeklyCCountByKey.get(key) ?? 0;
-            // Convert weeksBetween-style cap to per-week: 1 means one per week,
-            // higher means once every N weeks — we approximate by checking
-            // whether they've played a C-game within the lookback window.
-            if (weeklyCap <= 1) return cur >= 1;
-            // For values > 1, treat as "at most once every N weeks"
-            for (let w = g.weekNumber - weeklyCap + 1; w < g.weekNumber; w++) {
-              if ((weeklyCCountByKey.get(`${cand.id}|${w}`) ?? 0) > 0) return true;
-            }
-            return cur >= 1;
-          })()
+          (weeklyCCountByKey.get(`${cand.id}|${g.weekNumber}`) ?? 0) >= 1
         ) {
           ruling = "weeklyCCapReached";
-          const freq = weeklyContractedGames(cand.contractedFrequency);
-          const weeklyCap = freq >= 2 ? maxCGamesPerWeek : maxCGamesPerWeek1x;
-          detail = `Weekly C-game cap: ${freq >= 2 ? "2x" : "1x"} player, cap = ${weeklyCap}`;
+          detail = "Already in a C-adjacent game this week (hard 1/week cap)";
         }
         // 7. AACC composition trajectory blocked
         else if (cCount > 0) {
@@ -391,7 +371,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       season: {
         id: season.id, startDate: season.startDate, endDate: season.endDate,
-        maxACGamesPerSeason, maxCGamesPerWeek, maxCGamesPerWeek1x,
       },
       candidatePool: {
         total: candidatePool.length,
