@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players } from "@/db/schema";
+import { games, gameAssignments, players, seasons } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { COMPOSITIONS } from "@/lib/compositions";
+import { COMPOSITIONS, parseAllowedCompositions } from "@/lib/compositions";
 
 /**
  * GET /api/games/composition-by-player?seasonId=5
@@ -18,6 +18,9 @@ export async function GET(request: NextRequest) {
     }
     const database = await db();
     const sid = parseInt(seasonId);
+
+    const [seasonRow] = await database.select().from(seasons).where(eq(seasons.id, sid));
+    const allowedSet = parseAllowedCompositions(seasonRow?.allowedCompositions ?? null);
 
     const activePlayers = await database
       .select({ id: players.id, firstName: players.firstName, lastName: players.lastName, skillLevel: players.skillLevel })
@@ -51,9 +54,18 @@ export async function GET(request: NextRequest) {
     const counts = new Map<number, Map<string, number>>();
     for (const p of activePlayers) counts.set(p.id, new Map());
 
+    // Compositions the season currently disallows are folded into a single
+    // "OTHER" column rather than getting their own column (per-user request
+    // to declutter — e.g. AAAC/ACCC when unchecked on Season Setup). Any
+    // games that still occurred with a disallowed key (an actual rule
+    // violation, not just an unused option) stay visible there instead of
+    // silently vanishing from each player's total.
+    let hasOtherGames = false;
     for (const roster of byGame.values()) {
       if (roster.length !== 4) continue; // only completed games
-      const compKey = roster.map((r) => r.skillLevel).sort().join("");
+      const rawKey = roster.map((r) => r.skillLevel).sort().join("");
+      const compKey = allowedSet.has(rawKey) ? rawKey : "OTHER";
+      if (compKey === "OTHER") hasOtherGames = true;
       for (const { playerId } of roster) {
         const playerCounts = counts.get(playerId);
         if (!playerCounts) continue; // inactive player, skip
@@ -71,10 +83,15 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
 
-    return NextResponse.json({
-      compositions: COMPOSITIONS.map((c) => ({ key: c.key, description: c.description })),
-      rows,
-    });
+    const compositions = COMPOSITIONS.filter((c) => allowedSet.has(c.key)).map((c) => ({
+      key: c.key,
+      description: c.description,
+    }));
+    if (hasOtherGames) {
+      compositions.push({ key: "OTHER", description: "Disallowed composition (rule violation)" });
+    }
+
+    return NextResponse.json({ compositions, rows });
   } catch (error) {
     console.error("Composition-by-player report error:", error);
     return NextResponse.json({ error: "Failed to generate composition-by-player report" }, { status: 500 });
