@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useBackup } from "@/lib/useBackup";
 import { COMPOSITIONS, DEFAULT_ALLOWED_KEYS } from "@/lib/compositions";
 
@@ -1347,7 +1347,7 @@ export default function SeasonPage() {
             </thead>
             <tbody>
               {(["tier-uniform", "adjacent-tier", "AACC", "mixed-A+C"] as const).map((cat) => (
-                <>
+                <Fragment key={cat}>
                   {COMPOSITIONS.filter((c) => c.category === cat).map((c) => {
                     const isChecked = allowedCompositions.has(c.key);
                     return (
@@ -1381,7 +1381,7 @@ export default function SeasonPage() {
                       </tr>
                     );
                   })}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
