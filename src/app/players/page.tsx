@@ -242,6 +242,9 @@ export default function PlayersPage() {
       preassignedGamesWanted: form.preassignedGamesWanted || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
       doNotPair: form.doNotPair,
+      // The C-games cap only applies to non-C players joining a C game —
+      // always Unlimited (null) for a C player, regardless of stale form state.
+      cGamesLimit: form.skillLevel === "C" ? null : form.cGamesLimit,
     };
 
     try {
@@ -804,7 +807,11 @@ export default function PlayersPage() {
               <label className="block text-sm text-muted mb-1">Skill Level</label>
               <select
                 value={form.skillLevel}
-                onChange={(e) => setForm({ ...form, skillLevel: e.target.value })}
+                onChange={(e) => setForm({
+                  ...form,
+                  skillLevel: e.target.value,
+                  cGamesLimit: e.target.value === "C" ? null : form.cGamesLimit,
+                })}
                 className="border border-border rounded px-3 py-2 text-sm w-full"
               >
                 <option value="A">A</option>
@@ -947,27 +954,36 @@ export default function PlayersPage() {
               </label>
               <label className="flex items-center gap-2 text-sm ml-6">
                 <span>Max C-games / season:</span>
-                <select
-                  value={form.cGamesLimit == null ? "" : String(form.cGamesLimit)}
-                  onChange={(e) => setForm({
-                    ...form,
-                    cGamesLimit: e.target.value === "" ? null : parseInt(e.target.value),
-                  })}
-                  className="border border-border rounded px-2 py-1 text-sm w-44"
-                  title="Cap this player's C-games at N per season. Blank = use the season floor. 0 shields the player from C-games entirely (Pass 2.8). Higher values open more C-games for players who want them."
-                >
-                  <option value="">Use season floor</option>
-                  <option value={0}>0 (never)</option>
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
-                  <option value={5}>5</option>
-                  <option value={6}>6</option>
-                  <option value={8}>8</option>
-                  <option value={10}>10</option>
-                  <option value={12}>12</option>
-                </select>
+                {form.skillLevel === "C" ? (
+                  <span
+                    className="border border-border rounded px-2 py-1 text-sm w-44 bg-gray-50 text-muted"
+                    title="This cap only applies to non-C players joining a C-containing game — it has no effect on a C player's own games, so it's fixed to Unlimited here."
+                  >
+                    Unlimited (n/a for C)
+                  </span>
+                ) : (
+                  <select
+                    value={form.cGamesLimit == null ? "" : String(form.cGamesLimit)}
+                    onChange={(e) => setForm({
+                      ...form,
+                      cGamesLimit: e.target.value === "" ? null : parseInt(e.target.value),
+                    })}
+                    className="border border-border rounded px-2 py-1 text-sm w-44"
+                    title="Cap this player's C-games at N per season. Unlimited = no season cap. 0 shields the player from C-games entirely (Pass 2.8). Higher values open more C-games for players who want them."
+                  >
+                    <option value="">Unlimited</option>
+                    <option value={0}>0 (never)</option>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                    <option value={5}>5</option>
+                    <option value={6}>6</option>
+                    <option value={8}>8</option>
+                    <option value={10}>10</option>
+                    <option value={12}>12</option>
+                  </select>
+                )}
               </label>
             </div>
           </div>
@@ -1404,7 +1420,7 @@ export default function PlayersPage() {
                 </td>
                 <td className="px-2 py-1">{player.isActive ? "Yes" : "No"}</td>
                 <td className="px-2 py-1">{player.isDerated ? "✓" : "-"}</td>
-                <td className="px-2 py-1" title="Max C-games per season for this player (blank = use season floor)">{player.cGamesLimit == null ? (player.cGamesOk ? "✓" : "—") : `${player.cGamesLimit}/season`}</td>
+                <td className="px-2 py-1" title="Max C-games per season for this player (only applies to non-C players joining a C game)">{player.cGamesLimit == null ? "Unlimited" : `${player.cGamesLimit}/season`}</td>
                 <td className="px-2 py-1">
                   {player.blockedDays.map((d) => DAYS[d]).join(", ") || "-"}
                 </td>

@@ -120,6 +120,13 @@
       "when": 1783200000000,
       "tag": "0016_no_vacation_makeup",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1783300000000,
+      "tag": "0017_drop_min_ac_per_non_c_games_ok",
+      "breakpoints": true
     }
   ]
 }

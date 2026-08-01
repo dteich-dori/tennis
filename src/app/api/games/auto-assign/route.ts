@@ -305,10 +305,6 @@ export async function POST(request: NextRequest) {
     // allowedCompositions JSON; NULL falls back to the code-shipped
     // default set (same as pre-v1.204 behavior).
     const allowedCompositionSet = parseAllowedCompositions(seasonRecord?.allowedCompositions ?? null);
-    // v1.210: minimum A+C games per season for non-cGamesOk A/B
-    // players. Default 1 = every A/B player takes at least one C-
-    // adjacent game per season regardless of cGamesOk consent.
-    const minACPerNonCGamesOk = seasonRecord?.minACPerNonCGamesOk ?? 1;
     // (R11 derated pairing rule + its previous-week game prefetch retired in
     // v1.151 and fully removed in v1.155.)
 
@@ -651,10 +647,15 @@ export async function POST(request: NextRequest) {
           // the ordinary pool comes up empty. Applying the same
           // allowance + weekly cap here, to any non-C candidate joining
           // a game that already has a C player, closes that gap.
+          // v1.236: cGamesLimit === null now means Unlimited (season
+          // total) — the season-wide floor it used to fall back to was
+          // retired since every player has their own explicit value.
+          // The 1-per-week cap is a separate, always-enforced rule.
           if (p.skillLevel !== "C" && sc > 0) {
-            const seasonACCount = acGameCounts.get(p.id) ?? 0;
-            const allowance = p.cGamesLimit ?? minACPerNonCGamesOk;
-            if (seasonACCount >= allowance) return false;
+            if (p.cGamesLimit != null) {
+              const seasonACCount = acGameCounts.get(p.id) ?? 0;
+              if (seasonACCount >= p.cGamesLimit) return false;
+            }
             if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
           }
         }
@@ -793,8 +794,8 @@ export async function POST(request: NextRequest) {
     // pool, never touching Pass 2.8's cap check at all. Track every
     // non-C player's presence in a C-adjacent game AT INSERTION TIME,
     // regardless of which pass placed them, so the season cap
-    // (cGamesLimit / minACPerNonCGamesOk) and the 1-per-week cap apply
-    // equally to A and B. `cGameCountedForGame` guards against double-
+    // (cGamesLimit) and the 1-per-week cap apply equally to A and B.
+    // `cGameCountedForGame` guards against double-
     // counting the same game for the same player (insertion order can
     // place the C player before or after the A/B player).
     const cGameCountedForGame = new Map<number, Set<number>>();
@@ -1030,17 +1031,20 @@ export async function POST(request: NextRequest) {
         }
         if (candidate.skillLevel === "B" && sa > 0 && sc > 0) return false;
 
-        // v1.221: season C-games cap (cGamesLimit / minACPerNonCGamesOk)
-        // was never applied to group-member fill-in here, so a non-C
-        // member of a C anchor's group (e.g. a B player parked on a C
-        // anchor's roster) could be swept into that anchor's game every
-        // week all season, blowing past the cap that Pass 1/2 already
-        // enforces for the same player via the ordinary pool. Apply the
-        // same allowance + weekly cap here, mirroring the Pass 1/2 check.
+        // v1.221: season C-games cap (cGamesLimit) was never applied to
+        // group-member fill-in here, so a non-C member of a C anchor's
+        // group (e.g. a B player parked on a C anchor's roster) could
+        // be swept into that anchor's game every week all season,
+        // blowing past the cap that Pass 1/2 already enforces for the
+        // same player via the ordinary pool. Apply the same cap +
+        // weekly check here, mirroring the Pass 1/2 check. v1.236:
+        // cGamesLimit === null means Unlimited (season total); the
+        // 1-per-week cap still always applies.
         if (candidate.skillLevel !== "C" && sc > 0) {
-          const seasonACCount = acGameCounts.get(candidate.id) ?? 0;
-          const allowance = candidate.cGamesLimit ?? minACPerNonCGamesOk;
-          if (seasonACCount >= allowance) return false;
+          if (candidate.cGamesLimit != null) {
+            const seasonACCount = acGameCounts.get(candidate.id) ?? 0;
+            if (seasonACCount >= candidate.cGamesLimit) return false;
+          }
           if ((cGameWtdCounts.get(candidate.id) ?? 0) > 0) return false;
         }
         return true;
@@ -1433,11 +1437,10 @@ export async function POST(request: NextRequest) {
               return pl?.skillLevel === "C";
             });
             if (hasCPlayer) {
-              // v1.212 simplified model, v1.220 extended to B:
-              //   - Every non-C player has ONE allowance:
-              //       cGamesLimit ?? seasonFloor (minACPerNonCGamesOk)
-              //     Where cGamesLimit is a per-player season max
-              //     (nullable — falls back to the season floor).
+              // v1.212 simplified model, v1.220 extended to B, v1.236
+              // dropped the season-floor fallback:
+              //   - Every non-C player has ONE allowance: cGamesLimit
+              //     (nullable — null means Unlimited for that player).
               //     Admins can shield a specific player from C games
               //     by setting their cGamesLimit to 0.
               //   - The season cap and the 1-per-week cap are already

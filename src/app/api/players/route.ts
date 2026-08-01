@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
         noEarlyGames: noEarlyGames ?? false,
         noVacationMakeup: noVacationMakeup ?? false,
         cGamesOk: cGamesOk ?? false,
-        cGamesLimit: cGamesLimit ?? 1,
+        cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : null,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
         preassignedGamesWanted: preassignedGamesWanted || null,

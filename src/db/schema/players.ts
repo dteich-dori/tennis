@@ -24,7 +24,7 @@ export const players = sqliteTable("players", {
   // and lose the games they miss on vacation, same as pre-v1.2xx behavior.
   noVacationMakeup: integer("no_vacation_makeup", { mode: "boolean" }).notNull().default(false),
   cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
-  cGamesLimit: integer("c_games_limit").default(1), // max A+C games per season for this cGamesOk player; null = use season default
+  cGamesLimit: integer("c_games_limit"), // max A+C games per season for a non-C player joining a C game; null = Unlimited. No effect on C players themselves.
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
   groupPct: integer("group_pct").notNull().default(0), // 0, 25, 50, 100 — percentage of games filled from preferred group
   preassignedGamesWanted: integer("preassigned_games_wanted"), // null = not set; 1–50 = target pre-assigned games for subs

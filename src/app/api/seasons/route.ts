@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number; allowCapOverrideAtSeasonEnd?: boolean; allowedCompositions?: string[] | null; minACPerNonCGamesOk?: number };
-    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek, allowCapOverrideAtSeasonEnd, allowedCompositions, minACPerNonCGamesOk } = body;
+    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number; allowCapOverrideAtSeasonEnd?: boolean; allowedCompositions?: string[] | null };
+    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek, allowCapOverrideAtSeasonEnd, allowedCompositions } = body;
 
     const date = new Date(startDate + "T00:00:00");
     if (date.getDay() !== 1) {
@@ -80,10 +80,10 @@ export async function PUT(request: NextRequest) {
     const endDate = new Date(date);
     endDate.setDate(endDate.getDate() + totalWeeks * 7 - 1);
 
-    // v1.208 / v1.210: self-heal the seasons table if new columns
-    // aren't yet present. Runs at most once per PUT that references
-    // the newer settings; the PRAGMA is cheap.
-    if (allowedCompositions !== undefined || minACPerNonCGamesOk !== undefined) {
+    // v1.208: self-heal the seasons table if new columns aren't yet
+    // present. Runs at most once per PUT that references the newer
+    // settings; the PRAGMA is cheap.
+    if (allowedCompositions !== undefined) {
       try {
         const info = (await database.run(sql`PRAGMA table_info(seasons)`)) as unknown as {
           rows: { name: string }[];
@@ -91,9 +91,6 @@ export async function PUT(request: NextRequest) {
         const cols = new Set((info.rows ?? []).map((r) => r.name));
         if (!cols.has("allowed_compositions")) {
           await database.run(sql`ALTER TABLE \`seasons\` ADD COLUMN \`allowed_compositions\` text`);
-        }
-        if (!cols.has("min_ac_per_non_c_games_ok")) {
-          await database.run(sql`ALTER TABLE \`seasons\` ADD COLUMN \`min_ac_per_non_c_games_ok\` integer DEFAULT 1 NOT NULL`);
         }
       } catch (err) {
         console.warn("[seasons PUT] failed to ensure new season columns:", err);
@@ -120,8 +117,6 @@ export async function PUT(request: NextRequest) {
             : allowedCompositions === null
               ? null
               : JSON.stringify(allowedCompositions),
-        minACPerNonCGamesOk:
-          minACPerNonCGamesOk !== undefined ? minACPerNonCGamesOk : undefined,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(seasons.id, id))
