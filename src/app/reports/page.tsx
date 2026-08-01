@@ -672,7 +672,14 @@ export default function ReportsPage() {
         return;
       }
 
-      generateCompositionByPlayerPdf(data.compositions, data.rows, season, season.scheduleVersion);
+      generateCompositionByPlayerPdf(
+        data.compositions,
+        data.rows,
+        season,
+        season.scheduleVersion,
+        data.incompleteGames ?? 0,
+        data.incompleteSlots ?? 0
+      );
     } catch {
       setError("Failed to generate Game-Level Distribution report.");
     }

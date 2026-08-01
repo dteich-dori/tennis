@@ -61,8 +61,14 @@ export async function GET(request: NextRequest) {
     // violation, not just an unused option) stay visible there instead of
     // silently vanishing from each player's total.
     let hasOtherGames = false;
+    let incompleteGames = 0;
+    let incompleteSlots = 0;
     for (const roster of byGame.values()) {
-      if (roster.length !== 4) continue; // only completed games
+      if (roster.length !== 4) {
+        incompleteGames++;
+        incompleteSlots += 4 - roster.length;
+        continue; // only completed games count toward composition
+      }
       const rawKey = roster.map((r) => r.skillLevel).sort().join("");
       const compKey = allowedSet.has(rawKey) ? rawKey : "OTHER";
       if (compKey === "OTHER") hasOtherGames = true;
@@ -91,7 +97,7 @@ export async function GET(request: NextRequest) {
       compositions.push({ key: "OTHER", description: "Disallowed composition (rule violation)" });
     }
 
-    return NextResponse.json({ compositions, rows });
+    return NextResponse.json({ compositions, rows, incompleteGames, incompleteSlots });
   } catch (error) {
     console.error("Composition-by-player report error:", error);
     return NextResponse.json({ error: "Failed to generate composition-by-player report" }, { status: 500 });

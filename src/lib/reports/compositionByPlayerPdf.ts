@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
 import { stampScheduleMark } from "./scheduleMark";
+import { APP_VERSION } from "@/lib/version";
 
 interface CompositionInfo {
   key: string;
@@ -34,7 +35,9 @@ export function generateCompositionByPlayerPdf(
   compositions: CompositionInfo[],
   rows: PlayerRow[],
   season: Season,
-  scheduleMark?: number
+  scheduleMark?: number,
+  incompleteGames?: number,
+  incompleteSlots?: number
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -71,6 +74,18 @@ export function generateCompositionByPlayerPdf(
 
   const cols = [...compositions, { key: "TOTAL", description: "Total games" }];
 
+  // Column totals across ALL players (not just the current page)
+  const colTotals: Record<string, number> = {};
+  let grandTotal = 0;
+  for (const c of compositions) colTotals[c.key] = 0;
+  for (const r of sortedRows) {
+    for (const c of compositions) {
+      const n = r.counts[c.key] ?? 0;
+      colTotals[c.key] += n;
+      grandTotal += n;
+    }
+  }
+
   const marginLeft = 20;
   const marginRight = 10;
   const headerBottom = 22;
@@ -82,13 +97,68 @@ export function generateCompositionByPlayerPdf(
   const availableWidth = pageWidth - marginLeft - marginRight - rowHeaderWidth - skillColWidth;
   const colWidth = Math.max(24, Math.min(availableWidth / cols.length, 44));
   const rowHeight = 14;
-  const rowsPerPage = Math.max(1, Math.floor((footerTop - headerBottom - headerRowHeight) / rowHeight));
+  // Reserve room below the data rows on every page for the totals row +
+  // the incomplete-games/slots summary line, so the last page never runs
+  // out of space mid-footer.
+  const footerReserve = rowHeight + 16;
+  const rowsPerPage = Math.max(
+    1,
+    Math.floor((footerTop - headerBottom - headerRowHeight - footerReserve) / rowHeight)
+  );
 
   const totalPages = Math.ceil(sortedRows.length / rowsPerPage);
+
+  // Draws one grid row (player data, or the TOTALS row) at the given y.
+  function drawGridRow(
+    y: number,
+    label: string,
+    skillLevel: string,
+    getCount: (colKey: string) => number,
+    isTotalsRow: boolean
+  ) {
+    doc.setFontSize(8);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", isTotalsRow ? "bold" : "normal");
+    doc.text(label, marginLeft + rowHeaderWidth - 4, y + rowHeight / 2 + 3, { align: "right" });
+    if (skillLevel) {
+      doc.setFont("helvetica", "bold");
+      doc.text(skillLevel, marginLeft + rowHeaderWidth + skillColWidth / 2, y + rowHeight / 2 + 3, {
+        align: "center",
+      });
+    }
+
+    const gridX = marginLeft + rowHeaderWidth + skillColWidth;
+    for (let col = 0; col < cols.length; col++) {
+      const x = gridX + col * colWidth;
+      const isTotalCol = cols[col].key === "TOTAL";
+      const count = getCount(cols[col].key);
+
+      if (isTotalsRow) {
+        doc.setFillColor(210, 210, 220);
+      } else if (isTotalCol) {
+        doc.setFillColor(230, 230, 230);
+      } else {
+        const [cr, cg, cb] = getCellColor(count);
+        doc.setFillColor(cr, cg, cb);
+      }
+      doc.rect(x, y, colWidth, rowHeight, "F");
+      doc.setDrawColor(isTotalsRow ? 120 : 200, isTotalsRow ? 120 : 200, isTotalsRow ? 120 : 200);
+      doc.setLineWidth(isTotalsRow ? 0.6 : 0.3);
+      doc.rect(x, y, colWidth, rowHeight, "S");
+
+      if (count > 0) {
+        doc.setFontSize(7);
+        doc.setFont("helvetica", isTotalsRow || isTotalCol ? "bold" : "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(String(count), x + colWidth / 2, y + rowHeight / 2 + 2.5, { align: "center" });
+      }
+    }
+  }
 
   for (let page = 0; page < totalPages; page++) {
     if (page > 0) doc.addPage();
     const pageRows = sortedRows.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+    const isLastPage = page === totalPages - 1;
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
@@ -100,6 +170,11 @@ export function generateCompositionByPlayerPdf(
       14,
       { align: "center" }
     );
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    doc.text(`v${APP_VERSION}`, marginLeft, 14);
+    doc.setTextColor(0, 0, 0);
 
     const gridX = marginLeft + rowHeaderWidth + skillColWidth;
     const gridY = headerBottom + headerRowHeight;
@@ -113,55 +188,46 @@ export function generateCompositionByPlayerPdf(
       doc.text(cols[col].key, x, gridY - 6, { align: "center" });
     }
 
-    // Row headers (name + skill level) and cells
-    doc.setFont("helvetica", "normal");
+    // Player rows
     for (let row = 0; row < pageRows.length; row++) {
       const r = pageRows[row];
       const y = gridY + row * rowHeight;
-
-      doc.setFontSize(8);
-      doc.setTextColor(0, 0, 0);
-      doc.text(getDisplayName(r), marginLeft + rowHeaderWidth - 4, y + rowHeight / 2 + 3, { align: "right" });
-      doc.setFont("helvetica", "bold");
-      doc.text(r.skillLevel, marginLeft + rowHeaderWidth + skillColWidth / 2, y + rowHeight / 2 + 3, {
-        align: "center",
-      });
-      doc.setFont("helvetica", "normal");
-
       let total = 0;
-      for (let col = 0; col < compositions.length; col++) {
-        total += r.counts[compositions[col].key] ?? 0;
-      }
-
-      for (let col = 0; col < cols.length; col++) {
-        const x = gridX + col * colWidth;
-        const isTotal = cols[col].key === "TOTAL";
-        const count = isTotal ? total : r.counts[cols[col].key] ?? 0;
-
-        if (isTotal) {
-          doc.setFillColor(230, 230, 230);
-        } else {
-          const [cr, cg, cb] = getCellColor(count);
-          doc.setFillColor(cr, cg, cb);
-        }
-        doc.rect(x, y, colWidth, rowHeight, "F");
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.3);
-        doc.rect(x, y, colWidth, rowHeight, "S");
-
-        if (count > 0) {
-          doc.setFontSize(7);
-          doc.setFont("helvetica", isTotal ? "bold" : "normal");
-          doc.setTextColor(0, 0, 0);
-          doc.text(String(count), x + colWidth / 2, y + rowHeight / 2 + 2.5, { align: "center" });
-        }
-      }
+      for (const c of compositions) total += r.counts[c.key] ?? 0;
+      drawGridRow(
+        y,
+        getDisplayName(r),
+        r.skillLevel,
+        (colKey) => (colKey === "TOTAL" ? total : r.counts[colKey] ?? 0),
+        false
+      );
     }
 
-    // Vertical divider between row headers and the grid, and after skill column
+    // Vertical divider between row headers and the grid
     doc.setDrawColor(150, 150, 150);
     doc.setLineWidth(0.5);
     doc.line(marginLeft + rowHeaderWidth, gridY - headerRowHeight, marginLeft + rowHeaderWidth, gridY + pageRows.length * rowHeight);
+
+    if (isLastPage) {
+      const totalsY = gridY + pageRows.length * rowHeight + 4;
+      drawGridRow(
+        totalsY,
+        "TOTAL",
+        "",
+        (colKey) => (colKey === "TOTAL" ? grandTotal : colTotals[colKey] ?? 0),
+        true
+      );
+
+      const summaryY = totalsY + rowHeight + 12;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(0, 0, 0);
+      doc.text(
+        `Incomplete games: ${incompleteGames ?? 0}    Incomplete slots: ${incompleteSlots ?? 0}`,
+        marginLeft,
+        summaryY
+      );
+    }
   }
 
   openPdfWithName(doc, `Composition-By-Player-${startYear}-${endYear}`, "Brooklake Game-Level Distribution");
