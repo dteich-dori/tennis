@@ -13,6 +13,7 @@ import { generateGamesByPlayerPdf } from "@/lib/reports/gamesByPlayerPdf";
 import { generateWeeklyGameCountsPdf } from "@/lib/reports/weeklyGameCountsPdf";
 import { generateExceptionsPdf } from "@/lib/reports/exceptionsPdf";
 import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
+import { generateCompositionByPlayerPdf } from "@/lib/reports/compositionByPlayerPdf";
 
 interface Season {
   id: number;
@@ -651,6 +652,34 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleCompositionByPlayerReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("compositionByPlayer");
+
+    try {
+      const res = await fetch(`/api/games/composition-by-player?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to load composition-by-player data.");
+        setGenerating(null);
+        return;
+      }
+      const data = await res.json();
+
+      if (!data.rows || data.rows.length === 0) {
+        setError("No player data available. Assign players to games first.");
+        setGenerating(null);
+        return;
+      }
+
+      generateCompositionByPlayerPdf(data.compositions, data.rows, season, season.scheduleVersion);
+    } catch {
+      setError("Failed to generate Game-Level Distribution report.");
+    }
+
+    setGenerating(null);
+  };
+
   if (!season) {
     return (
       <div>
@@ -843,6 +872,21 @@ export default function ReportsPage() {
             className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
             {generating === "composition" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
+        {/* Composition By Player Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Game-Level Distribution</h2>
+          <p className="text-sm text-muted mb-4">
+            For each player, how many completed games fall into each skill-level composition (AAAA, BBBB, AABC, etc.).
+          </p>
+          <button
+            onClick={handleCompositionByPlayerReport}
+            disabled={generating === "compositionByPlayer"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "compositionByPlayer" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
 
