@@ -1165,9 +1165,23 @@ export async function POST(request: NextRequest) {
             const distinctTiers = new Set(levels).size;
             return distinctTiers === 1 ? 0 : 1;
           }
+          // v1.230: AACC (2A+2C, "the classic exception") is a
+          // deliberately blessed composition, not a lesser fallback —
+          // but games fill one slot at a time, so a mid-build state
+          // like [C,C]+A (1A/2C, needs 1 more A) used to fall into the
+          // generic "no bridge" bucket below and lose to a B every
+          // time, even though it was one slot from a perfectly legal
+          // AACC. Score any state that can STILL reach exactly 2A+2C
+          // with the slots remaining (including the completed roster
+          // itself) the same as an adjacent-tier mix, so the algorithm
+          // doesn't bail to a B-bridge partway through building it.
+          const remaining = 4 - hypothetical.length;
+          const canReachAACC =
+            bCount === 0 && aCount <= 2 && cCount <= 2 && 2 - aCount + (2 - cCount) === remaining;
+          if (canReachAACC) return 1;
           if (bCount >= 2) return 2; // bridged but still A+C
           if (bCount === 1) return 3; // weakly bridged
-          return 4; // no bridge — worst
+          return 4; // no bridge, can't reach AACC — worst (AAAC/ACCC lopsided splits)
         }
 
         return [...players].sort((a, b) => {
