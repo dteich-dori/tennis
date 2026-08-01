@@ -17,7 +17,6 @@ interface Season {
   daysPerWeek?: number;
   allowCapOverrideAtSeasonEnd?: boolean;
   allowedCompositions?: string | null;
-  minACPerNonCGamesOk?: number;
 }
 
 interface Holiday {
@@ -68,8 +67,6 @@ export default function SeasonPage() {
     new Set()
   );
   const [compositionsMessage, setCompositionsMessage] = useState<string>("");
-  // v1.210: minimum A+C games per season for non-cGamesOk A/B players.
-  const [minACPerNonCGamesOk, setMinACPerNonCGamesOk] = useState<string>("1");
 
   // Regenerate games state
   const [generating, setGenerating] = useState(false);
@@ -142,9 +139,6 @@ export default function SeasonPage() {
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
       setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
       setAllowCapOverrideAtSeasonEnd(!!latest.allowCapOverrideAtSeasonEnd);
-      setMinACPerNonCGamesOk(
-        latest.minACPerNonCGamesOk != null ? String(latest.minACPerNonCGamesOk) : "1"
-      );
       // Parse allowed compositions (JSON array), fall back to defaults if
       // NULL or malformed.
       try {
@@ -328,25 +322,6 @@ export default function SeasonPage() {
       }),
     });
   }, [allowCapOverrideAtSeasonEnd, activeSeason]);
-
-  // Auto-save minACPerNonCGamesOk selector (v1.210)
-  const minACInitialized = useRef(false);
-  useEffect(() => {
-    if (!activeSeason) return;
-    if (!minACInitialized.current) {
-      minACInitialized.current = true;
-      return;
-    }
-    fetch("/api/seasons", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: activeSeason.id,
-        startDate: activeSeason.startDate,
-        minACPerNonCGamesOk: parseInt(minACPerNonCGamesOk) || 0,
-      }),
-    });
-  }, [minACPerNonCGamesOk, activeSeason]);
 
   // Auto-save allowedCompositions grid. If the save succeeds we clear
   // the "Saved." tick after 1.5s; if it fails we KEEP the red banner
@@ -1274,40 +1249,6 @@ export default function SeasonPage() {
               </p>
             </div>
           </div>
-        </div>
-
-        {/* C-Games settings (v1.212 simplified). One knob: the season
-            floor for every A/B player. Per-player overrides live on the
-            player edit form via cGamesLimit. The old maxCGamesPerWeek,
-            maxCGamesPerWeek1x, and maxACGamesPerSeason DB columns are
-            retained for schema compatibility but the algorithm ignores
-            them; the setter dropdowns are removed to reduce confusion. */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
-          <div className="flex gap-4 items-end">
-            <div>
-              <label className="block text-sm font-medium text-blue-800 mb-1">
-                C games minimum
-              </label>
-              <select
-                value={minACPerNonCGamesOk}
-                onChange={(e) => setMinACPerNonCGamesOk(e.target.value)}
-                className="border border-blue-300 rounded px-3 py-2 text-sm bg-white"
-                title="Minimum A+C games per season for every A/B player. Per-player overrides go on the player edit form (Max C-games per season). Hard cap of 1 C-game per week per player is always enforced."
-              >
-                <option value="0">0 (opt-in only)</option>
-                <option value="1">1 per season (recommended)</option>
-                <option value="2">2 per season</option>
-                <option value="3">3 per season</option>
-              </select>
-            </div>
-          </div>
-          <p className="text-[11px] text-blue-800/70 mt-2">
-            Every A/B player plays at least this many C-adjacent games
-            per season. Per-player overrides live on the player edit
-            form as <strong>Max C-games per season</strong> — set that
-            higher for eager players, or 0 to shield someone entirely.
-            A hard cap of 1 C-game/week/player is always enforced.
-          </p>
         </div>
 
         {/* Allowed compositions grid (v1.204) */}
