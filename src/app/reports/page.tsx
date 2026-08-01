@@ -679,7 +679,8 @@ export default function ReportsPage() {
         season,
         season.scheduleVersion,
         data.incompleteGames ?? 0,
-        data.incompleteSlots ?? 0
+        data.incompleteSlots ?? 0,
+        data.incompleteGameRows ?? []
       );
     } catch {
       setError("Failed to generate Game-Level Distribution report.");

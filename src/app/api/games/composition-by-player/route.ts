@@ -28,26 +28,29 @@ export async function GET(request: NextRequest) {
       .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
 
     const gameRows = await database
-      .select({ gameId: games.id })
+      .select({ gameId: games.id, weekNumber: games.weekNumber, gameNumber: games.gameNumber })
       .from(games)
       .where(and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(games.group, "dons")));
+    const gameInfoById = new Map(gameRows.map((g) => [g.gameId, g]));
 
     const assignmentRows = await database
       .select({
         gameId: gameAssignments.gameId,
         playerId: gameAssignments.playerId,
         skillLevel: players.skillLevel,
+        firstName: players.firstName,
+        lastName: players.lastName,
       })
       .from(gameAssignments)
       .innerJoin(players, eq(gameAssignments.playerId, players.id))
       .innerJoin(games, eq(gameAssignments.gameId, games.id))
       .where(and(eq(games.seasonId, sid), eq(games.status, "normal"), eq(games.group, "dons")));
 
-    const byGame = new Map<number, { playerId: number; skillLevel: string }[]>();
+    const byGame = new Map<number, { playerId: number; skillLevel: string; firstName: string; lastName: string }[]>();
     for (const row of gameRows) byGame.set(row.gameId, []);
     for (const row of assignmentRows) {
       const arr = byGame.get(row.gameId);
-      if (arr) arr.push({ playerId: row.playerId, skillLevel: row.skillLevel });
+      if (arr) arr.push({ playerId: row.playerId, skillLevel: row.skillLevel, firstName: row.firstName, lastName: row.lastName });
     }
 
     // playerId -> compositionKey -> count
@@ -63,10 +66,17 @@ export async function GET(request: NextRequest) {
     let hasOtherGames = false;
     let incompleteGames = 0;
     let incompleteSlots = 0;
-    for (const roster of byGame.values()) {
+    const incompleteGameRows: { weekNumber: number; gameNumber: number; players: string[] }[] = [];
+    for (const [gameId, roster] of byGame) {
       if (roster.length !== 4) {
         incompleteGames++;
         incompleteSlots += 4 - roster.length;
+        const info = gameInfoById.get(gameId);
+        incompleteGameRows.push({
+          weekNumber: info?.weekNumber ?? 0,
+          gameNumber: info?.gameNumber ?? 0,
+          players: roster.map((r) => `${r.firstName} ${r.lastName} (${r.skillLevel})`),
+        });
         continue; // only completed games count toward composition
       }
       const rawKey = roster.map((r) => r.skillLevel).sort().join("");
@@ -97,7 +107,15 @@ export async function GET(request: NextRequest) {
       compositions.push({ key: "OTHER", description: "Disallowed composition (rule violation)" });
     }
 
-    return NextResponse.json({ compositions, rows, incompleteGames, incompleteSlots });
+    incompleteGameRows.sort((a, b) => a.weekNumber - b.weekNumber || a.gameNumber - b.gameNumber);
+
+    return NextResponse.json({
+      compositions,
+      rows,
+      incompleteGames,
+      incompleteSlots,
+      incompleteGameRows,
+    });
   } catch (error) {
     console.error("Composition-by-player report error:", error);
     return NextResponse.json({ error: "Failed to generate composition-by-player report" }, { status: 500 });

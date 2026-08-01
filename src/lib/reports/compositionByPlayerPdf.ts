@@ -21,6 +21,12 @@ interface Season {
   endDate: string;
 }
 
+interface IncompleteGameRow {
+  weekNumber: number;
+  gameNumber: number;
+  players: string[];
+}
+
 function getCellColor(count: number): [number, number, number] {
   if (count <= 0) return [255, 255, 255];
   if (count <= 2) return [220, 245, 220];
@@ -37,7 +43,8 @@ export function generateCompositionByPlayerPdf(
   season: Season,
   scheduleMark?: number,
   incompleteGames?: number,
-  incompleteSlots?: number
+  incompleteSlots?: number,
+  incompleteGameRows?: IncompleteGameRow[]
 ): void {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -227,6 +234,47 @@ export function generateCompositionByPlayerPdf(
         marginLeft,
         summaryY
       );
+    }
+  }
+
+  if (incompleteGameRows && incompleteGameRows.length > 0) {
+    doc.addPage();
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Incomplete Games — ${startYear} - ${endYear}`, pageWidth / 2, 14, { align: "center" });
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    doc.text(`v${APP_VERSION}`, marginLeft, 14);
+
+    const listHeaderY = headerBottom + 14;
+    const weekColX = marginLeft;
+    const gameColX = marginLeft + 60;
+    const playersColX = marginLeft + 130;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Week", weekColX, listHeaderY);
+    doc.text("Game #", gameColX, listHeaderY);
+    doc.text("Assigned Players", playersColX, listHeaderY);
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.5);
+    doc.line(marginLeft, listHeaderY + 4, pageWidth - marginRight, listHeaderY + 4);
+
+    let y = listHeaderY + 18;
+    doc.setFont("helvetica", "normal");
+    for (const g of incompleteGameRows) {
+      if (y > footerTop - 10) {
+        doc.addPage();
+        y = headerBottom + 18;
+      }
+      doc.setFontSize(9);
+      doc.text(String(g.weekNumber), weekColX, y);
+      doc.text(String(g.gameNumber), gameColX, y);
+      doc.text(g.players.join(", "), playersColX, y);
+      y += 16;
     }
   }
 
