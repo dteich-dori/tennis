@@ -65,6 +65,7 @@ export default function ReportsPage() {
   const [gamesWeekStart, setGamesWeekStart] = useState(1);
   const [gamesWeekEnd, setGamesWeekEnd] = useState(36);
   const [hideAColumns, setHideAColumns] = useState(false);
+  const [activeTab, setActiveTab] = useState<"GAMES" | "ANALYSIS" | "PLAYERS" | "COURTS" | "COSTS">("GAMES");
 
   const loadSeason = useCallback(async () => {
     try {
@@ -720,7 +721,25 @@ export default function ReportsPage() {
         </div>
       )}
 
+      <div className="flex gap-1 border-b border-border mb-4">
+        {(["GAMES", "ANALYSIS", "PLAYERS", "COURTS", "COSTS"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-4 max-w-2xl">
+        {activeTab === "GAMES" && (
+        <>
         {/* Games By Date Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Games By Date</h2>
@@ -819,7 +838,11 @@ export default function ReportsPage() {
             {generating === "weeklyGameCounts" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+        </>
+        )}
 
+        {activeTab === "ANALYSIS" && (
+        <>
         {/* Player Statistics Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Player Statistics</h2>
@@ -896,7 +919,11 @@ export default function ReportsPage() {
             {generating === "compositionByPlayer" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+        </>
+        )}
 
+        {activeTab === "PLAYERS" && (
+        <>
         {/* Players List Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Players List</h2>
@@ -941,7 +968,11 @@ export default function ReportsPage() {
             {generating === "playerAvailability" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+        </>
+        )}
 
+        {activeTab === "ANALYSIS" && (
+        <>
         {/* C-Slot Diagnosis Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">C-Slot Diagnosis</h2>
@@ -976,7 +1007,11 @@ export default function ReportsPage() {
             {generating === "incompleteGames" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+        </>
+        )}
 
+        {activeTab === "COSTS" && (
+        <>
         {/* Twilio SMS Cost Estimate Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Twilio SMS Cost Estimate</h2>
@@ -991,7 +1026,11 @@ export default function ReportsPage() {
             Open Estimator
           </a>
         </div>
+        </>
+        )}
 
+        {activeTab === "COURTS" && (
+        <>
         {/* Court Schedule Report Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Court Schedule</h2>
@@ -1006,6 +1045,8 @@ export default function ReportsPage() {
             {generating === "courtSchedule" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
