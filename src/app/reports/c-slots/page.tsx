@@ -53,16 +53,16 @@ interface DiagnosisCandidate {
 }
 
 // Tunable rulings — surface these because the admin can act on them
-// (loosen a season limit, tweak a weekly cap, or acknowledge the
-// algorithmic AACC hard rule). Immutable rulings (blocked-day, on
-// vacation, playing same date, do-not-pair) are filtered out
+// (loosen a player's C-games cap, or check the Allowed Skill
+// Compositions grid on Season Setup). Immutable rulings (blocked-day,
+// on vacation, playing same date, do-not-pair) are filtered out
 // entirely — showing them was noise since the admin can't do
 // anything about them from Season Setup.
 const RULE_LABELS: Record<string, string> = {
   eligible: "Eligible (should have filled)",
   seasonACapReached: "Season A+C cap reached",
   weeklyCCapReached: "Weekly C-game cap reached",
-  compositionBlocked: "AACC composition blocked",
+  compositionBlocked: "Composition blocked (Allowed Compositions grid)",
 };
 const RULE_COLORS: Record<string, string> = {
   eligible: "bg-green-100 text-green-800 border-green-300",
@@ -147,12 +147,12 @@ export default function CSlotDiagnosisPage() {
       </div>
 
       <p className="text-sm text-gray-600 mb-4">
-        For every incomplete Don&rsquo;s game that has a C player (or is
-        heading toward AACC composition), this walks every cGamesOk A/B
-        player in the season and records which rule blocked them from
-        filling an empty slot. Use it to identify whether the current
-        settings are too tight, or whether the candidate pool is simply
-        too small.
+        For every incomplete Don&rsquo;s game that has a C player (or could
+        still reach a C-inclusive composition allowed by the Season Setup
+        grid), this walks every cGamesOk A/B player in the season and
+        records which rule blocked them from filling an empty slot. Use it
+        to identify whether the current settings are too tight, or whether
+        the candidate pool is simply too small.
       </p>
 
       {seasons.length > 1 && (

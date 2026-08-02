@@ -10,6 +10,7 @@ import {
   seasons,
 } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { COMPOSITIONS, parseAllowedCompositions, canReachAllowed } from "@/lib/compositions";
 
 /**
  * GET /api/reports/c-slot-diagnosis?seasonId=N
@@ -33,8 +34,12 @@ import { and, eq, inArray } from "drizzle-orm";
  *   4. Already playing another game on the same date
  *   5. Season C-game cap (per-player cGamesLimit) already reached
  *   6. Weekly C-game cap (hard 1-per-week, always enforced)
- *   7. AACC composition trajectory blocked (game state can't reach AACC
- *      with this candidate — e.g., a B is already assigned)
+ *   7. Composition trajectory blocked — adding this candidate, can the
+ *      game still reach one of the season's actual Allowed Skill
+ *      Compositions (Season Setup grid) with the remaining slots,
+ *      given who else is realistically available that day? Mirrors
+ *      auto-assign's canReachAllowed check exactly, including the
+ *      same-day pool feasibility tightening.
  *   8. Do-not-pair conflict with someone already in this game
  *   9. Otherwise: ELIGIBLE — could have been auto-assigned but wasn't
  *      (usually because a higher-priority player took the slot or the
@@ -109,6 +114,15 @@ export async function GET(request: NextRequest) {
 
     const [season] = await database.select().from(seasons).where(eq(seasons.id, seasonId));
     if (!season) return NextResponse.json({ error: "Season not found" }, { status: 404 });
+
+    // The season's actual Allowed Skill Compositions grid (Season Setup).
+    // NULL falls back to the same DEFAULT_ALLOWED_KEYS auto-assign uses.
+    const allowedCompositionSet = parseAllowedCompositions(season.allowedCompositions ?? null);
+    // Subset of allowed keys that include at least one C — used to test
+    // whether a currently C-less game could still become C-adjacent.
+    const cInclusiveAllowedSet = new Set(
+      COMPOSITIONS.filter((comp) => comp.c > 0 && allowedCompositionSet.has(comp.key)).map((comp) => comp.key)
+    );
 
     // Load Don's games (normal status) for this season
     const donsGames = await database
@@ -188,6 +202,23 @@ export async function GET(request: NextRequest) {
     // The cGamesOk A/B candidate pool (only these can EVER be in a C game)
     const candidatePool = allPlayers.filter((p) => p.cGamesOk && p.skillLevel !== "C");
 
+    // Same-day pool of A/B/C bodies actually available that date, excluding
+    // whoever's already in the game plus the candidate under evaluation —
+    // mirrors auto-assign's pool-feasibility tightening on canReachAllowed.
+    function computeDayPool(date: string, dayOfWeek: number, excludeIds: Set<number>) {
+      let availA = 0, availB = 0, availC = 0;
+      for (const pp of allPlayers) {
+        if (excludeIds.has(pp.id)) continue;
+        if ((blockedByPlayer.get(pp.id) ?? []).includes(dayOfWeek)) continue;
+        if ((vacsByPlayer.get(pp.id) ?? []).some((v) => date >= v.startDate && date <= v.endDate)) continue;
+        if ((datesPlayedByPlayer.get(pp.id) ?? new Set<string>()).has(date)) continue;
+        if (pp.skillLevel === "A") availA++;
+        else if (pp.skillLevel === "B") availB++;
+        else if (pp.skillLevel === "C") availC++;
+      }
+      return { availA, availB, availC };
+    }
+
     // Walk each incomplete game and diagnose
     const rows: DiagnosticGameRow[] = [];
     const blockerCounts: Record<Rule, number> = {
@@ -209,11 +240,13 @@ export async function GET(request: NextRequest) {
       const aCount = currentLevels.filter((l) => l === "A").length;
       const bCount = currentLevels.filter((l) => l === "B").length;
 
-      // Only diagnose "C-adjacent" games — those with a C, or ones that
-      // logically could still be filled with C to form an AACC
-      // trajectory. If a game has 3 A/B and no C, it isn't gated by
-      // C-player rules; skip it.
-      const isCAdjacent = cCount > 0 || (aCount === 2 && bCount === 0 && empties >= 2);
+      // Only diagnose "C-adjacent" games — those with a C already, or
+      // ones whose empty slots could still reach a C-inclusive
+      // composition from the season's actual Allowed Skill Compositions
+      // grid. If a game can never legally include a C from here, it
+      // isn't gated by C-player rules; skip it.
+      const isCAdjacent =
+        cCount > 0 || canReachAllowed(aCount, bCount, cCount, empties, cInclusiveAllowedSet);
       if (!isCAdjacent) continue;
       cAdjacentIncomplete++;
 
@@ -275,25 +308,21 @@ export async function GET(request: NextRequest) {
           ruling = "weeklyCCapReached";
           detail = "Already in a C-adjacent game this week (hard 1/week cap)";
         }
-        // 7. AACC composition trajectory blocked
-        else if (cCount > 0) {
-          // If candidate is A and existing state has a B, AACC is impossible.
-          if (cand.skillLevel === "A" && bCount > 0) {
+        // 7. Composition trajectory blocked — same canReachAllowed test
+        // auto-assign runs, against the season's actual Allowed Skill
+        // Compositions grid (not a hardcoded AACC-only assumption).
+        else {
+          const postA = aCount + (cand.skillLevel === "A" ? 1 : 0);
+          const postB = bCount + (cand.skillLevel === "B" ? 1 : 0);
+          const postC = cCount + (cand.skillLevel === "C" ? 1 : 0);
+          const remaining = empties - 1;
+          const excludeIds = new Set([...currentIds, cand.id]);
+          const pool = computeDayPool(g.date, g.dayOfWeek, excludeIds);
+          if (!canReachAllowed(postA, postB, postC, remaining, allowedCompositionSet, pool)) {
             ruling = "compositionBlocked";
-            detail = "Game already has a B; adding an A ruins AACC trajectory";
+            const shape = "A".repeat(postA) + "B".repeat(postB) + "C".repeat(postC);
+            detail = `${shape} + ${remaining} slot(s) left can't reach an allowed composition (pool that day: ${pool.availA}A/${pool.availB}B/${pool.availC}C)`;
           }
-          // If candidate is B and C is already present, B is blocked.
-          else if (cand.skillLevel === "B" && cCount > 0 && aCount > 0) {
-            ruling = "compositionBlocked";
-            detail = "Game has both A and C; B is blocked by AACC rule";
-          }
-          // AACC needs exactly 2 C's for the eventual game — if cCount > 2 already, no A/B fits.
-          else if (cCount > 2) {
-            ruling = "compositionBlocked";
-            detail = `Game has ${cCount} C's — AACC requires exactly 2`;
-          }
-          // If candidate is B and cCount == 0 and aCount >= 1, B is fine (still non-AACC path)
-          // If candidate is A and cCount === 2, this is the AACC completion path — eligible
         }
         // 8. Do-not-pair with anyone in the game
         if (ruling === "eligible") {
