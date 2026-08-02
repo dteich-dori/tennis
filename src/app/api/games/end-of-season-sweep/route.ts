@@ -238,11 +238,6 @@ export async function POST(request: NextRequest) {
           if (!(sb === 0 && sa === 2 && sc < 2)) return false;
         }
         if (p.skillLevel === "B" && sa > 0 && sc > 0) return false;
-        // v1.239: cGamesOk is the real per-player opt-in gate for C
-        // games — require it here too, matching auto-assign's ordinary
-        // pool, so a non-consenting A/B player never gets swept in via
-        // the cap-override sweep either.
-        if (p.skillLevel !== "C" && sc > 0 && !p.cGamesOk) return false;
         // Season C-games cap stays in force even with the weekly cap
         // lifted — cGamesLimit is a hard per-player season-total
         // boundary, not a weekly scheduling nicety. null = Unlimited.

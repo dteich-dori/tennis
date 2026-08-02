@@ -16,9 +16,10 @@ export const dynamic = "force-dynamic";
 /**
  * Resolve / sanitise the incoming groupAnchorId value.
  *
- * Rules (v1.134):
+ * Rules (v1.134, v1.240 — cGamesOk retired in favor of cGamesLimit):
  *   - Anchor must be a C-level player.
- *   - A member may be: any C player, OR an A/B player with cGamesOk=true.
+ *   - A member may be: any C player, OR an A/B player whose cGamesLimit
+ *     isn't 0 (0 = explicitly shielded from C games).
  *   - A player can't be their own anchor.
  *   - Anything that fails the rules is forced to null silently.
  */
@@ -26,7 +27,7 @@ async function validatedGroupAnchor(
   database: Awaited<ReturnType<typeof db>>,
   incoming: unknown,
   skillLevel: string | null | undefined,
-  cGamesOk: boolean | null | undefined,
+  cGamesLimit: number | null | undefined,
   selfPlayerId?: number
 ): Promise<number | null> {
   if (incoming == null) return null;
@@ -35,11 +36,11 @@ async function validatedGroupAnchor(
   if (selfPlayerId != null && anchorId === selfPlayerId) return null;
   // Eligibility to be a MEMBER:
   //   - C players: always
-  //   - A/B players: must have cGamesOk
+  //   - A/B players: cGamesLimit must not be 0 (0 = shielded)
   //   - Subs/other: never
   const isC = skillLevel === "C";
   const isAB = skillLevel === "A" || skillLevel === "B";
-  if (!isC && !(isAB && cGamesOk)) return null;
+  if (!isC && !(isAB && cGamesLimit !== 0)) return null;
   const [anchor] = await database
     .select({ id: players.id, skillLevel: players.skillLevel })
     .from(players)
@@ -207,7 +208,6 @@ export async function POST(request: NextRequest) {
       noConsecutiveDays,
       noEarlyGames,
       noVacationMakeup,
-      cGamesOk,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -298,7 +298,6 @@ export async function POST(request: NextRequest) {
         noConsecutiveDays: noConsecutiveDays ?? false,
         noEarlyGames: noEarlyGames ?? false,
         noVacationMakeup: noVacationMakeup ?? false,
-        cGamesOk: cGamesOk ?? false,
         cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : null,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
@@ -309,15 +308,15 @@ export async function POST(request: NextRequest) {
         smsOptOutAt: smsOptOut ? new Date().toISOString() : null,
         smsOptOutReason: smsOptOut ? "Set at player creation" : null,
         // Group anchor: enforce eligibility rules at write time.
-        // - A/B players with cGamesOk=true may have an anchor pointing
-        //   to a C player.
-        // - Anyone else (subs, non-cGamesOk, C players themselves) gets
+        // - A/B players with cGamesLimit !== 0 may have an anchor
+        //   pointing to a C player.
+        // - Anyone else (subs, shielded (0), C players themselves) gets
         //   their anchor forced to null.
         groupAnchorId: await validatedGroupAnchor(
           database,
           groupAnchorId,
           skillLevel,
-          cGamesOk,
+          cGamesLimit !== undefined ? cGamesLimit : null,
           undefined
         ),
       })
@@ -408,7 +407,6 @@ export async function PUT(request: NextRequest) {
       noConsecutiveDays,
       noEarlyGames,
       noVacationMakeup,
-      cGamesOk,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -453,7 +451,6 @@ export async function PUT(request: NextRequest) {
       noConsecutiveDays: noConsecutiveDays !== undefined ? noConsecutiveDays : currentPlayer.noConsecutiveDays,
       noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
       noVacationMakeup: noVacationMakeup !== undefined ? noVacationMakeup : currentPlayer.noVacationMakeup,
-      cGamesOk: cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
       cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
       groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,
@@ -486,13 +483,13 @@ export async function PUT(request: NextRequest) {
               : "Do-not-text toggled off via player form")
           : currentPlayer.smsOptOutReason,
       // Group anchor — same eligibility rule as on POST. Note that any
-      // edit that flips cGamesOk to false (or changes skill away from
+      // edit that sets cGamesLimit to 0 (or changes skill away from
       // A/B) auto-clears the anchor.
       groupAnchorId: await validatedGroupAnchor(
         database,
         groupAnchorId !== undefined ? groupAnchorId : currentPlayer.groupAnchorId,
         skillLevel ?? currentPlayer.skillLevel,
-        cGamesOk !== undefined ? cGamesOk : currentPlayer.cGamesOk,
+        cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
         id
       ),
     };

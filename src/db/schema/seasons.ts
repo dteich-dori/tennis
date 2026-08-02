@@ -6,9 +6,12 @@ export const seasons = sqliteTable("seasons", {
   startDate: text("start_date").notNull(), // ISO date string, must be a Monday
   endDate: text("end_date").notNull(), // Auto-calculated: startDate + totalWeeks weeks
   totalWeeks: integer("total_weeks").notNull().default(36), // 36 base + makeup weeks
-  maxCGamesPerWeek: integer("max_c_games_per_week").default(1), // weeks between C games for 2x cGamesOk players (1=every week, 2=every 2 weeks, 4=monthly); null = no limit
-  maxCGamesPerWeek1x: integer("max_c_games_per_week_1x").default(4), // weeks between C games for 1x cGamesOk players (4=monthly); null = no limit
-  maxACGamesPerSeason: integer("max_ac_games_per_season").default(1), // max A+C games per season for cGamesOk players; null = no limit
+  // Retired (ignored by auto-assign as of v1.212 — see season/page.tsx);
+  // kept for schema compatibility only. cGamesLimit on players is the
+  // live per-player replacement for all three.
+  maxCGamesPerWeek: integer("max_c_games_per_week").default(1),
+  maxCGamesPerWeek1x: integer("max_c_games_per_week_1x").default(4),
+  maxACGamesPerSeason: integer("max_ac_games_per_season").default(1),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   // Last time auto-assign ran successfully (UTC ISO). Null = never.

@@ -9,7 +9,7 @@ import { isNotNull } from "drizzle-orm";
  * One-time wipe: nulls out every player's group_anchor_id AND truncates the
  * legacy player_group_members table. Use this after the v1.132/v1.133
  * model rollout to clear stale group data so you can rebuild from scratch
- * under the new C-anchor + member-cGamesOk-or-C rules.
+ * under the new C-anchor + member-(cGamesLimit!==0)-or-C rules.
  *
  * Safe to run any number of times — re-running is just another no-op clear.
  */

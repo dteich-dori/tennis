@@ -23,8 +23,11 @@ export const players = sqliteTable("players", {
   // is skipped for this player. They simply play their normal contract
   // and lose the games they miss on vacation, same as pre-v1.2xx behavior.
   noVacationMakeup: integer("no_vacation_makeup", { mode: "boolean" }).notNull().default(false),
-  cGamesOk: integer("c_games_ok", { mode: "boolean" }).notNull().default(false),
-  cGamesLimit: integer("c_games_limit"), // max A+C games per season for a non-C player joining a C game; null = Unlimited. No effect on C players themselves.
+  // Sole per-player control for C-adjacent games (v1.240 — the separate
+  // cGamesOk opt-in checkbox was retired). null = Unlimited, 0 = never
+  // (shielded), N = capped at N per season. No effect on C players
+  // themselves — this only restricts a non-C player joining a C game.
+  cGamesLimit: integer("c_games_limit"),
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
   groupPct: integer("group_pct").notNull().default(0), // 0, 25, 50, 100 — percentage of games filled from preferred group
   preassignedGamesWanted: integer("preassigned_games_wanted"), // null = not set; 1–50 = target pre-assigned games for subs
@@ -38,9 +41,10 @@ export const players = sqliteTable("players", {
     .notNull()
     .default(false),
   // Group anchor: FK to a C-level player whose "group" this player has
-  // opted into. Only A/B players with cGamesOk=true may have a non-null
-  // anchor. NULL = not in any group. The anchor player has groupPct
-  // applied to their own games; each member has their own groupPct.
+  // opted into. Only A/B players with cGamesLimit !== 0 may have a
+  // non-null anchor. NULL = not in any group. The anchor player has
+  // groupPct applied to their own games; each member has their own
+  // groupPct.
   groupAnchorId: integer("group_anchor_id"),
   // A2P 10DLC compliance: when the player replies STOP (or one of the
   // standard opt-out keywords) to any SMS, Twilio's webhook flips this

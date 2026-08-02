@@ -19,15 +19,15 @@ import { COMPOSITIONS, parseAllowedCompositions, canReachAllowed } from "@/lib/c
  *   (a) has ≥1 C player already assigned, or
  *   (b) has an empty slot AND is on a day/week where a C player could
  *       reach it (potentially could have been a C game),
- * walks every cGamesOk A/B player and records which rule would block
- * that candidate from filling an empty slot.
+ * walks every eligible A/B player (cGamesLimit !== 0) and records which
+ * rule would block that candidate from filling an empty slot.
  *
  * The rule ladder each candidate is checked against (first hit wins).
- * v1.239: retired the flat 1-per-week C-game cap — cGamesOk (the
- * candidate pool is already filtered to cGamesOk=true players) plus
- * each player's own season-total cGamesLimit are the only governors
- * now; a cGamesOk player may take multiple C-adjacent games in the
- * same week, bounded only by their season total.
+ * v1.240: cGamesLimit is the sole per-player control (the separate
+ * cGamesOk opt-in checkbox was retired) — null = Unlimited, 0 = never,
+ * N = capped at N per season. No weekly cap; a player may take
+ * multiple C-adjacent games in the same week, bounded only by their
+ * season total.
  *   1. Not active OR excluded from auto-assign (baseline)
  *   2. Blocked-day (blockedDays includes game.dayOfWeek)
  *   3. On vacation covering game.date
@@ -48,7 +48,7 @@ import { COMPOSITIONS, parseAllowedCompositions, canReachAllowed } from "@/lib/c
  * {
  *   season: { id, startDate, endDate },
  *   candidatePool: {
- *     total: number,               // total cGamesOk active A/B players
+ *     total: number,               // total eligible (cGamesLimit !== 0) active A/B players
  *     byContract: { "2+": n, "2": n, "1+": n, "1": n },
  *   },
  *   summary: {
@@ -189,13 +189,13 @@ export async function GET(request: NextRequest) {
       const levels = idsInGame.map((id) => playerById.get(id)?.skillLevel ?? "?");
       const hasC = levels.includes("C");
       const p = playerById.get(a.playerId);
-      if (p?.cGamesOk && p.skillLevel !== "C" && hasC) {
+      if (p && p.skillLevel !== "C" && hasC) {
         seasonACountByPlayer.set(a.playerId, (seasonACountByPlayer.get(a.playerId) ?? 0) + 1);
       }
     }
 
-    // The cGamesOk A/B candidate pool (only these can EVER be in a C game)
-    const candidatePool = allPlayers.filter((p) => p.cGamesOk && p.skillLevel !== "C");
+    // The eligible A/B candidate pool — cGamesLimit !== 0 (0 = explicitly shielded)
+    const candidatePool = allPlayers.filter((p) => p.skillLevel !== "C" && p.cGamesLimit !== 0);
 
     // Same-day pool of A/B/C bodies actually available that date, excluding
     // whoever's already in the game plus the candidate under evaluation —

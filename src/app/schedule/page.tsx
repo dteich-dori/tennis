@@ -61,7 +61,7 @@ interface Player {
   vacations: { startDate: string; endDate: string }[];
   noConsecutiveDays: boolean;
   isDerated: boolean;
-  cGamesOk: boolean;
+  cGamesLimit: number | null;
   doNotPair: number[];
 }
 
@@ -2317,26 +2317,26 @@ export default function SchedulePage() {
                     {explainModal.incompleteData.composition && (() => {
                       const comp = explainModal.incompleteData.composition;
                       const compHasC = comp.includes("C");
-                      // Get assigned players with their skill levels to check cGamesOk
+                      // Get assigned players with their skill levels to check cGamesLimit
                       const assignedPlayers = explainModal.incompleteData.playerAnalysis
                         .filter((p) => p.assigned)
                         .map((p) => {
                           const fullPlayer = players.find((pl) => `${pl.lastName}, ${pl.firstName}` === p.name || pl.lastName === p.name);
-                          return { skillLevel: p.skillLevel ?? "?", cGamesOk: fullPlayer?.cGamesOk ?? false };
+                          return { skillLevel: p.skillLevel ?? "?", cGamesLimit: fullPlayer?.cGamesLimit ?? null };
                         })
                         .sort((a, b) => (a.skillLevel ?? "").localeCompare(b.skillLevel ?? ""));
 
                       return (
                         <span className="text-xs font-mono font-medium flex gap-0">
                           {assignedPlayers.map((p, i) => {
-                            const isCGamesOkInACGame = compHasC && p.skillLevel !== "C" && p.cGamesOk;
+                            const isEligibleInACGame = compHasC && p.skillLevel !== "C" && p.cGamesLimit !== 0;
                             return (
                               <span
                                 key={i}
-                                className={isCGamesOkInACGame ? "text-green-600 font-bold" : "text-blue-600"}
-                                title={isCGamesOkInACGame ? "C games OK — accepts playing with C players" : p.skillLevel ?? ""}
+                                className={isEligibleInACGame ? "text-green-600 font-bold" : "text-blue-600"}
+                                title={isEligibleInACGame ? "Eligible for C-adjacent games" : p.skillLevel ?? ""}
                               >
-                                {p.skillLevel}{isCGamesOkInACGame ? "\u2713" : ""}
+                                {p.skillLevel}{isEligibleInACGame ? "\u2713" : ""}
                               </span>
                             );
                           })}

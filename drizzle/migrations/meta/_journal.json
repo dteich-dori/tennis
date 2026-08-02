@@ -127,6 +127,13 @@
       "when": 1783300000000,
       "tag": "0017_drop_min_ac_per_non_c_games_ok",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1783400000000,
+      "tag": "0018_drop_c_games_ok",
+      "breakpoints": true
     }
   ]
 }

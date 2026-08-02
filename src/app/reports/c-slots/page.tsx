@@ -147,7 +147,8 @@ export default function CSlotDiagnosisPage() {
       <p className="text-sm text-gray-600 mb-4">
         For every incomplete Don&rsquo;s game that has a C player (or could
         still reach a C-inclusive composition allowed by the Season Setup
-        grid), this walks every cGamesOk A/B player in the season and
+        grid), this walks every eligible A/B player (Max C-games / season
+        isn&rsquo;t 0) in the season and
         records which rule blocked them from filling an empty slot. Use it
         to identify whether the current settings are too tight, or whether
         the candidate pool is simply too small.
@@ -189,10 +190,10 @@ export default function CSlotDiagnosisPage() {
               </div>
               <div>
                 <dt className="text-xs text-gray-500">Weekly C-cap</dt>
-                <dd className="font-mono">None — cGamesOk is the gate</dd>
+                <dd className="font-mono">None</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">cGamesOk A/B pool</dt>
+                <dt className="text-xs text-gray-500">Eligible A/B pool</dt>
                 <dd className="font-mono">
                   {diagnosis.candidatePool.total}
                   {" "}

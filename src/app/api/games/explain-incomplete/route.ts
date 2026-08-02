@@ -352,7 +352,6 @@ async function handleDonsDiagnostic(database: any, game: any, season: any, curre
     noEarlyGames: boolean;
     noConsecutiveDays: boolean;
     isDerated: boolean;
-    cGamesOk: boolean;
   }
 
   const totalWeeks = season?.totalWeeks ?? 36;

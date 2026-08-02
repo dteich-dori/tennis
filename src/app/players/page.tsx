@@ -41,7 +41,6 @@ interface Player {
   isDerated: boolean;
   noEarlyGames: boolean;
   noVacationMakeup: boolean;
-  cGamesOk: boolean;
   cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
@@ -83,7 +82,6 @@ const emptyPlayer = {
   isDerated: false,
   noEarlyGames: false,
   noVacationMakeup: false,
-  cGamesOk: false,
   cGamesLimit: null as number | null,
   soloGames: null as number | null,
   groupPct: 0,
@@ -179,7 +177,6 @@ export default function PlayersPage() {
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
       noVacationMakeup: player.noVacationMakeup ?? false,
-      cGamesOk: player.cGamesOk,
       cGamesLimit: player.cGamesLimit ?? null,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
@@ -922,14 +919,6 @@ export default function PlayersPage() {
                 />
                 No vacation makeup
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.cGamesOk}
-                  onChange={(e) => setForm({ ...form, cGamesOk: e.target.checked })}
-                />
-                C games OK
-              </label>
               <label
                 className="flex items-center gap-2 text-sm"
                 title="When checked, auto-assign considers this player. When unchecked, auto-assign skips them entirely (they stay visible for manual assignment, communications, and reports). Subs (frequency 0) are only auto-assigned when this is checked AND 'Assign subs' is on at run time."
@@ -1136,8 +1125,8 @@ export default function PlayersPage() {
           {/* C-Anchor Group — new model (v1.132)
               - C players: act as anchors. Their groupPct = % of THEIR
                 games where the algorithm tries to include a member.
-              - A/B players with cGamesOk: can pick a C anchor. Their
-                groupPct = % of THEIR games to play with that anchor.
+              - A/B players with cGamesLimit !== 0: can pick a C anchor.
+                Their groupPct = % of THEIR games to play with that anchor.
               - Other players: hidden. */}
           {form.skillLevel === "C" && (
             <div className="mb-4">
@@ -1180,20 +1169,20 @@ export default function PlayersPage() {
               </div>
               <p className="text-xs text-muted mt-1">
                 Group members are players who have set you as their anchor on
-                their own player record (visible to A/B players with C games
-                OK).
+                their own player record (visible to A/B players whose Max
+                C-games / season isn&apos;t 0).
               </p>
             </div>
           )}
 
           {(() => {
-            // v1.134: any C player OR any A/B player with cGamesOk can join
-            // a C anchor's group. C players can both anchor (above) AND join
-            // another C's group (here).
+            // v1.134, v1.240: any C player OR any A/B player whose
+            // cGamesLimit isn't 0 can join a C anchor's group. C players
+            // can both anchor (above) AND join another C's group (here).
             const eligibleToJoin =
               form.skillLevel === "C" ||
               ((form.skillLevel === "A" || form.skillLevel === "B") &&
-                form.cGamesOk);
+                form.cGamesLimit !== 0);
             if (!eligibleToJoin) return null;
             return (
               <div className="mb-4">
@@ -1250,7 +1239,7 @@ export default function PlayersPage() {
                 <p className="text-xs text-muted mt-1">
                   {form.skillLevel === "C"
                     ? "C players can also join another C's group, and their own group runs in parallel."
-                    : 'If you uncheck "C games OK" the group anchor is cleared on save (a new auto-assign will be needed).'}
+                    : 'If you set "Max C-games / season" to 0 the group anchor is cleared on save (a new auto-assign will be needed).'}
                 </p>
               </div>
             );

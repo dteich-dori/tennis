@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         firstName: players.firstName,
         lastName: players.lastName,
         skillLevel: players.skillLevel,
-        cGamesOk: players.cGamesOk,
+        cGamesLimit: players.cGamesLimit,
       })
       .from(gameAssignments)
       .innerJoin(players, eq(gameAssignments.playerId, players.id))
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       {
         date: string;
         gameNumber: number;
-        players: { name: string; level: string; cGamesOk: boolean }[];
+        players: { name: string; level: string; cGamesLimit: number | null }[];
       }
     >();
 
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         game.players.push({
           name: `${row.firstName} ${row.lastName}`,
           level: row.skillLevel,
-          cGamesOk: !!row.cGamesOk,
+          cGamesLimit: row.cGamesLimit,
         });
       }
     }
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       gameId: number;
       date: string;
       gameNumber: number;
-      players: { name: string; level: string; cGamesOk: boolean }[];
+      players: { name: string; level: string; cGamesLimit: number | null }[];
       composition: string;
     }[] = [];
 
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
           .join(", "),
         playerDetails: g.players
           .sort((a, b) => a.level.localeCompare(b.level))
-          .map((p) => ({ name: p.name, level: p.level, cGamesOk: p.cGamesOk })),
+          .map((p) => ({ name: p.name, level: p.level, cGamesLimit: p.cGamesLimit })),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 

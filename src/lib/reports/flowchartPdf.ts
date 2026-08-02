@@ -99,7 +99,7 @@ export function generateFlowchartPdf(): void {
     ["Pass 1: First-Game-Only", 34, 197, 94, "Players with WTD = 0 (no games yet this week)"],
     ["Pass 2: Base-Owed", 34, 197, 94, "Players with freq - WTD > 0 (are still owed games)"],
     ["Pass 2.5: Front-Loading", 20, 184, 166, "Vacation makeup: adjustedFreq > baseFreq, base contract met"],
-    ["Pass 2.8: cGamesOk", 20, 184, 166, "A/B players willing to play in C-player games (freq-limited)"],
+    ["Pass 2.8: C-Adjacent Fallback", 20, 184, 166, "A/B players filling a C-player game, season-cap limited"],
     ["Pass 3: Extras (checkbox)", 249, 115, 22, "2+ players beyond weekly minimum of 2 games"],
     ["Pass 3.5: STD Catchup (2nd pass)", 249, 115, 22, "Season-deficit players (only in full-season 2nd pass)"],
     ["Pass 4: Subs (checkbox)", 139, 92, 246, "Substitute (freq 0) players fill remaining gaps"],
@@ -230,8 +230,8 @@ export function generateFlowchartPdf(): void {
     "Already assigned to this game  |  Already playing another game on same date  |  Blocked day of week",
     "On vacation during game date  |  Do-not-pair conflict with assigned player  |  No early games (before 10:00)",
     "No consecutive days violated  |  Derated pairing limit exceeded  |  Season-total cap reached (non-2+ players)",
-    "A player (without cGamesOk) paired with C player  |  Frequency fully met (non-extras mode)",
-    "cGamesOk frequency limit exceeded for this week/period",
+    "A player (cGamesLimit = 0) paired with C player  |  Frequency fully met (non-extras mode)",
+    "Season C-games cap (cGamesLimit) reached for this player",
   ];
   py = y + 32;
   for (const line of blocks) {

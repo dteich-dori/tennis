@@ -979,9 +979,10 @@ export default function ReportsPage() {
           <h2 className="font-semibold mb-2">C-Slot Diagnosis</h2>
           <p className="text-sm text-muted mb-4">
             For every incomplete Don&apos;s game involving C players,
-            walks every cGamesOk A/B candidate and shows which rule blocked
-            them (season A+C cap, weekly C-cap, AACC composition, DNP,
-            vacation, blocked day). Use to tune Season Setup limits.
+            walks every eligible A/B candidate and shows which rule blocked
+            them (per-player season C-games cap, Allowed Compositions grid,
+            DNP, vacation, blocked day). Use to tune each player&apos;s Max
+            C-games / season, or the Season Setup composition grid.
           </p>
           <a
             href="/reports/c-slots"
