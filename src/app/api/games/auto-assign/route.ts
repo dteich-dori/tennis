@@ -644,19 +644,24 @@ export async function POST(request: NextRequest) {
           // AACC-only rule), so without this check a B player could
           // join unlimited B+C games through the ordinary pool — never
           // touching Pass 2.8's cap because Pass 2.8 only fires when
-          // the ordinary pool comes up empty. Applying the same
-          // allowance + weekly cap here, to any non-C candidate joining
-          // a game that already has a C player, closes that gap.
-          // v1.236: cGamesLimit === null now means Unlimited (season
+          // the ordinary pool comes up empty. Applying the same check
+          // here, to any non-C candidate joining a game that already
+          // has a C player, closes that gap.
+          // v1.236: cGamesLimit === null means Unlimited (season
           // total) — the season-wide floor it used to fall back to was
           // retired since every player has their own explicit value.
-          // The 1-per-week cap is a separate, always-enforced rule.
+          // v1.239: cGamesOk is the real per-player opt-in gate for C
+          // games — require it here too, not just in Pass 2.8, so a
+          // non-consenting A/B player can never be swept into a
+          // C-adjacent game through the ordinary pool. Also retired the
+          // flat 1-per-week cap — cGamesOk + the season-total
+          // cGamesLimit are the only governors now.
           if (p.skillLevel !== "C" && sc > 0) {
+            if (!p.cGamesOk) return false;
             if (p.cGamesLimit != null) {
               const seasonACCount = acGameCounts.get(p.id) ?? 0;
               if (seasonACCount >= p.cGamesLimit) return false;
             }
-            if ((cGameWtdCounts.get(p.id) ?? 0) > 0) return false;
           }
         }
 
@@ -784,8 +789,6 @@ export async function POST(request: NextRequest) {
     let pass3Count = 0;
     let pass35Count = 0;
     let pass4Count = 0;
-    // Track how many C-player games each cGamesOk player has been assigned this week
-    const cGameWtdCounts = new Map<number, number>();
 
     // v1.220: B players were slipping into B+C games uncapped, because
     // composition rules never restrict B from joining a C-containing
@@ -794,17 +797,16 @@ export async function POST(request: NextRequest) {
     // pool, never touching Pass 2.8's cap check at all. Track every
     // non-C player's presence in a C-adjacent game AT INSERTION TIME,
     // regardless of which pass placed them, so the season cap
-    // (cGamesLimit) and the 1-per-week cap apply equally to A and B.
-    // `cGameCountedForGame` guards against double-
-    // counting the same game for the same player (insertion order can
-    // place the C player before or after the A/B player).
+    // (cGamesLimit) applies equally to A and B. `cGameCountedForGame`
+    // guards against double-counting the same game for the same player
+    // (insertion order can place the C player before or after the A/B
+    // player).
     const cGameCountedForGame = new Map<number, Set<number>>();
     function bumpCGameCount(gameId: number, playerId: number) {
       const counted = cGameCountedForGame.get(gameId) ?? new Set<number>();
       if (counted.has(playerId)) return;
       counted.add(playerId);
       cGameCountedForGame.set(gameId, counted);
-      cGameWtdCounts.set(playerId, (cGameWtdCounts.get(playerId) ?? 0) + 1);
       lastCGameWeek.set(playerId, weekNumber);
       acGameCounts.set(playerId, (acGameCounts.get(playerId) ?? 0) + 1);
     }
@@ -1036,16 +1038,17 @@ export async function POST(request: NextRequest) {
         // group (e.g. a B player parked on a C anchor's roster) could
         // be swept into that anchor's game every week all season,
         // blowing past the cap that Pass 1/2 already enforces for the
-        // same player via the ordinary pool. Apply the same cap +
-        // weekly check here, mirroring the Pass 1/2 check. v1.236:
-        // cGamesLimit === null means Unlimited (season total); the
-        // 1-per-week cap still always applies.
+        // same player via the ordinary pool. Apply the same checks
+        // here, mirroring the Pass 1/2 check. v1.236: cGamesLimit ===
+        // null means Unlimited (season total). v1.239: cGamesOk is the
+        // real per-player opt-in gate — require it here too, and
+        // retired the flat 1-per-week cap.
         if (candidate.skillLevel !== "C" && sc > 0) {
+          if (!candidate.cGamesOk) return false;
           if (candidate.cGamesLimit != null) {
             const seasonACCount = acGameCounts.get(candidate.id) ?? 0;
             if (seasonACCount >= candidate.cGamesLimit) return false;
           }
-          if ((cGameWtdCounts.get(candidate.id) ?? 0) > 0) return false;
         }
         return true;
       };
@@ -1438,15 +1441,17 @@ export async function POST(request: NextRequest) {
             });
             if (hasCPlayer) {
               // v1.212 simplified model, v1.220 extended to B, v1.236
-              // dropped the season-floor fallback:
-              //   - Every non-C player has ONE allowance: cGamesLimit
-              //     (nullable — null means Unlimited for that player).
-              //     Admins can shield a specific player from C games
-              //     by setting their cGamesLimit to 0.
-              //   - The season cap and the 1-per-week cap are already
-              //     enforced inside getAvailablePlayers (applies to any
-              //     pass, not just this one) — this filter just excludes
-              //     C players, who don't need this fallback pass.
+              // dropped the season-floor fallback, v1.239 dropped the
+              // flat weekly cap:
+              //   - Every non-C player needs cGamesOk=true, plus their
+              //     own cGamesLimit season-total allowance (nullable —
+              //     null means Unlimited). Admins can shield a specific
+              //     player from C games by leaving cGamesOk off, or cap
+              //     their season total with cGamesLimit.
+              //   - Both checks are already enforced inside
+              //     getAvailablePlayers (applies to any pass, not just
+              //     this one) — this filter just excludes C players,
+              //     who don't need this fallback pass.
               const cGameOkEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
                 if (p.skillLevel === "C") return false; // C players don't need this pass
@@ -1500,8 +1505,8 @@ export async function POST(request: NextRequest) {
             if (passUsed === 2.5) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
             } else if (passUsed === 2.8) {
-              // Counter bumps (cGameWtdCounts / lastCGameWeek / acGameCounts)
-              // now happen centrally in trackCGameMembership, called from
+              // Counter bumps (lastCGameWeek / acGameCounts) now happen
+              // centrally in trackCGameMembership, called from
               // assignPlayer right after this candidate is inserted below —
               // that covers every pass uniformly, not just this one.
               pass28Count++;

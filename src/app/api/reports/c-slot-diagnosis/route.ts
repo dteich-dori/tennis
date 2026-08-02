@@ -23,25 +23,24 @@ import { COMPOSITIONS, parseAllowedCompositions, canReachAllowed } from "@/lib/c
  * that candidate from filling an empty slot.
  *
  * The rule ladder each candidate is checked against (first hit wins).
- * v1.237: rules 5-6 rewritten to match what auto-assign actually
- * enforces today — the season floor (minACPerNonCGamesOk) and the
- * configurable weekly caps (maxCGamesPerWeek/maxCGamesPerWeek1x) were
- * retired; only each player's own cGamesLimit (null = Unlimited) and a
- * flat 1-per-week cap apply now, regardless of contract frequency.
+ * v1.239: retired the flat 1-per-week C-game cap — cGamesOk (the
+ * candidate pool is already filtered to cGamesOk=true players) plus
+ * each player's own season-total cGamesLimit are the only governors
+ * now; a cGamesOk player may take multiple C-adjacent games in the
+ * same week, bounded only by their season total.
  *   1. Not active OR excluded from auto-assign (baseline)
  *   2. Blocked-day (blockedDays includes game.dayOfWeek)
  *   3. On vacation covering game.date
  *   4. Already playing another game on the same date
  *   5. Season C-game cap (per-player cGamesLimit) already reached
- *   6. Weekly C-game cap (hard 1-per-week, always enforced)
- *   7. Composition trajectory blocked — adding this candidate, can the
+ *   6. Composition trajectory blocked — adding this candidate, can the
  *      game still reach one of the season's actual Allowed Skill
  *      Compositions (Season Setup grid) with the remaining slots,
  *      given who else is realistically available that day? Mirrors
  *      auto-assign's canReachAllowed check exactly, including the
  *      same-day pool feasibility tightening.
- *   8. Do-not-pair conflict with someone already in this game
- *   9. Otherwise: ELIGIBLE — could have been auto-assigned but wasn't
+ *   7. Do-not-pair conflict with someone already in this game
+ *   8. Otherwise: ELIGIBLE — could have been auto-assigned but wasn't
  *      (usually because a higher-priority player took the slot or the
  *      Pass 3 gate held it for a different reason).
  *
@@ -75,7 +74,7 @@ import { COMPOSITIONS, parseAllowedCompositions, canReachAllowed } from "@/lib/c
 
 const RULES = [
   "notEligible", "blockedDay", "onVacation", "playedSameDate",
-  "seasonACapReached", "weeklyCCapReached", "compositionBlocked",
+  "seasonACapReached", "compositionBlocked",
   "doNotPair", "eligible",
 ] as const;
 type Rule = typeof RULES[number];
@@ -180,8 +179,6 @@ export async function GET(request: NextRequest) {
     // acGameCounts: any game containing a C counts against a non-C
     // player's cGamesLimit, not just games that also contain an A.
     const seasonACountByPlayer = new Map<number, number>();
-    // Weekly C-game count per player: key `${playerId}|${weekNumber}`
-    const weeklyCCountByKey = new Map<string, number>();
     for (const a of allAssignments) {
       const g = donsGames.find((x) => x.id === a.gameId);
       if (!g) continue;
@@ -194,8 +191,6 @@ export async function GET(request: NextRequest) {
       const p = playerById.get(a.playerId);
       if (p?.cGamesOk && p.skillLevel !== "C" && hasC) {
         seasonACountByPlayer.set(a.playerId, (seasonACountByPlayer.get(a.playerId) ?? 0) + 1);
-        const key = `${a.playerId}|${g.weekNumber}`;
-        weeklyCCountByKey.set(key, (weeklyCCountByKey.get(key) ?? 0) + 1);
       }
     }
 
@@ -223,7 +218,7 @@ export async function GET(request: NextRequest) {
     const rows: DiagnosticGameRow[] = [];
     const blockerCounts: Record<Rule, number> = {
       notEligible: 0, blockedDay: 0, onVacation: 0, playedSameDate: 0,
-      seasonACapReached: 0, weeklyCCapReached: 0, compositionBlocked: 0,
+      seasonACapReached: 0, compositionBlocked: 0,
       doNotPair: 0, eligible: 0,
     };
     let cAdjacentIncomplete = 0;
@@ -299,16 +294,7 @@ export async function GET(request: NextRequest) {
           ruling = "seasonACapReached";
           detail = `Already in ${seasonACountByPlayer.get(cand.id)} C-adjacent game(s) this season (limit ${cand.cGamesLimit})`;
         }
-        // 6. Weekly C-game cap — flat 1-per-week, always enforced,
-        // regardless of contract frequency.
-        else if (
-          cCount > 0 &&
-          (weeklyCCountByKey.get(`${cand.id}|${g.weekNumber}`) ?? 0) >= 1
-        ) {
-          ruling = "weeklyCCapReached";
-          detail = "Already in a C-adjacent game this week (hard 1/week cap)";
-        }
-        // 7. Composition trajectory blocked — same canReachAllowed test
+        // 6. Composition trajectory blocked — same canReachAllowed test
         // auto-assign runs, against the season's actual Allowed Skill
         // Compositions grid (not a hardcoded AACC-only assumption).
         else {
@@ -324,7 +310,7 @@ export async function GET(request: NextRequest) {
             detail = `${shape} + ${remaining} slot(s) left can't reach an allowed composition (pool that day: ${pool.availA}A/${pool.availB}B/${pool.availC}C)`;
           }
         }
-        // 8. Do-not-pair with anyone in the game
+        // 7. Do-not-pair with anyone in the game
         if (ruling === "eligible") {
           const candDnp = dnpByPlayer.get(cand.id) ?? [];
           for (const aid of currentIds) {
@@ -352,9 +338,9 @@ export async function GET(request: NextRequest) {
 
       // Sort candidates: eligible first, then blockers grouped
       const RULE_ORDER: Record<Rule, number> = {
-        eligible: 0, seasonACapReached: 1, weeklyCCapReached: 2,
-        compositionBlocked: 3, playedSameDate: 4, doNotPair: 5,
-        onVacation: 6, blockedDay: 7, notEligible: 8,
+        eligible: 0, seasonACapReached: 1,
+        compositionBlocked: 2, playedSameDate: 3, doNotPair: 4,
+        onVacation: 5, blockedDay: 6, notEligible: 7,
       };
       candidatesEval.sort((a, b) => {
         if (RULE_ORDER[a.ruling] !== RULE_ORDER[b.ruling]) return RULE_ORDER[a.ruling] - RULE_ORDER[b.ruling];

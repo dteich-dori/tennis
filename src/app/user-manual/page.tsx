@@ -200,30 +200,31 @@ export default function UserManualPage() {
                 </li>
               </ul>
 
-              <h3 className="font-semibold mb-2">C Games Minimum</h3>
+              <h3 className="font-semibold mb-2">C Games Eligibility</h3>
               <p className="text-sm leading-relaxed mb-2">
-                As of v1.212 the C-games rules were collapsed to a single season-wide floor plus
-                an optional per-player ceiling &mdash; the old per-week/per-month frequency
-                dropdowns (2x players / 1x players) and the season-wide A+C games cap were retired.
+                As of v1.239 C-adjacent eligibility for A/B players is controlled entirely by two
+                per-player fields on the Players page &mdash; there is no season-wide setting
+                anymore (the old &ldquo;C games minimum&rdquo; floor was retired in v1.235/v1.236,
+                and the flat weekly cap in v1.239).
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-2">
                 <li>
-                  <span className="font-semibold">C games minimum</span> (season setting,
-                  default 1) &mdash; every A/B player takes at least this many A+C-adjacent games
-                  per season, regardless of whether their <em>C games OK</em> checkbox is on.
-                  Applies to everyone; it is a floor, not a per-player opt-in.
+                  <span className="font-semibold">C games OK</span> (checkbox) &mdash; the hard
+                  opt-in gate. An A/B player must have this checked to ever be placed in a
+                  C-adjacent game, in any auto-assign pass. Off by default.
                 </li>
                 <li>
-                  <span className="font-semibold">Max C-games / season</span> (per-player field on
-                  the Players page) &mdash; overrides the season floor for an individual player.
-                  Leave blank to use the season minimum. Set to <code>0</code> to shield a specific
-                  player from C-adjacent games entirely.
+                  <span className="font-semibold">Max C-games / season</span> &mdash; that
+                  player&apos;s season-total ceiling once cGamesOk is on. Leave blank for
+                  Unlimited. Set to <code>0</code> to shield a specific cGamesOk player from
+                  C-adjacent games without unchecking cGamesOk outright. No effect on C-level
+                  players themselves (fixed to Unlimited, since the cap only ever restricts a
+                  non-C player joining a C game).
                 </li>
               </ul>
               <p className="text-sm leading-relaxed mb-4">
-                A hard cap of <span className="font-semibold">1 C-adjacent game per player per
-                week</span> still applies regardless of these settings, so a willing player can&apos;t
-                absorb every open C-slot in a single week.
+                There is no weekly cap &mdash; a cGamesOk player may take more than one C-adjacent
+                game in the same week, bounded only by their season total above.
               </p>
 
               <h3 className="font-semibold mb-2">Allowed Skill-Level Compositions</h3>
@@ -466,18 +467,16 @@ export default function UserManualPage() {
                   scheduling on back-to-back calendar days.
                 </li>
                 <li>
-                  <span className="font-semibold">C Games OK</span> &mdash; Indicates the player is
-                  explicitly willing to play in games with C-level players. Since v1.212 this flag
-                  no longer gates whether a player can be placed in a C-adjacent game &mdash; every
-                  A/B player is eligible up to the season&apos;s C games minimum (see Season Setup)
-                  or their own <em>Max C-games / season</em> ceiling if set. Note: 1x A players are
+                  <span className="font-semibold">C Games OK</span> &mdash; The hard opt-in gate
+                  for C-adjacent games. As of v1.239 an A/B player must have this checked to ever
+                  be placed in a C-adjacent game, in any auto-assign pass. Note: 1x A players are
                   never placed with C players regardless of this flag (composition rule).
                 </li>
                 <li>
-                  <span className="font-semibold">Max C-games / season</span> &mdash; Per-player
-                  override of the season&apos;s C games minimum (blank = use the season default).
-                  Set to 0 to shield a player from C-adjacent games entirely. See Season Setup for
-                  details.
+                  <span className="font-semibold">Max C-games / season</span> &mdash; This
+                  player&apos;s season-total ceiling once C Games OK is on. Blank = Unlimited.
+                  Set to 0 to shield a cGamesOk player from C-adjacent games without unchecking
+                  cGamesOk. No effect on C-level players themselves.
                 </li>
                 <li>
                   <span className="font-semibold">No Early Games</span> &mdash; Prevents scheduling before 10:00 AM.
@@ -807,14 +806,15 @@ export default function UserManualPage() {
                   <tr className="border-t border-border">
                     <td className="px-2 py-1 font-mono">R14</td>
                     <td className="px-2 py-1">
-                      <strong>cGamesOk (C-games OK)</strong> — checkbox on the player record.
-                      It gates <em>group membership</em>: an A or B player may join a C anchor&apos;s
-                      group only if their cGamesOk checkbox is on (C players can always join). If a
-                      member unchecks cGamesOk, their group anchor is auto-cleared on save and a
-                      new auto-assign run is needed. As of v1.212 it no longer gates Pass 2.8
-                      eligibility — every A/B player is eligible for C-adjacent games up to the
-                      season&apos;s C games minimum or their own per-player <em>Max C-games /
-                      season</em> ceiling (see Season Setup and Players sections).
+                      <strong>cGamesOk (C-games OK)</strong> — checkbox on the player record. As of
+                      v1.239 it&apos;s the hard opt-in gate for C-adjacent games in every
+                      auto-assign pass, not just Pass 2.8 — an A or B player must have it checked
+                      to ever be placed in a C-adjacent game. It also gates <em>group
+                      membership</em>: an A or B player may join a C anchor&apos;s group only if
+                      their cGamesOk checkbox is on (C players can always join). If a member
+                      unchecks cGamesOk, their group anchor is auto-cleared on save and a new
+                      auto-assign run is needed. See the Players section for the per-player
+                      <em> Max C-games / season</em> ceiling.
                     </td>
                   </tr>
                 </tbody>
@@ -1018,16 +1018,16 @@ export default function UserManualPage() {
                 </li>
                 <li>
                   <span className="font-semibold">Pass 2.8: C-adjacent fill</span> &mdash; Only fires
-                  when the game already has at least one C-level player. Any A/B player is eligible
-                  (the cGamesOk checkbox no longer gates this pass as of v1.212) as long as they
-                  haven&apos;t reached their season allowance &mdash; their per-player <em>Max
-                  C-games / season</em> if set, otherwise the season&apos;s C games minimum &mdash;
-                  and haven&apos;t already played a C-adjacent game this week (1-per-week hard cap).
-                  1x A players are never eligible (hard composition block). As of v1.220 this same
-                  allowance and weekly cap is enforced for B players in <em>every</em> pass, not
+                  when the game already has at least one C-level player. An A/B player is eligible
+                  only if their <strong>cGamesOk</strong> checkbox is on, and they haven&apos;t
+                  reached their per-player <em>Max C-games / season</em> (blank/Unlimited if not
+                  set). There is no weekly cap &mdash; a cGamesOk player may take more than one
+                  C-adjacent game in the same week, bounded only by their season total. 1x A players
+                  are never eligible (hard composition block). As of v1.220 this same cGamesOk +
+                  season-allowance check is enforced for non-C players in <em>every</em> pass, not
                   just 2.8 &mdash; composition rules never restricted B from joining a B+C game, so
-                  previously a B player could rack up unlimited C-adjacent games through the
-                  ordinary pool without ever touching this pass&apos;s cap. A and B are now capped
+                  previously a non-consenting or over-allowance B player could slip through the
+                  ordinary pool without ever touching this pass&apos;s checks. A and B are checked
                   identically.
                 </li>
                 <li>
@@ -1419,12 +1419,13 @@ export default function UserManualPage() {
                 <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
                   /reports/c-slots
                 </span>
-                . For every incomplete Don&apos;s game involving C players, walks every candidate
-                A/B player and shows which rule blocked them (season/per-player C-games ceiling,
-                weekly 1-per-week C cap, AACC composition, DNP, vacation, blocked day). Immutable
-                reasons &mdash; blocked day, vacation, played-same-date, do-not-pair &mdash; are
-                filtered out by default so only tunable, algorithmic causes remain visible. Use
-                this to tune the Season Setup C games minimum and per-player ceilings.
+                . For every incomplete Don&apos;s game involving C players, walks every cGamesOk
+                candidate A/B player and shows which rule blocked them (per-player C-games season
+                ceiling, composition trajectory against the season&apos;s actual Allowed Skill
+                Compositions grid, DNP, vacation, blocked day). Immutable reasons &mdash; blocked
+                day, vacation, played-same-date, do-not-pair &mdash; are filtered out by default so
+                only tunable, algorithmic causes remain visible. Use this to tune each player&apos;s
+                cGamesOk / Max C-games per season, or the Allowed Skill Compositions grid.
               </p>
 
               <h3 className="font-semibold mb-2">Incomplete Games</h3>

@@ -61,13 +61,11 @@ interface DiagnosisCandidate {
 const RULE_LABELS: Record<string, string> = {
   eligible: "Eligible (should have filled)",
   seasonACapReached: "Season A+C cap reached",
-  weeklyCCapReached: "Weekly C-game cap reached",
   compositionBlocked: "Composition blocked (Allowed Compositions grid)",
 };
 const RULE_COLORS: Record<string, string> = {
   eligible: "bg-green-100 text-green-800 border-green-300",
   seasonACapReached: "bg-red-100 text-red-800 border-red-300",
-  weeklyCCapReached: "bg-orange-100 text-orange-800 border-orange-300",
   compositionBlocked: "bg-purple-100 text-purple-800 border-purple-300",
 };
 // Rulings we hide because the admin can't act on them.
@@ -191,7 +189,7 @@ export default function CSlotDiagnosisPage() {
               </div>
               <div>
                 <dt className="text-xs text-gray-500">Weekly C-cap</dt>
-                <dd className="font-mono">1 / week (always enforced)</dd>
+                <dd className="font-mono">None — cGamesOk is the gate</dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500">cGamesOk A/B pool</dt>
