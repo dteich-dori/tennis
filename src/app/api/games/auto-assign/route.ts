@@ -1096,16 +1096,24 @@ export async function POST(request: NextRequest) {
           const hasA = aCount > 0;
           const hasC = cCount > 0;
           if (!hasA || !hasC) {
-            // v1.226: no A+C gap, but still prefer a fully same-tier roster
-            // (CCCC/AAAA/BBBB) over a partially-bridged one (e.g. BCCC).
-            // Without this, a same-tier candidate and an off-tier bridge
-            // candidate score identically, so a scarce tier (e.g. only 4 C
-            // players total) rarely completes an all-same-tier game even
-            // when every member of that tier is available that day — the
-            // last slot just goes to whichever B/A wins the generic
-            // owed/pairing tiebreakers instead.
-            const distinctTiers = new Set(levels).size;
-            return distinctTiers === 1 ? 0 : 1;
+            // v1.226 added a same-tier-over-mixed preference here
+            // (prefer AAAA/BBBB/CCCC over AABB/ABBB/etc.) to help scarce
+            // C players complete CCCC. v1.241: reverted — composition is
+            // checked BEFORE "owed" in the sort below, so this silently
+            // outranked a legitimately-owed candidate whenever the game
+            // could stay same-tier instead. That's harmless for the
+            // scarce C tier but actively starved B players of their fair
+            // share, since A is hugely abundant (32 vs 7) and the
+            // algorithm started preferring "pad out AAAA" over "insert
+            // the B who's owed a game" — confirmed: a fully-available,
+            // no-vacation 2x/week B player (Ratner) was running a
+            // 14-game season deficit purely from losing this tiebreak.
+            // C-tier concentration is already handled independently by
+            // Pass 0 (runs before this code, seats C's directly), so
+            // this tweak wasn't even load-bearing for its original
+            // purpose anymore. Back to treating every non-A+C
+            // composition equally.
+            return 0;
           }
           // v1.230: AACC (2A+2C, "the classic exception") is a
           // deliberately blessed composition, not a lesser fallback —
