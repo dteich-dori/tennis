@@ -12,6 +12,12 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": ["-c", "export PATH=/Users/doriteich/.nvm/versions/node/v24.13.0/bin:$PATH && cd /Users/doriteich/GamesSignup && npm run dev"],
       "port": 3001
+    },
+    {
+      "name": "dev-sandbox",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "export PATH=/Users/doriteich/.nvm/versions/node/v24.13.0/bin:$PATH && npx dotenv -e .env.sandbox.local -- next dev -p 3010"],
+      "port": 3010
     }
   ]
 }

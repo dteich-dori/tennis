@@ -2,6 +2,16 @@ import nodemailer from "nodemailer";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// The sandbox database is a full copy of production, including real
+// players' phone numbers and email addresses. It shares the same
+// Twilio/Gmail credentials as production (there's no sandbox-specific
+// account), so without this guard, testing a bulk send against the
+// sandbox DB would text/email real people. DB_ENV=sandbox is set only
+// in .env.sandbox.local — production never sets it.
+export function isSandboxEnvironment(): boolean {
+  return process.env.DB_ENV === "sandbox";
+}
+
 // SMS gateway domains by carrier. AT&T's plain SMS gateway (txt.att.net) is
 // frequently rejected by Gmail's SMTP as an invalid recipient — using the
 // MMS gateway (mms.att.net) is far more reliable. It accepts the same
@@ -57,6 +67,9 @@ export function hasSmsCapability(phone?: string | null, _carrier?: string | null
 }
 
 async function sendSmsViaTwilio(phone: string, body: string): Promise<{ success: boolean; error?: string }> {
+  if (isSandboxEnvironment()) {
+    return { success: false, error: "Blocked: SMS sending is disabled in the sandbox environment to protect real players from test messages." };
+  }
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const keySid = process.env.TWILIO_API_KEY_SID!;
   const keySecret = process.env.TWILIO_API_KEY_SECRET!;
@@ -163,6 +176,9 @@ export async function sendEmail({
   replyTo?: string;
   attachments?: EmailAttachment[];
 }): Promise<{ success: boolean; error?: string }> {
+  if (isSandboxEnvironment()) {
+    return { success: false, error: "Blocked: email sending is disabled in the sandbox environment to protect real players from test messages." };
+  }
   const configError = validateEmailConfig();
   if (configError) return { success: false, error: configError };
 

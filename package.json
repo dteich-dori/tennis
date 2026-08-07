@@ -4,6 +4,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "next dev",
+		"dev:sandbox": "dotenv -e .env.sandbox.local -- next dev",
 		"build": "next build",
 		"start": "next start",
 		"lint": "next lint",
@@ -33,6 +34,7 @@
 		"@types/nodemailer": "^8.0.0",
 		"@types/react": "^19.1.5",
 		"@types/react-dom": "^19.1.5",
+		"dotenv-cli": "^11.0.0",
 		"drizzle-kit": "^0.31.9",
 		"eslint": "^9",
 		"eslint-config-next": "15.4.6",
