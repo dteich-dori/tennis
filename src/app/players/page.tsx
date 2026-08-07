@@ -185,10 +185,12 @@ export default function PlayersPage() {
       excludedFromAutoAssign: player.excludedFromAutoAssign ?? false,
       smsOptOut: player.smsOptOut ?? false,
       blockedDays: player.blockedDays,
-      vacations: player.vacations.map((v) => ({
-        startDate: v.startDate,
-        endDate: v.endDate,
-      })),
+      vacations: [...player.vacations]
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))
+        .map((v) => ({
+          startDate: v.startDate,
+          endDate: v.endDate,
+        })),
       doNotPair: player.doNotPair ?? [],
       groupMembers: player.groupMembers ?? [],
     });
@@ -1415,7 +1417,10 @@ export default function PlayersPage() {
                 </td>
                 <td className="px-2 py-1 text-xs">
                   {player.vacations.length > 0
-                    ? player.vacations.map((v) => `${v.startDate} → ${v.endDate}`).join(", ")
+                    ? [...player.vacations]
+                        .sort((a, b) => a.startDate.localeCompare(b.startDate))
+                        .map((v) => `${v.startDate} → ${v.endDate}`)
+                        .join(", ")
                     : "-"}
                 </td>
                 <td className="px-2 py-1 text-xs text-red-700">
