@@ -610,10 +610,13 @@ export function generateGamesByDateWorksheetPdf(
   ];
   const colHeaders = ["Game", "Time", "Ct", "Group", "Player 1 (*)", "Player 2", "Player 3", "Player 4"];
 
-  // Taller rows: assigned name at top, blank space below for handwriting
+  // Taller rows: assigned name at top, blank space below for handwriting.
+  // These are FLOOR sizes — for each week, if the games fit on one page
+  // with room to spare, the write-in space is stretched to fill the
+  // rest of the page (see writeInHeightForWeek below) instead of leaving
+  // blank margin at the bottom.
   const assignedRowHeight = 13;
-  const writeInHeight = 14;
-  const totalRowHeight = assignedRowHeight + writeInHeight;
+  const minWriteInHeight = 14;
   const dateHeaderHeight = 13;
   const tableHeaderHeight = 13;
 
@@ -660,14 +663,6 @@ export function generateGamesByDateWorksheetPdf(
   for (const weekNum of weeks) {
     const weekGames = gamesByWeek.get(weekNum)!;
 
-    // Always start each week on a new page
-    if (!isFirstPage) {
-      doc.addPage();
-    }
-    isFirstPage = false;
-    drawPageHeader(weekNum);
-    currentY = 76;
-
     // Group by date
     const byDate = new Map<string, Game[]>();
     for (const g of weekGames) {
@@ -676,6 +671,40 @@ export function generateGamesByDateWorksheetPdf(
       byDate.set(g.date, arr);
     }
     const dates = Array.from(byDate.keys()).sort();
+
+    // Stretch the write-in space to fill the page: compute how much
+    // vertical room this week's games need at the floor size, and if
+    // it fits on one page with room to spare, spread the leftover
+    // across every normal (non-holiday/blanked) row's write-in area
+    // instead of leaving it blank at the bottom. If the week doesn't
+    // fit even at floor size, fall back to the floor and let the
+    // existing page-break logic below spill onto a second page.
+    let minContentHeight = 0;
+    let normalRowCount = 0;
+    for (const date of dates) {
+      const dateGames = byDate.get(date)!;
+      minContentHeight += dateHeaderHeight + tableHeaderHeight;
+      for (const g of dateGames) {
+        const isHoliday = g.status === "holiday";
+        const isBlanked = g.status === "blanked";
+        minContentHeight += isHoliday || isBlanked ? assignedRowHeight : assignedRowHeight + minWriteInHeight;
+        if (!isHoliday && !isBlanked) normalRowCount++;
+      }
+      minContentHeight += 2; // post-date-group gap
+    }
+    const availableHeight = pageHeight - 76 - 40;
+    const leftover = availableHeight - minContentHeight;
+    const writeInHeightForWeek =
+      leftover > 0 && normalRowCount > 0 ? minWriteInHeight + leftover / normalRowCount : minWriteInHeight;
+    const totalRowHeight = assignedRowHeight + writeInHeightForWeek;
+
+    // Always start each week on a new page
+    if (!isFirstPage) {
+      doc.addPage();
+    }
+    isFirstPage = false;
+    drawPageHeader(weekNum);
+    currentY = 76;
 
     for (const date of dates) {
       const dateGames = byDate.get(date)!;
