@@ -1414,9 +1414,11 @@ export default function UserManualPage() {
 
               <h3 className="font-semibold mb-2">Player Availability</h3>
               <p className="text-sm leading-relaxed mb-4">
-                Active players with the tennis-week days they can play (blocked days excluded) and
-                their vacation date ranges, one row per player. Vacation lists wrap onto follow-up
-                lines for players with many entries.
+                Active players with the tennis-week days they can play (blocked days excluded),
+                one row per player. The last column combines vacation date ranges
+                (&ldquo;Vac:&rdquo;) with, for subs, any Available Dates restriction
+                (&ldquo;Only:&rdquo;) &mdash; most players will only ever have one of the two set.
+                Lists wrap onto follow-up lines for players with many entries.
               </p>
 
               <h3 className="font-semibold mb-2">C-Slot Diagnosis</h3>

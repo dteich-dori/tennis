@@ -11,6 +11,10 @@ interface Player {
   isActive: boolean;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
+  // Sub-only positive availability (empty/undefined = available any
+  // date, the default for both contracted players and unrestricted
+  // subs). See player_available_dates schema comment.
+  availableDates?: { startDate: string; endDate: string }[];
   excludedFromAutoAssign?: boolean;
 }
 
@@ -77,11 +81,10 @@ export function generatePlayerAvailabilityPdf(
     return `${m[2]}/${m[3]}/${m[1].slice(2)}`;
   }
 
-  function formatVacationList(
-    vacs: { startDate: string; endDate: string }[]
+  function formatDateRangeList(
+    ranges: { startDate: string; endDate: string }[]
   ): string {
-    if (!vacs || vacs.length === 0) return "—";
-    const sorted = [...vacs].sort((a, b) =>
+    const sorted = [...ranges].sort((a, b) =>
       a.startDate.localeCompare(b.startDate)
     );
     return sorted
@@ -91,6 +94,20 @@ export function generatePlayerAvailabilityPdf(
           : `${formatDate(v.startDate)} – ${formatDate(v.endDate)}`
       )
       .join(",  ");
+  }
+
+  // Combines vacations (when a player CAN'T play) with a sub's
+  // availableDates (the only dates a restricted sub CAN play) into one
+  // column. Most players will only ever have one of the two set.
+  function formatAvailabilityText(p: Player): string {
+    const parts: string[] = [];
+    if (p.availableDates && p.availableDates.length > 0) {
+      parts.push(`Only: ${formatDateRangeList(p.availableDates)}`);
+    }
+    if (p.vacations && p.vacations.length > 0) {
+      parts.push(`Vac: ${formatDateRangeList(p.vacations)}`);
+    }
+    return parts.length > 0 ? parts.join("   ") : "—";
   }
 
   function availableDayLabels(blocked: number[]): string {
@@ -125,7 +142,7 @@ export function generatePlayerAvailabilityPdf(
     { header: "Contract", width: tableWidth * 0.08 },
     { header: "Skill", width: tableWidth * 0.06 },
     { header: "Days Can Play", width: tableWidth * 0.18 },
-    { header: "Vacations", width: tableWidth * 0.46 },
+    { header: "Vacations / Sub Availability", width: tableWidth * 0.46 },
   ];
 
   const rowMinHeight = 18;
@@ -178,7 +195,7 @@ export function generatePlayerAvailabilityPdf(
     const contract = contractLabelShort(p.contractedFrequency);
     const skill = p.skillLevel || "";
     const days = availableDayLabels(p.blockedDays ?? []);
-    const vacText = formatVacationList(p.vacations ?? []);
+    const vacText = formatAvailabilityText(p);
 
     const vacWidth = columns[4].width - 8;
     const vacLines = wrapText(vacText, vacWidth);
