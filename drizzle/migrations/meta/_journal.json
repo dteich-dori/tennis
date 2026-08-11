@@ -134,6 +134,13 @@
       "when": 1783400000000,
       "tag": "0018_drop_c_games_ok",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1783500000000,
+      "tag": "0019_player_available_dates",
+      "breakpoints": true
     }
   ]
 }

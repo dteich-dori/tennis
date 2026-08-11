@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, gameCappedSlots, players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers } from "@/db/schema";
+import { games, gameAssignments, gameCappedSlots, players, playerBlockedDays, playerVacations, playerAvailableDates, playerDoNotPair, playerGroupMembers } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { weeklyContractedGames, isSubEligible } from "@/lib/contractFrequency";
 import { parseAllowedCompositions, canReachAllowed } from "@/lib/compositions";
@@ -21,6 +21,10 @@ interface PlayerData {
   groupMembers: number[];
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
+  // Sub-only positive availability (see playerAvailableDates schema
+  // comment). Empty = unrestricted (available any date), matching
+  // pre-existing sub behavior.
+  availableDates: { startDate: string; endDate: string }[];
   doNotPair: number[];
 }
 
@@ -143,12 +147,14 @@ export async function POST(request: NextRequest) {
 
     let blockedDaysRows: { playerId: number; dayOfWeek: number }[] = [];
     let vacationRows: { playerId: number; startDate: string; endDate: string }[] = [];
+    let availableDateRows: { playerId: number; startDate: string; endDate: string }[] = [];
     let dnpRows: { playerId: number; pairedPlayerId: number }[] = [];
     let groupMemberRows: { playerId: number; memberId: number }[] = [];
 
     if (playerIds.length > 0) {
       blockedDaysRows = await database.select().from(playerBlockedDays).where(inArray(playerBlockedDays.playerId, playerIds));
       vacationRows = await database.select().from(playerVacations).where(inArray(playerVacations.playerId, playerIds));
+      availableDateRows = await database.select().from(playerAvailableDates).where(inArray(playerAvailableDates.playerId, playerIds));
       dnpRows = await database.select().from(playerDoNotPair).where(inArray(playerDoNotPair.playerId, playerIds));
       groupMemberRows = await database.select().from(playerGroupMembers).where(inArray(playerGroupMembers.playerId, playerIds));
     }
@@ -164,6 +170,12 @@ export async function POST(request: NextRequest) {
       const arr = vacsByPlayer.get(v.playerId) ?? [];
       arr.push(v);
       vacsByPlayer.set(v.playerId, arr);
+    }
+    const availableDatesByPlayer = new Map<number, { startDate: string; endDate: string }[]>();
+    for (const a of availableDateRows) {
+      const arr = availableDatesByPlayer.get(a.playerId) ?? [];
+      arr.push(a);
+      availableDatesByPlayer.set(a.playerId, arr);
     }
     const dnpByPlayer = new Map<number, number[]>();
     for (const d of dnpRows) {
@@ -194,6 +206,7 @@ export async function POST(request: NextRequest) {
       ...p,
       blockedDays: blockedByPlayer.get(p.id) ?? [],
       vacations: vacsByPlayer.get(p.id) ?? [],
+      availableDates: availableDatesByPlayer.get(p.id) ?? [],
       doNotPair: dnpByPlayer.get(p.id) ?? [],
       groupPct: p.groupPct ?? 0,
       groupMembers: gmByPlayer.get(p.id) ?? [],
@@ -566,6 +579,18 @@ export async function POST(request: NextRequest) {
 
         // Vacation
         if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
+
+        // Sub positive availability: a sub with one or more availableDates
+        // ranges is ONLY eligible for games whose date falls in one of
+        // them. A sub with no ranges is unrestricted (available any
+        // date), matching pre-existing behavior. Not applied to
+        // contracted players — they use blockedDays/vacations instead.
+        if (isSubs && p.availableDates.length > 0) {
+          const isAvailable = p.availableDates.some(
+            (a) => game.date >= a.startDate && game.date <= a.endDate
+          );
+          if (!isAvailable) return false;
+        }
 
         // No consecutive days: skip if player is assigned on the day before or day after
         if (p.noConsecutiveDays) {

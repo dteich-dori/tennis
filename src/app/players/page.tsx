@@ -52,6 +52,7 @@ interface Player {
   smsOptOutReason?: string | null;
   blockedDays: number[];
   vacations: { id: number; startDate: string; endDate: string }[];
+  availableDates: { id: number; startDate: string; endDate: string }[];
   doNotPair: number[];
   groupMembers: number[];
 }
@@ -91,6 +92,7 @@ const emptyPlayer = {
   smsOptOut: false,
   blockedDays: [] as number[],
   vacations: [] as VacationRange[],
+  availableDates: [] as VacationRange[],
   doNotPair: [] as number[],
   groupMembers: [] as number[],
 };
@@ -191,6 +193,12 @@ export default function PlayersPage() {
           startDate: v.startDate,
           endDate: v.endDate,
         })),
+      availableDates: [...(player.availableDates ?? [])]
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))
+        .map((v) => ({
+          startDate: v.startDate,
+          endDate: v.endDate,
+        })),
       doNotPair: player.doNotPair ?? [],
       groupMembers: player.groupMembers ?? [],
     });
@@ -230,6 +238,14 @@ export default function PlayersPage() {
       return;
     }
 
+    const invalidAvailableDate = form.availableDates.find(
+      (v) => v.startDate && v.endDate && v.endDate < v.startDate
+    );
+    if (invalidAvailableDate) {
+      setFormError("Available-dates last day cannot be before the start date.");
+      return;
+    }
+
     const payload = {
       ...form,
       seasonId: season.id,
@@ -240,6 +256,7 @@ export default function PlayersPage() {
       soloGames: form.soloGames || null,
       preassignedGamesWanted: form.preassignedGamesWanted || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
+      availableDates: form.availableDates.filter((v) => v.startDate && v.endDate),
       doNotPair: form.doNotPair,
       // The C-games cap only applies to non-C players joining a C game —
       // always Unlimited (null) for a C player, regardless of stale form state.
@@ -1065,6 +1082,74 @@ export default function PlayersPage() {
             </button>
           </div>
 
+          {/* Available Dates — subs only ("0" or "1+") */}
+          {(form.contractedFrequency === "0" || form.contractedFrequency === "1+") && (
+            <div className="mb-4">
+              <label className="block text-sm text-muted mb-2">
+                Available Dates (subs only)
+                <span className="text-xs text-muted font-normal ml-2">
+                  Leave empty for available any date. Add ranges to restrict auto-assign subs to only these dates.
+                </span>
+              </label>
+              {form.availableDates.map((v, idx) => (
+                <div key={idx} className="flex gap-3 items-center mb-2">
+                  <div>
+                    <label className="block text-xs text-muted">Start</label>
+                    <input
+                      type="date"
+                      value={v.startDate}
+                      min={season?.startDate || undefined}
+                      max={v.endDate || season?.endDate || undefined}
+                      onChange={(e) => {
+                        const updated = [...form.availableDates];
+                        updated[idx] = { ...updated[idx], startDate: e.target.value };
+                        setForm({ ...form, availableDates: updated });
+                      }}
+                      className="border border-border rounded px-3 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted">Last Day</label>
+                    <input
+                      type="date"
+                      value={v.endDate}
+                      min={v.startDate || season?.startDate || undefined}
+                      max={season?.endDate || undefined}
+                      onChange={(e) => {
+                        const updated = [...form.availableDates];
+                        updated[idx] = { ...updated[idx], endDate: e.target.value };
+                        setForm({ ...form, availableDates: updated });
+                      }}
+                      className="border border-border rounded px-3 py-1.5 text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      setForm({
+                        ...form,
+                        availableDates: form.availableDates.filter((_, i) => i !== idx),
+                      });
+                    }}
+                    className="text-danger text-xs hover:underline mt-4"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    availableDates: [...form.availableDates, { startDate: "", endDate: "" }],
+                  })
+                }
+                className="text-primary text-sm hover:underline"
+              >
+                + Add available range
+              </button>
+            </div>
+          )}
+
           {/* Does Not Play With */}
           <div className="mb-4">
             <label className="block text-sm text-muted mb-2">Does Not Play With</label>
@@ -1363,6 +1448,7 @@ export default function PlayersPage() {
               <th className="text-left px-2 py-1 border-b border-border">cOK</th>
               <th className="text-left px-2 py-1 border-b border-border">Blocked Days</th>
               <th className="text-left px-2 py-1 border-b border-border">Vacations</th>
+              <th className="text-left px-2 py-1 border-b border-border">Available (Subs)</th>
               <th className="text-left px-2 py-1 border-b border-border">Does Not Play With</th>
               <th className="text-left px-2 py-1 border-b border-border">Group</th>
               <th className="text-left px-2 py-1 border-b border-border">Actions</th>
@@ -1422,6 +1508,16 @@ export default function PlayersPage() {
                         .map((v) => `${v.startDate} → ${v.endDate}`)
                         .join(", ")
                     : "-"}
+                </td>
+                <td className="px-2 py-1 text-xs">
+                  {player.contractedFrequency !== "0" && player.contractedFrequency !== "1+"
+                    ? "-"
+                    : player.availableDates && player.availableDates.length > 0
+                      ? [...player.availableDates]
+                          .sort((a, b) => a.startDate.localeCompare(b.startDate))
+                          .map((v) => `${v.startDate} → ${v.endDate}`)
+                          .join(", ")
+                      : "Any"}
                 </td>
                 <td className="px-2 py-1 text-xs text-red-700">
                   {player.doNotPair && player.doNotPair.length > 0

@@ -72,6 +72,22 @@ export const playerVacations = sqliteTable("player_vacations", {
   endDate: text("end_date").notNull(), // Last day of vacation
 });
 
+// Sub-specific positive availability: date ranges when a sub (or 1+
+// player acting as a sub) CAN be scheduled, as opposed to vacations
+// which say when a player CANNOT. Only meaningful for sub-eligible
+// players (contractedFrequency "0" or "1+") — when a sub has one or
+// more ranges here, Pass 4 (subs) only considers them for games whose
+// date falls within one of these ranges. A sub with no ranges here is
+// unrestricted (available any date), preserving pre-existing behavior.
+export const playerAvailableDates = sqliteTable("player_available_dates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerId: integer("player_id")
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(), // Last day of availability (inclusive)
+});
+
 export const playerDoNotPair = sqliteTable("player_do_not_pair", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   playerId: integer("player_id")

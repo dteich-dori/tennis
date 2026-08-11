@@ -506,6 +506,18 @@ export default function UserManualPage() {
                 vacation are excluded from assignment and auto-assign for games during those dates.
               </p>
 
+              <h3 className="font-semibold mb-2">Available Dates (Subs Only)</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                Only shown for sub-eligible players (contracted frequency <em>Sub</em> or{" "}
+                <em>1+</em>). The opposite of Vacations: instead of saying when a player{" "}
+                <em>can&apos;t</em> play, this says the only dates they <em>can</em>. Leave empty
+                for a sub who&apos;s available any date (the default, unchanged behavior). Add one
+                or more ranges to restrict Pass 4 (subs) in auto-assign to only place that sub in
+                games whose date falls within one of those ranges &mdash; useful for a sub who&apos;s
+                only around for part of the season. Does not affect manual assignment from the
+                Schedule page dropdown, only auto-assign.
+              </p>
+
               <h3 className="font-semibold mb-2">Does Not Play With</h3>
               <p className="text-sm leading-relaxed mb-4">
                 Select players who should not be paired in the same game. The Schedule page enforces
@@ -1033,7 +1045,10 @@ export default function UserManualPage() {
                 </li>
                 <li>
                   <span className="font-semibold">Pass 4: Subs</span> (optional, checkbox) &mdash; Allows
-                  substitute (frequency 0) players to fill any remaining empty slots.
+                  substitute (frequency 0) players to fill any remaining empty slots. If a sub has
+                  one or more Available Dates ranges set on their player record, they&apos;re only
+                  considered for games whose date falls within one of those ranges; a sub with no
+                  ranges is available any date (unchanged).
                 </li>
               </ol>
               <p className="text-sm leading-relaxed mb-4">

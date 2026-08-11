@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { players, playerBlockedDays, playerVacations, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
+import { players, playerBlockedDays, playerVacations, playerAvailableDates, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { formatPhone } from "@/lib/formatPhone";
 import { downgradeContractIfNeeded, clampDaysPerWeek } from "@/lib/playerAvailability";
@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
 
     let allBlockedDays: { id: number; playerId: number; dayOfWeek: number }[] = [];
     let allVacations: { id: number; playerId: number; startDate: string; endDate: string }[] = [];
+    let allAvailableDates: { id: number; playerId: number; startDate: string; endDate: string }[] = [];
     let allDoNotPair: { id: number; playerId: number; pairedPlayerId: number }[] = [];
     let allGroupMembers: { id: number; playerId: number; memberId: number }[] = [];
 
@@ -132,6 +133,11 @@ export async function GET(request: NextRequest) {
         .select()
         .from(playerVacations)
         .where(inArray(playerVacations.playerId, playerIds));
+
+      allAvailableDates = await database
+        .select()
+        .from(playerAvailableDates)
+        .where(inArray(playerAvailableDates.playerId, playerIds));
 
       allDoNotPair = await database
         .select()
@@ -159,6 +165,13 @@ export async function GET(request: NextRequest) {
       vacsByPlayer.set(v.playerId, arr);
     }
 
+    const availableDatesByPlayer = new Map<number, typeof allAvailableDates>();
+    for (const a of allAvailableDates) {
+      const arr = availableDatesByPlayer.get(a.playerId) ?? [];
+      arr.push(a);
+      availableDatesByPlayer.set(a.playerId, arr);
+    }
+
     const dnpByPlayer = new Map<number, number[]>();
     for (const d of allDoNotPair) {
       const arr = dnpByPlayer.get(d.playerId) ?? [];
@@ -177,6 +190,7 @@ export async function GET(request: NextRequest) {
       ...player,
       blockedDays: blockedByPlayer.get(player.id) ?? [],
       vacations: vacsByPlayer.get(player.id) ?? [],
+      availableDates: availableDatesByPlayer.get(player.id) ?? [],
       doNotPair: dnpByPlayer.get(player.id) ?? [],
       groupMembers: gmByPlayer.get(player.id) ?? [],
     }));
@@ -212,6 +226,7 @@ export async function POST(request: NextRequest) {
       soloGames,
       blockedDays,
       vacations,
+      availableDates,
       doNotPair,
       groupPct,
       groupMembers,
@@ -350,6 +365,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Insert available dates (subs only, deduped)
+    if (availableDates?.length) {
+      const uniqueAvailableDates = Array.from(
+        new Map(
+          (availableDates as { startDate: string; endDate: string }[]).map((v) => [`${v.startDate}|${v.endDate}`, v])
+        ).values()
+      );
+      await database.insert(playerAvailableDates).values(
+        uniqueAvailableDates.map((v) => ({
+          playerId: newPlayer.id,
+          startDate: v.startDate,
+          endDate: v.endDate,
+        }))
+      );
+    }
+
     // Insert do-not-pair
     if (doNotPair?.length) {
       await database.insert(playerDoNotPair).values(
@@ -411,6 +442,7 @@ export async function PUT(request: NextRequest) {
       soloGames,
       blockedDays,
       vacations,
+      availableDates,
       doNotPair,
       groupPct,
       groupMembers,
@@ -595,6 +627,25 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Replace available dates (subs only, deduped)
+    if (availableDates !== undefined) {
+      await database.delete(playerAvailableDates).where(eq(playerAvailableDates.playerId, id));
+      const uniqueAvailableDates = Array.from(
+        new Map(
+          (availableDates as { startDate: string; endDate: string }[]).map((v) => [`${v.startDate}|${v.endDate}`, v])
+        ).values()
+      );
+      if (uniqueAvailableDates.length) {
+        await database.insert(playerAvailableDates).values(
+          uniqueAvailableDates.map((v) => ({
+            playerId: id,
+            startDate: v.startDate,
+            endDate: v.endDate,
+          }))
+        );
+      }
+    }
+
     // Replace do-not-pair
     if (doNotPair !== undefined) {
       await database.delete(playerDoNotPair).where(eq(playerDoNotPair.playerId, id));
@@ -651,6 +702,7 @@ export async function DELETE(request: NextRequest) {
     await database.delete(gameAssignments).where(eq(gameAssignments.playerId, playerId));
     await database.delete(playerBlockedDays).where(eq(playerBlockedDays.playerId, playerId));
     await database.delete(playerVacations).where(eq(playerVacations.playerId, playerId));
+    await database.delete(playerAvailableDates).where(eq(playerAvailableDates.playerId, playerId));
     await database.delete(playerDoNotPair).where(eq(playerDoNotPair.playerId, playerId));
     await database.delete(playerGroupMembers).where(eq(playerGroupMembers.playerId, playerId));
     await database.delete(playerGroupMembers).where(eq(playerGroupMembers.memberId, playerId));
