@@ -1444,6 +1444,17 @@ export default function UserManualPage() {
                 wasn&apos;t fully filled (cap-blocked vs. no eligible candidates).
               </p>
 
+              <h3 className="font-semibold mb-2">Bookkeeping</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                A printable snapshot of the Bookkeeping page&apos;s numbers: Don&apos;s Income
+                (including the 1x/1+/2x/2+/extras/subs breakdown), Don&apos;s Expenses, Don&apos;s
+                Net, then the same three for Solo, and a Combined Summary. The PDF mirrors the
+                Bookkeeping page&apos;s calculations exactly, so the two always agree. Manual
+                income/expense line items you&apos;ve added on the Bookkeeping page are included.
+                Does not include the Accounts tab&apos;s per-player ledger &mdash; use the
+                Accounts tab&apos;s own PDF export for that.
+              </p>
+
               <h3 className="font-semibold mb-2">Twilio SMS Cost Estimate</h3>
               <p className="text-sm leading-relaxed mb-4">
                 A live estimator page at{" "}

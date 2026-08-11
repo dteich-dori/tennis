@@ -14,6 +14,7 @@ import { generateWeeklyGameCountsPdf } from "@/lib/reports/weeklyGameCountsPdf";
 import { generateExceptionsPdf } from "@/lib/reports/exceptionsPdf";
 import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
 import { generateCompositionByPlayerPdf } from "@/lib/reports/compositionByPlayerPdf";
+import { generateBookkeepingPdf } from "@/lib/reports/bookkeepingPdf";
 
 interface Season {
   id: number;
@@ -539,6 +540,36 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  const handleBookkeepingReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("bookkeeping");
+
+    try {
+      const [paramsRes, itemsRes, computedRes] = await Promise.all([
+        fetch(`/api/budget-params?seasonId=${season.id}`),
+        fetch(`/api/budget-items?seasonId=${season.id}`),
+        fetch(`/api/budget-computed?seasonId=${season.id}`),
+      ]);
+
+      if (!paramsRes.ok || !itemsRes.ok || !computedRes.ok) {
+        setError("Failed to load bookkeeping data.");
+        setGenerating(null);
+        return;
+      }
+
+      const budgetParamsData = await paramsRes.json();
+      const budgetItemsData = await itemsRes.json();
+      const computedData = await computedRes.json();
+
+      generateBookkeepingPdf(season, budgetParamsData, computedData, budgetItemsData, season.scheduleVersion);
+    } catch {
+      setError("Failed to generate Bookkeeping report.");
+    }
+
+    setGenerating(null);
+  };
+
   const handleGamesByPlayerReport = async () => {
     if (!season) return;
     setError("");
@@ -1016,6 +1047,22 @@ export default function ReportsPage() {
 
         {activeTab === "COSTS" && (
         <>
+        {/* Bookkeeping Report Card */}
+        <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
+          <h2 className="font-semibold mb-2">Bookkeeping</h2>
+          <p className="text-sm text-muted mb-4">
+            Printable snapshot of the Bookkeeping page: Don&apos;s and Solo income, expenses,
+            and net, plus a Combined Summary.
+          </p>
+          <button
+            onClick={handleBookkeepingReport}
+            disabled={generating === "bookkeeping"}
+            className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "bookkeeping" ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
+
         {/* Twilio SMS Cost Estimate Card */}
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Twilio SMS Cost Estimate</h2>
