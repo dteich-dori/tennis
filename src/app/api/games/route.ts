@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       playerId: number;
       slotPosition: number;
       isPrefill: boolean;
+      coveringForPlayerId: number | null;
     }[] = [];
 
     const BATCH_SIZE = 50;

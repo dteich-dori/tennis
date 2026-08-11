@@ -1026,7 +1026,10 @@ export default function UserManualPage() {
                   a &ldquo;clear swap&rdquo; &mdash; someone who deliberately scheduled themselves
                   for this game, often as part of a financial arrangement with the vacationing
                   player (e.g. the sub pays the player for the game). Never preempts Pass 1/2
-                  &mdash; a player&apos;s own guaranteed weekly game always comes first.
+                  &mdash; a player&apos;s own guaranteed weekly game always comes first. On the
+                  Schedule page, a Pass 2.9 assignment is labeled with the vacationing player&apos;s
+                  name, e.g. &ldquo;Golden (for Klein)&rdquo;, so it&apos;s clear at a glance which
+                  swap the sub is covering.
                 </li>
                 <li>
                   <span className="font-semibold">Pass 2.5: Front-loading</span> &mdash; Players with

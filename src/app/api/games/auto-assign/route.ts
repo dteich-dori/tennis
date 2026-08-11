@@ -1197,23 +1197,28 @@ export async function POST(request: NextRequest) {
         for (const pid of assigned) usedOnDay.add(pid);
       }
 
-      // v2.252 (widened v2.253): does this date have a "no-makeup"
-      // vacancy? True when at least one contracted player is on
-      // vacation this date AND has noVacationMakeup checked — meaning
+      // v2.252 (widened v2.253): which contracted players are on
+      // vacation this date AND have noVacationMakeup checked — meaning
       // nobody is being front-loaded extra games elsewhere to cover for
-      // them. On such dates, a sub with a scheduled "clear swap" (see
-      // Pass 2.9 below, inserted right after Pass 2) gets first crack
-      // at empty slots ahead of front-loaded makeup, the C-adjacent
-      // fallback, and 2+ extras — but never ahead of a player's own
-      // guaranteed base weekly game (Pass 1/2).
-      const hasNoMakeupVacancyToday = contractedPlayers.some(
+      // them. On a date with at least one such player, a sub with a
+      // scheduled "clear swap" (see Pass 2.9 below, inserted right
+      // after Pass 2) gets first crack at empty slots ahead of
+      // front-loaded makeup, the C-adjacent fallback, and 2+ extras —
+      // but never ahead of a player's own guaranteed base weekly game
+      // (Pass 1/2). v2.254: also used to attribute the resulting sub
+      // assignment ("Golden (for Klein)") — games aren't tied to a
+      // specific missing player, so when more than one qualifying
+      // player is on vacation the same date, the first (lowest id) is
+      // used for attribution as a reasonable approximation.
+      const noMakeupVacationingPlayersToday = contractedPlayers.filter(
         (p) =>
           p.noVacationMakeup &&
           p.vacations.some((v) => date >= v.startDate && date <= v.endDate)
       );
+      const hasNoMakeupVacancyToday = noMakeupVacationingPlayersToday.length > 0;
 
       // Helper: assign a player to a game slot
-      async function assignPlayer(game: GameData, playerId: number, slotPos: number): Promise<boolean> {
+      async function assignPlayer(game: GameData, playerId: number, slotPos: number, coveringForPlayerId?: number): Promise<boolean> {
         // v1.213 last-line guard (see passZeroAssign for rationale).
         if ((assignedDates.get(playerId) ?? new Set<string>()).has(game.date)) {
           log.push({
@@ -1229,6 +1234,7 @@ export async function POST(request: NextRequest) {
             slotPosition: slotPos,
             playerId,
             isPrefill: false,
+            coveringForPlayerId: coveringForPlayerId ?? null,
           }).returning();
 
           createdAssignmentIds.push(result[0].id);
@@ -1513,6 +1519,7 @@ export async function POST(request: NextRequest) {
 
           if (prioritized.length > 0) {
             const chosen = prioritized[0];
+            let coveringForPlayerId: number | undefined;
             if (passUsed === 2.5) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as FRONT-LOAD (vacation make-up)` });
             } else if (passUsed === 2.8) {
@@ -1524,7 +1531,13 @@ export async function POST(request: NextRequest) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
             } else if (passUsed === 2.9) {
               pass29Count++;
-              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.9] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB (clear swap — preferred over front-load/extras on a no-makeup vacation date)` });
+              // Attribute to the (first, if several) qualifying
+              // vacationing player so the Schedule page can show
+              // "Golden (for Klein)".
+              const coveredPlayer = noMakeupVacationingPlayersToday[0];
+              coveringForPlayerId = coveredPlayer?.id;
+              const forSuffix = coveredPlayer ? ` (for ${coveredPlayer.lastName})` : "";
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.9] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB${forSuffix} (clear swap — preferred over front-load/extras on a no-makeup vacation date)` });
             } else if (passUsed === 3) {
               pass3Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
@@ -1539,7 +1552,7 @@ export async function POST(request: NextRequest) {
             } else if (usedOnDay.has(chosen.id)) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
-            await assignPlayer(game, chosen.id, slot);
+            await assignPlayer(game, chosen.id, slot, coveringForPlayerId);
           } else {
             const hints: string[] = [];
             if (!assignExtra) hints.push("extras");

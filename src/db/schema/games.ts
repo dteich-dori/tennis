@@ -28,6 +28,14 @@ export const gameAssignments = sqliteTable("game_assignments", {
     .references(() => players.id, { onDelete: "cascade" }),
   slotPosition: integer("slot_position").notNull(), // 1-4
   isPrefill: integer("is_prefill", { mode: "boolean" }).notNull().default(false),
+  // v2.254: set by auto-assign's Pass 2.9 (clear-swap sub priority) to
+  // the vacationing player this sub is covering for — e.g. Golden's
+  // assignment gets coveringForPlayerId = Klein's id. Null for every
+  // other assignment (including subs placed by the ordinary Pass 4).
+  // ON DELETE SET NULL: if the covered player is later deleted, the
+  // assignment itself is still valid, just loses the attribution.
+  coveringForPlayerId: integer("covering_for_player_id")
+    .references(() => players.id, { onDelete: "set null" }),
 });
 
 // Markers for slots that the weekly auto-assign left empty SPECIFICALLY

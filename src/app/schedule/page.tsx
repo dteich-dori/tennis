@@ -32,6 +32,7 @@ interface Assignment {
   playerId: number;
   slotPosition: number;
   isPrefill: boolean;
+  coveringForPlayerId?: number | null;
 }
 
 interface Game {
@@ -1777,6 +1778,14 @@ export default function SchedulePage() {
                                           <span className="text-orange-500 font-bold text-xs ml-0.5" title="Derated player">D</span>
                                         ) : null;
                                       })()}
+                                      {assignment.coveringForPlayerId != null && (
+                                        <span
+                                          className="text-muted text-xs ml-1"
+                                          title="Clear-swap sub: covering this player's no-makeup vacation slot"
+                                        >
+                                          (for {getPlayerName(assignment.coveringForPlayerId)})
+                                        </span>
+                                      )}
                                     </button>
                                   ) : (
                                     (() => {
