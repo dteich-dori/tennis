@@ -1034,6 +1034,17 @@ export default function UserManualPage() {
                   identically.
                 </li>
                 <li>
+                  <span className="font-semibold">Pass 2.9: No-makeup vacancy sub priority</span> (v2.252,
+                  requires the &ldquo;Assign subs&rdquo; checkbox) &mdash; On a date where a contracted
+                  player is on vacation <em>and</em> has <em>No vacation makeup</em> checked, an
+                  eligible sub gets first crack at the slot ahead of Pass 3. The idea: since that
+                  player isn&apos;t being front-loaded extra games elsewhere to cover the absence,
+                  there&apos;s no reason to spend a 2+ player&apos;s bonus extra-game slot on it
+                  either &mdash; better to use a sub who&apos;s actually available that day. Only
+                  changes the pass <em>order</em> on qualifying dates; everywhere else Pass 3 still
+                  runs before Pass 4 as usual.
+                </li>
+                <li>
                   <span className="font-semibold">Pass 3: Extras</span> (optional, checkbox) &mdash; Allows
                   2+ players beyond their weekly minimum of 2 games.
                 </li>

@@ -749,6 +749,7 @@ export async function POST(request: NextRequest) {
 
     // Per-day availability report
     let pass28Count = 0;
+    let pass29Count = 0;
     let pass3Count = 0;
     let pass35Count = 0;
     let pass4Count = 0;
@@ -1196,6 +1197,20 @@ export async function POST(request: NextRequest) {
         for (const pid of assigned) usedOnDay.add(pid);
       }
 
+      // v2.252: does this date have a "no-makeup" vacancy? True when at
+      // least one contracted player is on vacation this date AND has
+      // noVacationMakeup checked — meaning nobody is being front-loaded
+      // extra games elsewhere to cover for them, so there's no reason
+      // to burn a 2+ player's bonus "extra game" (Pass 3) on the slot
+      // their absence opens up. On such dates, an eligible sub gets
+      // first crack at empty slots ahead of Pass 3 — see the sub-priority
+      // attempt inserted between Pass 2.8 and Pass 3 below.
+      const hasNoMakeupVacancyToday = contractedPlayers.some(
+        (p) =>
+          p.noVacationMakeup &&
+          p.vacations.some((v) => date >= v.startDate && date <= v.endDate)
+      );
+
       // Helper: assign a player to a game slot
       async function assignPlayer(game: GameData, playerId: number, slotPos: number): Promise<boolean> {
         // v1.213 last-line guard (see passZeroAssign for rationale).
@@ -1432,6 +1447,23 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+          // Pass 2.9: no-makeup-vacancy sub priority (v2.252). On a date
+          // with a qualifying no-makeup vacancy (see hasNoMakeupVacancyToday
+          // above), give an eligible sub first crack at the slot before
+          // letting a 2+ player claim it as a bonus extra game in Pass 3.
+          // Still requires "Assign subs" to be enabled for this run —
+          // this only reorders where subs are tried, it doesn't turn
+          // sub-filling on when the admin left it off.
+          if (eligible.length === 0 && assignSubs && hasNoMakeupVacancyToday) {
+            const noMakeupSubEligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers, isSubs: true }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              return true;
+            });
+            if (noMakeupSubEligible.length > 0) {
+              passUsed = 2.9;
+              eligible = noMakeupSubEligible;
+            }
+          }
           // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2.
           // GATED: no extras while any contracted player still has unmet
           // weekly contract AND remaining playable days.
@@ -1480,6 +1512,9 @@ export async function POST(request: NextRequest) {
               // that covers every pass uniformly, not just this one.
               pass28Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
+            } else if (passUsed === 2.9) {
+              pass29Count++;
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.9] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB (no-makeup vacancy — preferred over a 2+ extra)` });
             } else if (passUsed === 3) {
               pass3Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
@@ -2144,6 +2179,9 @@ export async function POST(request: NextRequest) {
     if (pass28Count > 0) {
       log.push({ type: "info", message: `Pass 2.8 (C-adjacent fallback): ${pass28Count} slots filled by A/B players in C-player games` });
     }
+    if (assignSubs && pass29Count > 0) {
+      log.push({ type: "info", message: `Pass 2.9 (no-makeup vacancy): ${pass29Count} slots filled by subs preferred over a 2+ extra` });
+    }
     if (assignExtra && pass3Count > 0) {
       log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
     }
@@ -2158,6 +2196,7 @@ export async function POST(request: NextRequest) {
     const lastPass = pass4Count > 0 ? "Pass 4 (subs)"
       : pass35Count > 0 ? "Pass 3.5 (STD catchup)"
       : pass3Count > 0 ? "Pass 3 (extras)"
+      : pass29Count > 0 ? "Pass 2.9 (no-makeup vacancy)"
       : pass28Count > 0 ? "Pass 2.8 (C-adjacent fallback)"
       : "Pass 2 (base)";
     log.push({
