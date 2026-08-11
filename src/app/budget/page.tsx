@@ -46,6 +46,7 @@ interface ComputedData {
     solo: number;
   };
   extraGames2plus: number;
+  extraGames1plus: number;
   subsGameCount: number;
   totalSoloGamesFromDB: number;
   soloPlayers: { name: string; soloGames: number }[];
@@ -274,10 +275,15 @@ export default function BudgetPage() {
   // 1x/2x/2+ rows: price is per player per season → Revenue = players × $/season
   // Extra games & Subs: price is per game → Revenue = games × $/game
   const extraGames2plus = computed?.extraGames2plus ?? 0;
+  // 1+ players' fee is 1x base (the "1+/week" row above) plus the sub
+  // rate for any extra games beyond their guaranteed weekly game — see
+  // the "1+/week (also subs)" note in the user manual.
+  const extraGames1plus = computed?.extraGames1plus ?? 0;
 
   const donsIncomeRows = computed ? [
     { label: "1x/week", qty: computed.playerCounts.dons1, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
     { label: "1+/week", qty: computed.playerCounts.dons1plus, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
+    { label: "1+ Extra Games", qty: extraGames1plus, unit: "games", price: params.priceSubs, priceUnit: "$/game", key: "priceSubs" as const },
     { label: "2x/week", qty: computed.playerCounts.dons2, unit: "players", price: params.priceDons2, priceUnit: "$/player", key: "priceDons2" as const },
     { label: "2+/week", qty: computed.playerCounts.dons2plus, unit: "players", price: params.priceDons2plus, priceUnit: "$/player", key: "priceDons2plus" as const },
     { label: "2+ Extra Games", qty: extraGames2plus, unit: "games", price: params.priceExtraHour, priceUnit: "$/game", key: "priceExtraHour" as const },
@@ -397,7 +403,7 @@ export default function BudgetPage() {
               </thead>
               <tbody>
                 {donsIncomeRows.map((row) => (
-                  <tr key={row.key} className="bg-gray-50 border-t border-border">
+                  <tr key={row.label} className="bg-gray-50 border-t border-border">
                     <td className="px-3 py-2 text-muted">{row.label}</td>
                     <td className="px-3 py-2 text-right text-muted">
                       {row.qty} <span className="text-xs">{row.unit}</span>

@@ -78,17 +78,18 @@ export async function GET(request: NextRequest) {
       .map((p) => ({ name: `${p.firstName} ${p.lastName}`, soloGames: p.soloGames! }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    // Get weeksPerSeason from budget params (or default 36) — needed by
+    // both the 2+ and 1+ extra-games calculations below.
+    const bpRows = await database
+      .select({ weeksPerSeason: budgetParams.weeksPerSeason })
+      .from(budgetParams)
+      .where(eq(budgetParams.seasonId, sid));
+    const weeksPerSeason = bpRows.length > 0 ? bpRows[0].weeksPerSeason : 36;
+
     // Calculate extra games for 2+ players
     // Base contract = 2 games/week. Extra = total assignments - (2 × weeksPerSeason) per player.
     let extraGames2plus = 0;
     if (dons2plus > 0) {
-      // Get weeksPerSeason from budget params (or default 36)
-      const bpRows = await database
-        .select({ weeksPerSeason: budgetParams.weeksPerSeason })
-        .from(budgetParams)
-        .where(eq(budgetParams.seasonId, sid));
-      const weeksPerSeason = bpRows.length > 0 ? bpRows[0].weeksPerSeason : 36;
-
       // We need actual player IDs — re-query with IDs
       const plus2Rows = await database
         .select({ id: players.id })
@@ -119,6 +120,45 @@ export async function GET(request: NextRequest) {
         for (const row of assignCounts) {
           const extra = Math.max(0, row.count - baseGamesPerPlayer);
           extraGames2plus += extra;
+        }
+      }
+    }
+
+    // Calculate extra games for 1+ players (same idea as 2+, but base
+    // contract is 1 game/week). Per the player-manual note, a 1+
+    // player's extras beyond their guaranteed weekly game are priced
+    // at the sub rate, not the 2+ extra-hour rate — the frontend picks
+    // the right price param, this endpoint just supplies the count.
+    let extraGames1plus = 0;
+    if (dons1plus > 0) {
+      const plus1Rows = await database
+        .select({ id: players.id })
+        .from(players)
+        .where(and(eq(players.seasonId, sid), eq(players.isActive, true), eq(players.contractedFrequency, "1+")));
+      const plus1Ids = plus1Rows.map((r) => r.id);
+
+      if (plus1Ids.length > 0) {
+        const assignCounts = await database
+          .select({
+            playerId: gameAssignments.playerId,
+            count: sql<number>`count(*)`.as("count"),
+          })
+          .from(gameAssignments)
+          .innerJoin(games, eq(gameAssignments.gameId, games.id))
+          .where(
+            and(
+              eq(games.seasonId, sid),
+              eq(games.group, "dons"),
+              eq(games.status, "normal"),
+              inArray(gameAssignments.playerId, plus1Ids)
+            )
+          )
+          .groupBy(gameAssignments.playerId);
+
+        const baseGamesPerPlayer = 1 * weeksPerSeason;
+        for (const row of assignCounts) {
+          const extra = Math.max(0, row.count - baseGamesPerPlayer);
+          extraGames1plus += extra;
         }
       }
     }
@@ -173,6 +213,7 @@ export async function GET(request: NextRequest) {
       holidayGames,
       playerCounts: { dons0, dons1, dons1plus, dons2, dons2plus, solo: soloCount },
       extraGames2plus,
+      extraGames1plus,
       subsGameCount,
       totalSoloGamesFromDB,
       soloPlayers,
