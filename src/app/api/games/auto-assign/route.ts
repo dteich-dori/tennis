@@ -1197,14 +1197,15 @@ export async function POST(request: NextRequest) {
         for (const pid of assigned) usedOnDay.add(pid);
       }
 
-      // v2.252: does this date have a "no-makeup" vacancy? True when at
-      // least one contracted player is on vacation this date AND has
-      // noVacationMakeup checked — meaning nobody is being front-loaded
-      // extra games elsewhere to cover for them, so there's no reason
-      // to burn a 2+ player's bonus "extra game" (Pass 3) on the slot
-      // their absence opens up. On such dates, an eligible sub gets
-      // first crack at empty slots ahead of Pass 3 — see the sub-priority
-      // attempt inserted between Pass 2.8 and Pass 3 below.
+      // v2.252 (widened v2.253): does this date have a "no-makeup"
+      // vacancy? True when at least one contracted player is on
+      // vacation this date AND has noVacationMakeup checked — meaning
+      // nobody is being front-loaded extra games elsewhere to cover for
+      // them. On such dates, a sub with a scheduled "clear swap" (see
+      // Pass 2.9 below, inserted right after Pass 2) gets first crack
+      // at empty slots ahead of front-loaded makeup, the C-adjacent
+      // fallback, and 2+ extras — but never ahead of a player's own
+      // guaranteed base weekly game (Pass 1/2).
       const hasNoMakeupVacancyToday = contractedPlayers.some(
         (p) =>
           p.noVacationMakeup &&
@@ -1367,6 +1368,32 @@ export async function POST(request: NextRequest) {
               return true;
             });
           }
+          // Pass 2.9: no-makeup "clear swap" sub priority (v2.253). On a
+          // date with a qualifying no-makeup vacancy (see
+          // hasNoMakeupVacancyToday above), a sub who scheduled a
+          // specific, non-empty Available Dates range covering this date
+          // gets first crack at the slot — ahead of front-loaded makeup
+          // (Pass 2.5), the C-adjacent fallback (2.8), and 2+ extras
+          // (Pass 3). Restricted to subs with a non-empty Available
+          // Dates list (not just any sub who happens to be free that
+          // day) so this only applies to a "clear swap": someone who
+          // deliberately scheduled themselves for this game, often as
+          // part of a financial arrangement with the vacationing
+          // player — a generally-available sub is left at normal Pass 4
+          // priority. Never preempts Pass 1/2 — a player's own
+          // guaranteed weekly game always comes first. Still requires
+          // "Assign subs" to be enabled for this run.
+          if (eligible.length === 0 && assignSubs && hasNoMakeupVacancyToday) {
+            const scheduledSubPool = subPlayers.filter((p) => p.availableDates.length > 0);
+            const noMakeupSubEligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: scheduledSubPool, isSubs: true }).filter((p) => {
+              if (usedOnDay.has(p.id)) return false;
+              return true;
+            });
+            if (noMakeupSubEligible.length > 0) {
+              passUsed = 2.9;
+              eligible = noMakeupSubEligible;
+            }
+          }
           // R13: any contracted player still owed games this week who could
           // actually play on THIS GAME'S DAY. We only gate the extras
           // passes (2.5 / 3 / 3.5) when a gating player could reach the
@@ -1447,23 +1474,6 @@ export async function POST(request: NextRequest) {
               }
             }
           }
-          // Pass 2.9: no-makeup-vacancy sub priority (v2.252). On a date
-          // with a qualifying no-makeup vacancy (see hasNoMakeupVacancyToday
-          // above), give an eligible sub first crack at the slot before
-          // letting a 2+ player claim it as a bonus extra game in Pass 3.
-          // Still requires "Assign subs" to be enabled for this run —
-          // this only reorders where subs are tried, it doesn't turn
-          // sub-filling on when the admin left it off.
-          if (eligible.length === 0 && assignSubs && hasNoMakeupVacancyToday) {
-            const noMakeupSubEligible = getAvailablePlayers(game, currentAssigned, false, { playerPool: subPlayers, isSubs: true }).filter((p) => {
-              if (usedOnDay.has(p.id)) return false;
-              return true;
-            });
-            if (noMakeupSubEligible.length > 0) {
-              passUsed = 2.9;
-              eligible = noMakeupSubEligible;
-            }
-          }
           // Pass 3: extras — allow 2+ players beyond their weekly minimum of 2.
           // GATED: no extras while any contracted player still has unmet
           // weekly contract AND remaining playable days.
@@ -1514,7 +1524,7 @@ export async function POST(request: NextRequest) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.8] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} (${chosen.skillLevel}) assigned as C-GAME-OK (A/B player in C-player game)` });
             } else if (passUsed === 2.9) {
               pass29Count++;
-              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.9] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB (no-makeup vacancy — preferred over a 2+ extra)` });
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 2.9] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB (clear swap — preferred over front-load/extras on a no-makeup vacation date)` });
             } else if (passUsed === 3) {
               pass3Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 3] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as EXTRA (2+ beyond weekly min)` });
@@ -2180,7 +2190,7 @@ export async function POST(request: NextRequest) {
       log.push({ type: "info", message: `Pass 2.8 (C-adjacent fallback): ${pass28Count} slots filled by A/B players in C-player games` });
     }
     if (assignSubs && pass29Count > 0) {
-      log.push({ type: "info", message: `Pass 2.9 (no-makeup vacancy): ${pass29Count} slots filled by subs preferred over a 2+ extra` });
+      log.push({ type: "info", message: `Pass 2.9 (clear-swap sub priority): ${pass29Count} slots filled by scheduled subs preferred over front-load/extras` });
     }
     if (assignExtra && pass3Count > 0) {
       log.push({ type: "info", message: `Pass 3 (extras): ${pass3Count} slots filled by 2+ players beyond weekly minimum` });
@@ -2196,7 +2206,7 @@ export async function POST(request: NextRequest) {
     const lastPass = pass4Count > 0 ? "Pass 4 (subs)"
       : pass35Count > 0 ? "Pass 3.5 (STD catchup)"
       : pass3Count > 0 ? "Pass 3 (extras)"
-      : pass29Count > 0 ? "Pass 2.9 (no-makeup vacancy)"
+      : pass29Count > 0 ? "Pass 2.9 (clear-swap sub priority)"
       : pass28Count > 0 ? "Pass 2.8 (C-adjacent fallback)"
       : "Pass 2 (base)";
     log.push({
