@@ -850,6 +850,34 @@ export default function SeasonPage() {
         }
       }
 
+      // Clear-swap adjustment pass (v2.256): swap no-makeup-vacation players
+      // for scheduled subs (or remove vacation assignments if no sub available)
+      if (!donsStopRef.current && weeksAssignedCount > 0) {
+        log.push({ type: "info", message: "--- Clear-Swap Adjustment: replacing vacation players with scheduled subs ---" });
+        setDonsAssignLog([...log]);
+        setDonsAssigningWeek(null);
+        try {
+          const swapRes = await fetch("/api/games/clear-swap-adjustment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seasonId: activeSeason.id }),
+          });
+          const swapData = await swapRes.json();
+          if (swapRes.ok) {
+            if (swapData.log) {
+              for (const entry of swapData.log) {
+                log.push({ type: entry.type, message: `  ${entry.message}` });
+              }
+            }
+          } else {
+            log.push({ type: "error", message: `Clear-swap adjustment failed: ${swapData.error ?? "unknown error"}` });
+          }
+        } catch (err) {
+          log.push({ type: "error", message: `Clear-swap adjustment: ${String(err)}` });
+        }
+        setDonsAssignLog([...log]);
+      }
+
       // Balance Pairings: swap same-level players between same-day games to reduce pairing concentrations
       if (!donsStopRef.current && weeksAssignedCount > 0 && donsAssignBalancePairings) {
         log.push({ type: "info", message: "--- Balance Pairings: reducing pairing concentrations ---" });
