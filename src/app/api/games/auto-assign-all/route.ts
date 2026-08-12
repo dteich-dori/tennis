@@ -223,6 +223,33 @@ export async function POST(request: NextRequest) {
       log.push({ type: "warning", message: `End-of-season sweep error: ${String(err)}` });
     }
 
+    // --- Clear-swap adjustment pass (v2.255) ---
+    // After all weeks and the sweep, look for contracted players assigned to
+    // "no vacation makeup" vacation dates and swap them for scheduled subs
+    // (those with non-empty availableDates). This handles the two-pass approach:
+    // Pass 1 (auto-assign) ignored vacation constraints for noVacationMakeup=true
+    // players; Pass 2 (this) attempts to replace them with scheduled subs or
+    // removes them (leaving slots unfilled).
+    let swapsCompleted = 0;
+    let vacationDaysRemoved = 0;
+    try {
+      const swapRes = await fetch(`${baseUrl}/api/games/clear-swap-adjustment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ seasonId }),
+      });
+      const swapData = await swapRes.json();
+      if (swapRes.ok) {
+        swapsCompleted = swapData.swapsCompleted ?? 0;
+        vacationDaysRemoved = swapData.vacationDaysKept ?? 0;
+        if (swapData.log) for (const entry of swapData.log) log.push(entry);
+      } else {
+        log.push({ type: "warning", message: `Clear-swap adjustment failed: ${swapData.error ?? "unknown error"}` });
+      }
+    } catch (err) {
+      log.push({ type: "warning", message: `Clear-swap adjustment error: ${String(err)}` });
+    }
+
     return NextResponse.json({
       success: true,
       weeksAssigned: weeksAssignedCount,
@@ -232,6 +259,8 @@ export async function POST(request: NextRequest) {
       totalUnfilled: Math.max(0, totalUnfilled - sweepFilled),
       sweepFilled,
       sweepMarkers,
+      swapsCompleted,
+      vacationDaysRemoved,
       log,
     });
   } catch (err) {
