@@ -577,8 +577,10 @@ export async function POST(request: NextRequest) {
         // No early games
         if (p.noEarlyGames && game.startTime < "10:00") return false;
 
-        // Vacation
-        if (p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
+        // Vacation: v2.255 — if noVacationMakeup=true, ignore vacation dates
+        // (the adjustment pass will handle swap attempts for scheduled subs later).
+        // If noVacationMakeup=false, block vacation dates as usual.
+        if (!p.noVacationMakeup && p.vacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
 
         // Sub positive availability: a sub with one or more availableDates
         // ranges is ONLY eligible for games whose date falls in one of
