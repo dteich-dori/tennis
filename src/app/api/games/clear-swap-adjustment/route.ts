@@ -101,8 +101,13 @@ export async function POST(request: NextRequest) {
 
       // Found a candidate slot. Now find eligible scheduled subs for this date.
       const eligibleSubs = allPlayers.filter((p) => {
-        // Must be a sub (freq=0 or freq=1+ without contracted commitment on this date)
-        // For simplicity: just check if they have non-empty availableDates
+        // Must be a sub (freq=0 or 1+), not a regular contracted player
+        if (p.contractedFrequency !== "0" && p.contractedFrequency !== "1+") return false;
+
+        // Must match skill level of the vacationing player
+        if (p.skillLevel !== assignedPlayer.skillLevel) return false;
+
+        // Must have non-empty availableDates (scheduled sub)
         const availDates = availableDatesByPlayer.get(p.id) ?? [];
         if (availDates.length === 0) return false;
 
