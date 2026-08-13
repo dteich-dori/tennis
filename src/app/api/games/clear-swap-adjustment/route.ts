@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, playerAvailableDates, playerVacations } from "@/db/schema";
+import { games, gameAssignments, players, playerAvailableDates, playerVacations, playerBlockedDays } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
 interface LogEntry {
@@ -38,9 +38,16 @@ export async function POST(request: NextRequest) {
 
     const allVacations = await database.select().from(playerVacations);
     const allAvailableDates = await database.select().from(playerAvailableDates);
+    const allBlockedDays = await database.select().from(playerBlockedDays);
 
     // Build player lookup maps
     const playerMap = new Map(allPlayers.map((p) => [p.id, p]));
+    const blockedDaysByPlayer = new Map<number, number[]>();
+    for (const bd of allBlockedDays) {
+      const arr = blockedDaysByPlayer.get(bd.playerId) ?? [];
+      arr.push(bd.dayOfWeek);
+      blockedDaysByPlayer.set(bd.playerId, arr);
+    }
     const vacationsByPlayer = new Map<number, typeof allVacations>();
     for (const v of allVacations) {
       const arr = vacationsByPlayer.get(v.playerId) ?? [];
@@ -81,6 +88,7 @@ export async function POST(request: NextRequest) {
 
     // For each assignment: check if the player is on a no-makeup vacation date
     let swapsCompleted = 0;
+    let generalFills = 0;
     let vacationDaysLeft = 0;
     for (const assignment of allAssignments) {
       const game = allDonsGames.find((g) => g.id === assignment.gameId);
@@ -129,10 +137,58 @@ export async function POST(request: NextRequest) {
       });
 
       if (eligibleSubs.length === 0) {
-        // No scheduled sub available: must remove the assignment (cannot leave
-        // a player on vacation in the final schedule). Delete the assignment
-        // and mark the slot as unfilled — other eligible players can fill it
-        // or it stays empty.
+        // No scheduled sub — try alwaysAvailable subs of the same skill level
+        // as a general-pool fallback (no swap attribution).
+        const generalSub = allPlayers.find((p) => {
+          if (p.contractedFrequency !== "0" && p.contractedFrequency !== "1+") return false;
+          if (!p.alwaysAvailable) return false;
+          if (p.skillLevel !== assignedPlayer.skillLevel) return false;
+          // Blocked day check
+          if ((blockedDaysByPlayer.get(p.id) ?? []).includes(game.dayOfWeek)) return false;
+          // Vacation check — subs can have vacations even with alwaysAvailable
+          const subVacations = vacationsByPlayer.get(p.id) ?? [];
+          if (subVacations.some((v) => game.date >= v.startDate && game.date <= v.endDate)) return false;
+          // Not already assigned on this date
+          const alreadyOnDate = allAssignments.some(
+            (a) =>
+              a.playerId === p.id &&
+              allDonsGames.find((g) => g.id === a.gameId)?.date === game.date
+          );
+          return !alreadyOnDate;
+        });
+
+        if (generalSub) {
+          // Replace with general-pool sub (no coveringForPlayerId — not a swap)
+          try {
+            await database
+              .delete(gameAssignments)
+              .where(eq(gameAssignments.id, assignment.id));
+
+            await database
+              .insert(gameAssignments)
+              .values({
+                gameId: assignment.gameId,
+                playerId: generalSub.id,
+                slotPosition: assignment.slotPosition,
+                isPrefill: assignment.isPrefill,
+                coveringForPlayerId: null,
+              });
+
+            generalFills++;
+            log.push({
+              type: "info",
+              message: `Game #${game.gameNumber} slot ${assignment.slotPosition}: replaced ${assignedPlayer.lastName} (vacation) with ${generalSub.lastName} (general sub)`,
+            });
+          } catch (err) {
+            log.push({
+              type: "warning",
+              message: `Failed to replace ${assignedPlayer.lastName} in game #${game.gameNumber}: ${err}`,
+            });
+          }
+          continue;
+        }
+
+        // No sub at all: remove the assignment, slot stays unfilled
         try {
           await database
             .delete(gameAssignments)
@@ -141,7 +197,7 @@ export async function POST(request: NextRequest) {
           vacationDaysLeft++;
           log.push({
             type: "info",
-            message: `Game #${game.gameNumber} slot ${assignment.slotPosition}: removed ${assignedPlayer.lastName} (vacation, no makeup) — no scheduled sub available, slot now unfilled`,
+            message: `Game #${game.gameNumber} slot ${assignment.slotPosition}: removed ${assignedPlayer.lastName} (vacation, no makeup) — no sub available, slot now unfilled`,
           });
         } catch (err) {
           log.push({
@@ -187,12 +243,13 @@ export async function POST(request: NextRequest) {
 
     log.push({
       type: "info",
-      message: `Clear-swap adjustment complete: ${swapsCompleted} slot(s) swapped, ${vacationDaysLeft} vacation slot(s) kept (no sub available).`,
+      message: `Clear-swap adjustment complete: ${swapsCompleted} swap(s), ${generalFills} general sub fill(s), ${vacationDaysLeft} slot(s) unfilled.`,
     });
 
     return NextResponse.json({
       success: true,
       swapsCompleted,
+      generalFills,
       vacationDaysKept: vacationDaysLeft,
       log,
     });

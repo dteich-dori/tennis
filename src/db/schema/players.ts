@@ -50,6 +50,10 @@ export const players = sqliteTable("players", {
   // standard opt-out keywords) to any SMS, Twilio's webhook flips this
   // flag. The send code skips SMS to opted-out players (email still
   // works). Reply START/YES/UNSTOP flips it back off.
+  // When true, this sub is available any date (subject to blocked days).
+  // Used by the clear-swap adjustment pass as a general-pool fallback
+  // (without 1:1 swap attribution) when no scheduled sub is found.
+  alwaysAvailable: integer("always_available", { mode: "boolean" }).notNull().default(false),
   smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
   smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
   smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text

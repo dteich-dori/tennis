@@ -41,6 +41,7 @@ interface Player {
   isDerated: boolean;
   noEarlyGames: boolean;
   noVacationMakeup: boolean;
+  alwaysAvailable: boolean;
   cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
@@ -83,6 +84,7 @@ const emptyPlayer = {
   isDerated: false,
   noEarlyGames: false,
   noVacationMakeup: false,
+  alwaysAvailable: false,
   cGamesLimit: null as number | null,
   soloGames: null as number | null,
   groupPct: 0,
@@ -179,6 +181,7 @@ export default function PlayersPage() {
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
       noVacationMakeup: player.noVacationMakeup ?? false,
+      alwaysAvailable: player.alwaysAvailable ?? false,
       cGamesLimit: player.cGamesLimit ?? null,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
@@ -937,6 +940,17 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, noVacationMakeup: e.target.checked })}
                 />
                 No vacation makeup
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="When checked, this sub is available any date (subject to blocked days and vacations). The adjustment pass will use them as a general replacement when no scheduled sub is found for a no-makeup vacation slot."
+              >
+                <input
+                  type="checkbox"
+                  checked={form.alwaysAvailable}
+                  onChange={(e) => setForm({ ...form, alwaysAvailable: e.target.checked })}
+                />
+                Always available
               </label>
               <label
                 className="flex items-center gap-2 text-sm"
