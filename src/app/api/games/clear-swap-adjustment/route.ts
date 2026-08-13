@@ -86,11 +86,13 @@ export async function POST(request: NextRequest) {
       allAssignments.push(...batchResults);
     }
 
-    // For each assignment: check if the player is on a no-makeup vacation date
+    // For each assignment: check if the player is on a no-makeup vacation date.
+    // Iterate over a snapshot — allAssignments is mutated during processing.
     let swapsCompleted = 0;
     let generalFills = 0;
     let vacationDaysLeft = 0;
-    for (const assignment of allAssignments) {
+    const assignmentSnapshot = [...allAssignments];
+    for (const assignment of assignmentSnapshot) {
       const game = allDonsGames.find((g) => g.id === assignment.gameId);
       if (!game) continue;
 
@@ -108,31 +110,17 @@ export async function POST(request: NextRequest) {
       if (!isOnNoMakeupVacation) continue;
 
       // Found a candidate slot. Now find eligible scheduled subs for this date.
+      // A scheduled sub may already be assigned on this date (auto-assign placed
+      // them as a regular sub). That's fine — we move them to the vacation slot.
       const eligibleSubs = allPlayers.filter((p) => {
-        // Must be a sub (freq=0 or 1+), not a regular contracted player
         if (p.contractedFrequency !== "0" && p.contractedFrequency !== "1+") return false;
-
-        // Must match skill level of the vacationing player
         if (p.skillLevel !== assignedPlayer.skillLevel) return false;
-
-        // Must have non-empty availableDates (scheduled sub)
         const availDates = availableDatesByPlayer.get(p.id) ?? [];
         if (availDates.length === 0) return false;
-
-        // Check if they cover this game's date
         const coveringDate = availDates.some(
           (ad) => game.date >= ad.startDate && game.date <= ad.endDate
         );
         if (!coveringDate) return false;
-
-        // Check if already assigned on this date
-        const alreadyOnDate = allAssignments.some(
-          (a) =>
-            a.playerId === p.id &&
-            allDonsGames.find((g) => g.id === a.gameId)?.date === game.date
-        );
-        if (alreadyOnDate) return false;
-
         return true;
       });
 
@@ -211,13 +199,37 @@ export async function POST(request: NextRequest) {
       // Pick the first eligible sub (could add scoring here if needed)
       const chosenSub = eligibleSubs[0];
 
-      // Perform the swap: delete old assignment, insert new one
+      // Check if this sub is already assigned on this date (auto-assign may
+      // have placed them as a regular sub). If so, remove that assignment
+      // first so we can move them to the vacation player's slot.
+      const existingSubAssignment = allAssignments.find(
+        (a) =>
+          a.playerId === chosenSub.id &&
+          allDonsGames.find((g) => g.id === a.gameId)?.date === game.date
+      );
+
       try {
+        if (existingSubAssignment) {
+          const existingGame = allDonsGames.find((g) => g.id === existingSubAssignment.gameId);
+          await database
+            .delete(gameAssignments)
+            .where(eq(gameAssignments.id, existingSubAssignment.id));
+          // Remove from in-memory array so later iterations see updated state
+          const idx = allAssignments.indexOf(existingSubAssignment);
+          if (idx !== -1) allAssignments.splice(idx, 1);
+          log.push({
+            type: "info",
+            message: `Game #${existingGame?.gameNumber ?? "?"} slot ${existingSubAssignment.slotPosition}: removed ${chosenSub.lastName} (moving to clear-swap duty)`,
+          });
+        }
+
+        // Remove vacation player's assignment
         await database
           .delete(gameAssignments)
           .where(eq(gameAssignments.id, assignment.id));
 
-        const result = await database
+        // Insert sub into vacation player's slot with attribution
+        await database
           .insert(gameAssignments)
           .values({
             gameId: assignment.gameId,
@@ -225,8 +237,7 @@ export async function POST(request: NextRequest) {
             slotPosition: assignment.slotPosition,
             isPrefill: assignment.isPrefill,
             coveringForPlayerId: assignedPlayer.id,
-          })
-          .returning();
+          });
 
         swapsCompleted++;
         log.push({
