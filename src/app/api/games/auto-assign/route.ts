@@ -1499,9 +1499,10 @@ export async function POST(request: NextRequest) {
             });
           }
           // Pass 3.5: STD catchup — contracted players with season-total deficit.
-          // Same gating as Pass 3.
+          // Uses bypassWtdCap so players who've met their weekly quota can
+          // still get an extra game when they have a season-total deficit.
           if (eligible.length === 0 && assignStdCatchup && !anyContractedUnmetWithRoom()) {
-            const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true }).filter((p) => {
+            const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { bypassWtdCap: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               if (p.contractedFrequency === "0") return false; // not subs
               const freq = weeklyContractedGames(p.contractedFrequency);
@@ -1887,9 +1888,10 @@ export async function POST(request: NextRequest) {
             if (eligible.length > 0) sweepPass = "extras";
           }
 
-          // Try Pass 3.5 (STD catchup) — same gating
+          // Try Pass 3.5 (STD catchup) — bypassWtdCap so weekly-met
+          // players with a season deficit can still fill slots
           if (eligible.length === 0 && assignStdCatchup) {
-            eligible = getAvailablePlayers(game, currentAssigned, false, { allowExtras: true })
+            eligible = getAvailablePlayers(game, currentAssigned, false, { bypassWtdCap: true })
               .filter((p) => {
                 if (usedOnDay.has(p.id)) return false;
                 if (p.contractedFrequency === "0") return false;
