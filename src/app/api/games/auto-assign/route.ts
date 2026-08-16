@@ -1501,7 +1501,9 @@ export async function POST(request: NextRequest) {
           // Pass 3.5: STD catchup — contracted players with season-total deficit.
           // Uses bypassWtdCap so players who've met their weekly quota can
           // still get an extra game when they have a season-total deficit.
-          if (eligible.length === 0 && assignStdCatchup && !anyContractedUnmetWithRoom()) {
+          // NOT gated by anyContractedUnmetWithRoom — filling an empty slot
+          // with a deficit player is always better than leaving it unfilled.
+          if (eligible.length === 0 && assignStdCatchup) {
             const stdCatchupEligible = getAvailablePlayers(game, currentAssigned, false, { bypassWtdCap: true }).filter((p) => {
               if (usedOnDay.has(p.id)) return false;
               if (p.contractedFrequency === "0") return false; // not subs
