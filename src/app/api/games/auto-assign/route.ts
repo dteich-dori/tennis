@@ -537,7 +537,13 @@ export async function POST(request: NextRequest) {
             const ytd = ytdCounts.get(p.id)?.ytdDons ?? 0;
             if (ytd >= freq * contractWeeks) return false;
           }
-          if (firstGameOnly) {
+          if (weekNumber > contractWeeks) {
+            // Makeup week (37+): no weekly contract obligation.
+            // Only players with a YTD deficit are eligible (season-total
+            // cap above already filters those who've met their target).
+            // Still spread games: no more than 1 per player per week.
+            if (wtd > 0) return false;
+          } else if (firstGameOnly) {
             // Only players who have zero Don's games this week
             if (wtd > 0) return false;
           } else if (p.contractedFrequency === "2+") {

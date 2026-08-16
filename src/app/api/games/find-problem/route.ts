@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       const weekGames = await database
         .select()
         .from(games)
-        .where(and(eq(games.seasonId, seasonId), eq(games.weekNumber, week), eq(games.status, "normal")));
+        .where(and(eq(games.seasonId, seasonId), eq(games.weekNumber, week), eq(games.status, "normal"), eq(games.group, "dons")));
 
       if (weekGames.length === 0) continue;
 
