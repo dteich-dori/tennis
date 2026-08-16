@@ -1527,17 +1527,13 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // Pass 5: deficit fill — any contracted player with a season-total
-          // deficit who can legally play this game. No weekly-cap gate, no
-          // usedOnDay filter. Last resort before leaving the slot empty.
+          // Pass 5: last-resort fill — any contracted player who can legally
+          // play this game, even if they've met their weekly quota. The
+          // season-total cap inside getAvailablePlayers prevents over-assignment.
           if (eligible.length === 0 && assignStdCatchup) {
             passUsed = 5;
             eligible = getAvailablePlayers(game, currentAssigned, false, { bypassWtdCap: true }).filter((p) => {
-              if (p.contractedFrequency === "0") return false;
-              const freq = weeklyContractedGames(p.contractedFrequency);
-              if (freq === 0) return false;
-              const std = stdDonsCounts.get(p.id) ?? 0;
-              return freq * contractWeeks - std > 0;
+              return p.contractedFrequency !== "0";
             });
           }
 
