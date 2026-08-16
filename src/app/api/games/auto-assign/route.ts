@@ -761,6 +761,7 @@ export async function POST(request: NextRequest) {
     let pass3Count = 0;
     let pass35Count = 0;
     let pass4Count = 0;
+    let pass5Count = 0;
 
     // v1.220: B players were slipping into B+C games uncapped, because
     // composition rules never restrict B from joining a C-containing
@@ -1526,6 +1527,20 @@ export async function POST(request: NextRequest) {
             });
           }
 
+          // Pass 5: deficit fill — any contracted player with a season-total
+          // deficit who can legally play this game. No weekly-cap gate, no
+          // usedOnDay filter. Last resort before leaving the slot empty.
+          if (eligible.length === 0 && assignStdCatchup) {
+            passUsed = 5;
+            eligible = getAvailablePlayers(game, currentAssigned, false, { bypassWtdCap: true }).filter((p) => {
+              if (p.contractedFrequency === "0") return false;
+              const freq = weeklyContractedGames(p.contractedFrequency);
+              if (freq === 0) return false;
+              const std = stdDonsCounts.get(p.id) ?? 0;
+              return freq * contractWeeks - std > 0;
+            });
+          }
+
           const prioritized = sortByPriority(eligible, game);
 
           if (prioritized.length > 0) {
@@ -1560,6 +1575,11 @@ export async function POST(request: NextRequest) {
             } else if (passUsed === 4) {
               pass4Count++;
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 4] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as SUB` });
+            } else if (passUsed === 5) {
+              pass5Count++;
+              const freq = weeklyContractedGames(chosen.contractedFrequency);
+              const std = stdDonsCounts.get(chosen.id) ?? 0;
+              log.push({ type: "info", day: DAYS[dow], message: `[Pass 5] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as DEFICIT-FILL (season deficit: ${freq * contractWeeks - std} games behind)` });
             } else if (usedOnDay.has(chosen.id)) {
               log.push({ type: "info", day: DAYS[dow], message: `[Pass 2] Game #${game.gameNumber} slot ${slot}: ${chosen.lastName} assigned as BONUS (extra game on same day)` });
             }
@@ -2226,9 +2246,13 @@ export async function POST(request: NextRequest) {
     if (assignSubs && pass4Count > 0) {
       log.push({ type: "info", message: `Pass 4 (subs): ${pass4Count} slots filled by substitute players` });
     }
+    if (assignStdCatchup && pass5Count > 0) {
+      log.push({ type: "info", message: `Pass 5 (deficit fill): ${pass5Count} slots filled by players with season deficit (beyond weekly cap)` });
+    }
 
     // Determine the highest pass used
-    const lastPass = pass4Count > 0 ? "Pass 4 (subs)"
+    const lastPass = pass5Count > 0 ? "Pass 5 (deficit fill)"
+      : pass4Count > 0 ? "Pass 4 (subs)"
       : pass35Count > 0 ? "Pass 3.5 (STD catchup)"
       : pass3Count > 0 ? "Pass 3 (extras)"
       : pass29Count > 0 ? "Pass 2.9 (clear-swap sub priority)"
