@@ -2087,8 +2087,8 @@ export default function SchedulePage() {
                                                 </span>
                                                 <span className="flex gap-3 text-xs text-muted">
                                                   <span className="w-6 text-center" title={`Skill level: ${p.skillLevel || "—"}`}>{p.skillLevel || "—"}</span>
-                                                  <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{remaining}</span>
-                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${baseFreq * Math.min(currentWeek, 36)} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{baseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons)}</span>
+                                                  <span className={`w-8 text-center ${remaining < 0 ? "text-danger font-medium" : remaining === 0 ? "text-gray-400" : ""}`}>{Math.round(remaining)}</span>
+                                                  <span className={`w-8 text-center ${deficit ? "text-amber-600 font-medium" : ""}`} title={`YTD Owed: ${Math.round(baseFreq * Math.min(currentWeek, 36))} expected − ${game.group === "solo" ? counts.ytdSolo : counts.ytdDons} played`}>{Math.round(baseFreq * Math.min(currentWeek, 36) - (game.group === "solo" ? counts.ytdSolo : counts.ytdDons))}</span>
                                                   <span className={`w-8 text-center ${stdOwed > 0 ? "text-blue-600 font-medium" : "text-gray-400"}`} title={`STD Owed: ${Math.round(baseFreq * 36)} target − ${game.group === "solo" ? (counts.stdSolo ?? 0) : (counts.stdDons ?? 0)} played`}>{stdOwed > 0 ? Math.round(stdOwed) : 0}</span>
                                                 </span>
                                               </button>
