@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { countPerPlayer } from "@/lib/dedupeAssignments";
 import { generateAccountsSummaryPdf } from "@/lib/reports/accountsSummaryPdf";
 
 interface Season {
@@ -35,6 +36,9 @@ const STANDARD_DEPOSITS: Record<string, number> = {
 };
 
 interface Assignment {
+  id: number;
+  gameId: number;
+  slotPosition: number;
   playerId: number;
 }
 
@@ -144,15 +148,14 @@ export default function AccountsTab({ season, params }: Props) {
     // priced for the standard season length (typically 36 weeks).
     const baseWeeks = params.weeksPerSeason || 36;
 
-    // Count games per player (Don's, normal status only)
-    const gamesByPlayer = new Map<number, number>();
-    for (const g of games) {
-      if (g.status !== "normal") continue;
-      if (g.group !== "dons") continue;
-      for (const a of g.assignments ?? []) {
-        gamesByPlayer.set(a.playerId, (gamesByPlayer.get(a.playerId) ?? 0) + 1);
-      }
-    }
+    // Count games per player (Don's, normal status only).
+    // `game_assignments` holds duplicate rows for some (game, slot) pairs —
+    // see lib/dedupeAssignments.ts — and these counts drive what players are
+    // billed, so count only the rows the Schedule grid actually displays.
+    const donsNormalAssignments = games
+      .filter((g) => g.status === "normal" && g.group === "dons")
+      .flatMap((g) => g.assignments ?? []);
+    const gamesByPlayer = countPerPlayer(donsNormalAssignments);
 
     // Group payments by player
     const paymentsByPlayer = new Map<number, Payment[]>();

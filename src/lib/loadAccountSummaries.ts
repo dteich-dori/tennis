@@ -17,6 +17,7 @@ import {
   computeAccountSummaries,
   type AccountSummary,
 } from "./playerAccountSummary";
+import { firstPerSlot } from "./dedupeAssignments";
 
 interface LoadResult {
   summaries: AccountSummary[];
@@ -64,10 +65,17 @@ export async function loadAccountSummariesForSeason(
 
   // 3. Don's normal-status game assignments for the season — joined to games
   //    so we can filter by status='normal' and group='dons'
-  const allAssignments =
+  //  NOTE: `game_assignments` holds duplicate rows for some (game, slot)
+  //  pairs — see lib/dedupeAssignments.ts. Counting raw rows here billed
+  //  players for games their schedule never showed them in, so we pull the
+  //  slot keys too and keep only the rows the Schedule grid displays.
+  const rawAssignments =
     playerIds.length > 0
       ? await database
           .select({
+            id: gameAssignments.id,
+            gameId: gameAssignments.gameId,
+            slotPosition: gameAssignments.slotPosition,
             playerId: gameAssignments.playerId,
             gameStatus: games.status,
             gameGroup: games.group,
@@ -78,11 +86,17 @@ export async function loadAccountSummariesForSeason(
             and(
               eq(games.seasonId, seasonId),
               eq(games.group, "dons"),
-              eq(games.status, "normal"),
-              inArray(gameAssignments.playerId, playerIds)
+              eq(games.status, "normal")
             )
           )
       : [];
+
+  //  IMPORTANT: no playerId filter above, deliberately. The dedupe has to see
+  //  EVERY row of a (game, slot) to know which one wins. Filtering to one
+  //  player first would promote their second-place row to first and bill it.
+  //  computeAccountSummaries only looks up the players it was given, so the
+  //  extra rows cost nothing.
+  const allAssignments = firstPerSlot(rawAssignments);
 
   // 4. Budget params (rates + baseWeeks)
   const params = await database

@@ -629,7 +629,7 @@ export default function ReportsPage() {
         weekNumber: number;
         status: string;
         group: string;
-        assignments: { playerId: number }[];
+        assignments: { playerId: number; slotPosition: number }[];
       }[];
       const allPlayers = (await playersRes.json()) as {
         id: number;

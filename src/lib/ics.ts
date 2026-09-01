@@ -78,6 +78,13 @@ function playerDisplayName(
  * player's already-filtered-and-sorted games. Returns the .ics string, or an
  * empty string if the player has no normal games.
  */
+/**
+ * PRECONDITION: `games[].assignments` must already hold at most ONE row per
+ * slotPosition (run it through firstPerSlot in lib/dedupeAssignments.ts).
+ * This function trusts that — it derives ball duty from `.find()` on slot 1
+ * and builds the co-player list from every remaining row, so duplicate rows
+ * produce doubled names and two people both told to bring the balls.
+ */
 export function generatePlayerIcs(
   player: Player,
   games: Game[],

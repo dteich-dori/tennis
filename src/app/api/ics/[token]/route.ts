@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { players, games, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { generatePlayerIcs } from "@/lib/ics";
+import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 /**
  * Public calendar subscription endpoint.
@@ -84,10 +85,28 @@ export async function GET(
     assignmentsByGame.set(a.gameId, existing);
   }
 
-  // Build enriched games with assignments sorted by slotPosition
+  // Build enriched games with assignments sorted by slotPosition.
+  //
+  // firstPerSlot is essential here, not cosmetic. `game_assignments` holds
+  // duplicate rows for some (game, slot) pairs — see lib/dedupeAssignments.ts
+  // — and this feed goes straight into players' personal calendars. Without
+  // the dedupe, three things go wrong at once:
+  //
+  //   1. PHANTOM EVENTS. The filter below is `assignments.some(a => a.playerId
+  //      === player.id)`. A player who is the second row at a slot is not on
+  //      the schedule anyone sees, but would still get a calendar entry and
+  //      turn up at the court.
+  //   2. WRONG CO-PLAYERS. generatePlayerIcs lists everyone else in the game,
+  //      so a doubled game reads "With: Wise, Wise, Peskin, Peskin, ...".
+  //   3. WRONG BALL DUTY. It flags slot 1 as the ball provider via
+  //      `assignments.find(...)`. With two rows at slot 1, BOTH players are
+  //      told they are bringing the balls.
+  //
+  // Dedupe first, then sort — firstPerSlot keys off the lowest id, so it does
+  // not care what order the rows arrive in.
   const enrichedGames = allGames.map((g) => ({
     ...g,
-    assignments: (assignmentsByGame.get(g.id) ?? []).sort(
+    assignments: firstPerSlot(assignmentsByGame.get(g.id) ?? []).sort(
       (a, b) => a.slotPosition - b.slotPosition
     ),
   }));

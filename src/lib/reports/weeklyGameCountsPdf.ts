@@ -14,6 +14,7 @@ interface PlayerInfo {
 
 interface GameAssignmentLite {
   playerId: number;
+  slotPosition: number;
 }
 
 interface GameLite {
@@ -78,16 +79,63 @@ export function generateWeeklyGameCountsPdf(
   // Build per-player per-week counts. Only NORMAL Don's-group games count.
   const counts = new Map<number, Map<number, number>>(); // playerId → weekNum → count
   const weekColumnTotals = new Map<number, number>(); // weekNum → sum across players
+  const weekCapacity = new Map<number, number>();    // weekNum → 4 × games that week
+  const suppressedByWeek = new Map<number, number>(); // weekNum → duplicate rows ignored
   for (const g of games) {
     if (g.status !== "normal") continue;
     if (g.group !== "dons") continue;
+    // A game has four slots, but game_assignments currently holds MORE than
+    // one row for some (game, slot) pairs — see docs/DB-CLEANUP-TODO.md.
+    // The Schedule grid renders each slot with
+    //     game.assignments.find((a) => a.slotPosition === slot)
+    // which takes the FIRST row for that slot and never shows the rest, so
+    // the extra rows are invisible on screen. Counting every row here made
+    // this report disagree with the schedule (e.g. Rick Simon showed 5 games
+    // in week 22 of the 2026-27 season against the 2 the schedule shows).
+    // Mirror the grid's rule: count one row per slot, the first one.
+    // This HIDES the duplicate rows; it does not remove them. Once the table
+    // is cleaned up, this guard becomes a harmless no-op and can be dropped.
+    const slotSeen = new Set<number>();
     for (const a of g.assignments) {
+      if (slotSeen.has(a.slotPosition)) {
+        // Duplicate row for a slot already counted. Tally it so the sanity
+        // check below can tell the reader the underlying data is dirty.
+        suppressedByWeek.set(
+          g.weekNumber,
+          (suppressedByWeek.get(g.weekNumber) ?? 0) + 1
+        );
+        continue;
+      }
+      slotSeen.add(a.slotPosition);
       const wkMap = counts.get(a.playerId) ?? new Map<number, number>();
       wkMap.set(g.weekNumber, (wkMap.get(g.weekNumber) ?? 0) + 1);
       counts.set(a.playerId, wkMap);
       weekColumnTotals.set(g.weekNumber, (weekColumnTotals.get(g.weekNumber) ?? 0) + 1);
     }
+    // Capacity for the week: 4 slots per Don's normal game.
+    weekCapacity.set(g.weekNumber, (weekCapacity.get(g.weekNumber) ?? 0) + 4);
   }
+
+  //  SANITY CHECK (Rudor's, 31 Aug 2026). A week's column can never legitimately
+  //  total more than 4 x the number of Don's normal games in it — 60 in a
+  //  typical 15-game week. If it does, the report is describing something
+  //  impossible and should say so on its face rather than print a plausible
+  //  wrong number. Weeks that fail are listed in the header and their column
+  //  total is printed in red.
+  //
+  //  With the slot dedupe above in place this should never fire; it is a
+  //  backstop against the NEXT way the data goes wrong. `suppressedByWeek` is
+  //  the softer signal — it fires today, and reports how many duplicate rows
+  //  were ignored to keep this report honest.
+  const overCapacityWeeks: number[] = [];
+  for (const [wk, total] of weekColumnTotals) {
+    const cap = weekCapacity.get(wk) ?? 0;
+    if (total > cap) overCapacityWeeks.push(wk);
+  }
+  overCapacityWeeks.sort((a, b) => a - b);
+
+  const suppressedTotal = [...suppressedByWeek.values()].reduce((a, b) => a + b, 0);
+  const suppressedWeeks = [...suppressedByWeek.keys()].sort((a, b) => a - b);
 
   // Layout constants. With ~36 week columns + name + total we need narrow cells.
   const marginLeft = 24;
@@ -120,6 +168,30 @@ export function generateWeeklyGameCountsPdf(
       { align: "center" }
     );
     y += 10;
+
+    // Data-integrity banner. Silence here means the checks passed.
+    if (overCapacityWeeks.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(180, 0, 0);
+      doc.text(
+        `DATA ERROR — week ${overCapacityWeeks.join(", ")} total(s) exceed 4 x the games played that week. Figures below cannot be trusted.`,
+        pageWidth / 2, y, { align: "center" }
+      );
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "normal");
+      y += 10;
+    }
+    if (suppressedTotal > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(180, 90, 0);
+      doc.text(
+        `Note: ${suppressedTotal} duplicate slot entr${suppressedTotal === 1 ? "y" : "ies"} ignored in week ${suppressedWeeks.join(", ")} — counts below match the schedule. See docs/DB-CLEANUP-TODO.md.`,
+        pageWidth / 2, y, { align: "center" }
+      );
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "normal");
+      y += 10;
+    }
     return y;
   };
 
@@ -274,13 +346,17 @@ export function generateWeeklyGameCountsPdf(
   doc.text("Total", marginLeft + 4, currentY + rowHeight - 2);
 
   let grandTotal = 0;
+  const overSet = new Set(overCapacityWeeks);
   for (let w = 1; w <= totalWeeks; w++) {
     const c = weekColumnTotals.get(w) ?? 0;
     grandTotal += c;
     const cx = marginLeft + nameColW + (w - 0.5) * weekColW;
+    // A week's total above 4 × its games is impossible — print it in red.
+    if (overSet.has(w)) doc.setTextColor(180, 0, 0);
     doc.text(c > 0 ? String(c) : "·", cx, currentY + rowHeight - 2, {
       align: "center",
     });
+    if (overSet.has(w)) doc.setTextColor(0, 0, 0);
   }
   doc.text(
     String(grandTotal),

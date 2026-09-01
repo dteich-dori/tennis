@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments, players, budgetParams, courtSchedules } from "@/db/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { countPerPlayer } from "@/lib/dedupeAssignments";
 
 /**
  * GET /api/budget-computed?seasonId=N
@@ -86,6 +87,31 @@ export async function GET(request: NextRequest) {
       .where(eq(budgetParams.seasonId, sid));
     const weeksPerSeason = bpRows.length > 0 ? bpRows[0].weeksPerSeason : 36;
 
+    //  `game_assignments` holds duplicate rows for some (game, slot) pairs —
+    //  see lib/dedupeAssignments.ts. The three blocks below used to run
+    //  `count(*)`, which counted those duplicates as billable extra games.
+    //  Fetch every Don's/normal row for the season once, keep only the rows
+    //  the Schedule grid displays, and tally per player. The dedupe must see
+    //  ALL rows of a (game, slot) — never filter by player first, or a
+    //  player's second-place row gets promoted and counted.
+    const seasonAssignmentRows = await database
+      .select({
+        id: gameAssignments.id,
+        gameId: gameAssignments.gameId,
+        slotPosition: gameAssignments.slotPosition,
+        playerId: gameAssignments.playerId,
+      })
+      .from(gameAssignments)
+      .innerJoin(games, eq(gameAssignments.gameId, games.id))
+      .where(
+        and(
+          eq(games.seasonId, sid),
+          eq(games.group, "dons"),
+          eq(games.status, "normal")
+        )
+      );
+    const donsGamesByPlayerId = countPerPlayer(seasonAssignmentRows);
+
     // Calculate extra games for 2+ players
     // Base contract = 2 games/week. Extra = total assignments - (2 × weeksPerSeason) per player.
     let extraGames2plus = 0;
@@ -98,28 +124,10 @@ export async function GET(request: NextRequest) {
       const plus2Ids = plus2Rows.map((r) => r.id);
 
       if (plus2Ids.length > 0) {
-        // Count Don's game assignments per 2+ player (only normal Don's games)
-        const assignCounts = await database
-          .select({
-            playerId: gameAssignments.playerId,
-            count: sql<number>`count(*)`.as("count"),
-          })
-          .from(gameAssignments)
-          .innerJoin(games, eq(gameAssignments.gameId, games.id))
-          .where(
-            and(
-              eq(games.seasonId, sid),
-              eq(games.group, "dons"),
-              eq(games.status, "normal"),
-              inArray(gameAssignments.playerId, plus2Ids)
-            )
-          )
-          .groupBy(gameAssignments.playerId);
-
         const baseGamesPerPlayer = 2 * weeksPerSeason;
-        for (const row of assignCounts) {
-          const extra = Math.max(0, row.count - baseGamesPerPlayer);
-          extraGames2plus += extra;
+        for (const pid of plus2Ids) {
+          const played = donsGamesByPlayerId.get(pid) ?? 0;
+          extraGames2plus += Math.max(0, played - baseGamesPerPlayer);
         }
       }
     }
@@ -138,27 +146,10 @@ export async function GET(request: NextRequest) {
       const plus1Ids = plus1Rows.map((r) => r.id);
 
       if (plus1Ids.length > 0) {
-        const assignCounts = await database
-          .select({
-            playerId: gameAssignments.playerId,
-            count: sql<number>`count(*)`.as("count"),
-          })
-          .from(gameAssignments)
-          .innerJoin(games, eq(gameAssignments.gameId, games.id))
-          .where(
-            and(
-              eq(games.seasonId, sid),
-              eq(games.group, "dons"),
-              eq(games.status, "normal"),
-              inArray(gameAssignments.playerId, plus1Ids)
-            )
-          )
-          .groupBy(gameAssignments.playerId);
-
         const baseGamesPerPlayer = 1 * weeksPerSeason;
-        for (const row of assignCounts) {
-          const extra = Math.max(0, row.count - baseGamesPerPlayer);
-          extraGames1plus += extra;
+        for (const pid of plus1Ids) {
+          const played = donsGamesByPlayerId.get(pid) ?? 0;
+          extraGames1plus += Math.max(0, played - baseGamesPerPlayer);
         }
       }
     }
@@ -173,19 +164,9 @@ export async function GET(request: NextRequest) {
       const subIds = subRows.map((r) => r.id);
 
       if (subIds.length > 0) {
-        const subAssignResult = await database
-          .select({ count: sql<number>`count(*)`.as("count") })
-          .from(gameAssignments)
-          .innerJoin(games, eq(gameAssignments.gameId, games.id))
-          .where(
-            and(
-              eq(games.seasonId, sid),
-              eq(games.group, "dons"),
-              eq(games.status, "normal"),
-              inArray(gameAssignments.playerId, subIds)
-            )
-          );
-        subsGameCount = subAssignResult[0]?.count ?? 0;
+        for (const pid of subIds) {
+          subsGameCount += donsGamesByPlayerId.get(pid) ?? 0;
+        }
       }
     }
 

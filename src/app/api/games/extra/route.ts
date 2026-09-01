@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments, players } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 /**
  * GET /api/games/extra?seasonId=1
@@ -48,9 +49,16 @@ export async function GET(request: NextRequest) {
 
     const currentMaxWeek = maxWeekRow?.maxWeek ?? 0;
 
-    // Fetch all Don's normal game assignments with game details
-    const assignmentRows = await database
+    // Fetch all Don's normal game assignments with game details.
+    // `game_assignments` holds duplicate rows for some (game, slot) pairs —
+    // see lib/dedupeAssignments.ts. This route decides which games count as
+    // EXTRA (i.e. billable beyond contract), so a duplicate row here becomes a
+    // charge. Select the slot keys and keep only the rows the Schedule grid
+    // displays. Do NOT filter by player before deduping.
+    const rawAssignmentRows = await database
       .select({
+        id: gameAssignments.id,
+        slotPosition: gameAssignments.slotPosition,
         playerId: gameAssignments.playerId,
         gameId: games.id,
         gameNumber: games.gameNumber,
@@ -67,6 +75,7 @@ export async function GET(request: NextRequest) {
           eq(games.group, "dons")
         )
       );
+    const assignmentRows = firstPerSlot(rawAssignmentRows);
 
     // Group assignments by playerId -> weekNumber -> list of game details
     const playerWeekGames = new Map<number, Map<number, { gameId: number; gameNumber: number; date: string; dayOfWeek: number }[]>>();
