@@ -15,6 +15,7 @@ import { generateExceptionsPdf } from "@/lib/reports/exceptionsPdf";
 import { generateCompositionPdf } from "@/lib/reports/compositionPdf";
 import { generateCompositionByPlayerPdf } from "@/lib/reports/compositionByPlayerPdf";
 import { generateBookkeepingPdf } from "@/lib/reports/bookkeepingPdf";
+import { generateVacationCompliancePdf, type VacationConflict } from "@/lib/reports/vacationCompliancePdf";
 
 interface Season {
   id: number;
@@ -304,6 +305,31 @@ export default function ReportsPage() {
       setError("Failed to generate exceptions report.");
     }
 
+    setGenerating(null);
+  };
+
+  const handleVacationComplianceReport = async () => {
+    if (!season) return;
+    setError("");
+    setGenerating("vacationCompliance");
+    try {
+      const res = await fetch(`/api/games/vacation-conflicts?seasonId=${season.id}`);
+      if (!res.ok) {
+        setError("Failed to run vacation compliance check.");
+        setGenerating(null);
+        return;
+      }
+      const data = await res.json();
+      const conflicts: VacationConflict[] = data.conflicts ?? [];
+      if (conflicts.length === 0) {
+        setError("No vacation conflicts found — all assignments are compliant.");
+        setGenerating(null);
+        return;
+      }
+      generateVacationCompliancePdf(conflicts, season, data.checked, season.scheduleVersion);
+    } catch {
+      setError("Failed to generate Vacation Compliance report.");
+    }
     setGenerating(null);
   };
 
@@ -866,6 +892,14 @@ export default function ReportsPage() {
             >
               {generating === "exceptions" ? "Checking..." : "Exceptions"}
             </button>
+            <button
+              onClick={handleVacationComplianceReport}
+              disabled={generating === "vacationCompliance"}
+              className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
+              title="Players assigned to games on dates they are on vacation (Don's and Solo)"
+            >
+              {generating === "vacationCompliance" ? "Checking..." : "Vacation"}
+            </button>
           </div>
         </div>
 
@@ -979,6 +1013,7 @@ export default function ReportsPage() {
             {generating === "compositionByPlayer" ? "Generating..." : "Generate PDF"}
           </button>
         </div>
+
         </>
         )}
 
