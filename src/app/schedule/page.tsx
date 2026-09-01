@@ -850,9 +850,10 @@ export default function SchedulePage() {
       game.assignments.map((a) => a.playerId)
     );
 
-    // Also get all player IDs assigned to any game on the same date
+    // Also get all player IDs assigned to a same-group game on the same date.
+    // Cross-group is allowed: a player can play Solo and Don's on the same day.
     const sameDate = games.filter(
-      (g) => g.date === game.date && g.id !== game.id
+      (g) => g.date === game.date && g.id !== game.id && g.group === game.group
     );
     const sameDatePlayerIds = new Set<number>();
     for (const g of sameDate) {
