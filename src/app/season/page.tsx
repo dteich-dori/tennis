@@ -94,6 +94,10 @@ export default function SeasonPage() {
   const [donsAssignBalancePairings, setDonsAssignBalancePairings] = useState(true);
   const [donsAssignBalanceBalls, setDonsAssignBalanceBalls] = useState(true);
 
+  // Don's balls standalone balance state
+  const [donsBallsBalancing, setDonsBallsBalancing] = useState(false);
+  const [donsBallsMessage, setDonsBallsMessage] = useState("");
+
   // Solo auto-assign state
   const [soloAssigning, setSoloAssigning] = useState(false);
   const [soloAssignMessage, setSoloAssignMessage] = useState("");
@@ -1039,6 +1043,30 @@ export default function SeasonPage() {
       setSoloAssignMessage("Failed to clear solo assignments.");
     }
     setSoloAssigning(false);
+  };
+
+  const handleBalanceDonsBalls = async () => {
+    if (!activeSeason) return;
+    setDonsBallsBalancing(true);
+    setDonsBallsMessage("");
+    try {
+      const res = await fetch("/api/games/balance-balls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: activeSeason.id, group: "dons", allWeeks: true }),
+      });
+      const data = (await res.json()) as { swaps?: number; imbalance?: number; error?: string };
+      if (!res.ok) {
+        setDonsBallsMessage(`Error: ${data.error}`);
+      } else {
+        setDonsBallsMessage(
+          `Balanced Don's balls across all weeks: ${data.swaps} swap${data.swaps !== 1 ? "s" : ""} applied.`
+        );
+      }
+    } catch {
+      setDonsBallsMessage("Failed to balance Don's balls.");
+    }
+    setDonsBallsBalancing(false);
   };
 
   const handleBalanceSoloBalls = async () => {
@@ -2036,6 +2064,14 @@ export default function SeasonPage() {
               Balance Don&apos;s balls
             </label>
             <button
+              onClick={handleBalanceDonsBalls}
+              disabled={donsBallsBalancing || donsAssigning}
+              title="Redistributes ball-bringing duty across all Don's games for the entire season so each player brings balls for about 1/4 of their games."
+              className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
+            >
+              {donsBallsBalancing ? "Balancing..." : "Balance Don's Balls"}
+            </button>
+            <button
               onClick={handleClearDonsAssignAll}
               disabled={donsAssigning}
               title="Removes all Don's player assignments for the entire season. Solo assignments are not affected."
@@ -2044,6 +2080,18 @@ export default function SeasonPage() {
               Clear Don&apos;s Assignments
             </button>
           </div>
+
+          {donsBallsMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                donsBallsMessage.startsWith("Error") || donsBallsMessage.startsWith("Failed")
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {donsBallsMessage}
+            </div>
+          )}
 
           {donsAssignMessage && (
             <div
