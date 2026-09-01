@@ -109,6 +109,13 @@ export default function SeasonPage() {
   >(null);
   const [playerNameMap, setPlayerNameMap] = useState<Map<number, string>>(new Map());
 
+  // Vacation compliance check state
+  const [vacCheckRunning, setVacCheckRunning] = useState(false);
+  const [vacConflicts, setVacConflicts] = useState<
+    { gameId: number; gameNumber: number; date: string; group: string; playerId: number; playerName: string; slotPosition: number; vacationStart: string; vacationEnd: string }[] | null
+  >(null);
+  const [vacCheckMessage, setVacCheckMessage] = useState("");
+
   // Backup directory settings state
   const [backupDir, setBackupDir] = useState("Backup");
   const [backupDir2, setBackupDir2] = useState("");
@@ -1085,6 +1092,31 @@ export default function SeasonPage() {
     : "";
 
   // Compute common US holidays for the season date range
+  const handleVacationCheck = async () => {
+    if (!activeSeason) return;
+    setVacCheckRunning(true);
+    setVacConflicts(null);
+    setVacCheckMessage("");
+    try {
+      const res = await fetch(`/api/games/vacation-conflicts?seasonId=${activeSeason.id}`);
+      if (!res.ok) {
+        setVacCheckMessage("Failed to run vacation compliance check.");
+        setVacCheckRunning(false);
+        return;
+      }
+      const data = await res.json();
+      setVacConflicts(data.conflicts ?? []);
+      if (data.conflicts.length === 0) {
+        setVacCheckMessage(`No vacation conflicts found (${data.checked} assignments checked).`);
+      } else {
+        setVacCheckMessage(`Found ${data.conflicts.length} vacation conflict${data.conflicts.length !== 1 ? "s" : ""} (${data.checked} assignments checked).`);
+      }
+    } catch {
+      setVacCheckMessage("Failed to run vacation compliance check.");
+    }
+    setVacCheckRunning(false);
+  };
+
   const commonHolidays = useMemo(() => {
     if (!startDate || !endDateDisplay) return [];
 
@@ -2161,6 +2193,71 @@ export default function SeasonPage() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Vacation Compliance Check */}
+      {activeSeason && totalGames > 0 && (
+        <div className="border border-border rounded-lg p-6 mb-6">
+          <h2 className="font-semibold mb-4">Vacation Compliance</h2>
+          <p className="text-sm text-muted mb-3">
+            Check all assignments against player vacation dates. Flags players assigned to games on dates they are on vacation.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleVacationCheck}
+              disabled={vacCheckRunning}
+              title="Scan all game assignments for vacation conflicts across the entire season"
+              className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {vacCheckRunning ? "Checking..." : "Run Vacation Check"}
+            </button>
+          </div>
+
+          {vacCheckMessage && (
+            <div
+              className={`border rounded px-4 py-2 mt-3 text-sm ${
+                vacConflicts && vacConflicts.length > 0
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+            >
+              {vacCheckMessage}
+            </div>
+          )}
+
+          {vacConflicts && vacConflicts.length > 0 && (
+            <div className="mt-3 border border-border rounded overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 border-b border-border">Game #</th>
+                    <th className="text-left px-3 py-2 border-b border-border">Date</th>
+                    <th className="text-left px-3 py-2 border-b border-border">Group</th>
+                    <th className="text-left px-3 py-2 border-b border-border">Player</th>
+                    <th className="text-left px-3 py-2 border-b border-border">Slot</th>
+                    <th className="text-left px-3 py-2 border-b border-border">Vacation Period</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vacConflicts.map((c, idx) => (
+                    <tr key={idx} className="border-b border-border">
+                      <td className="px-3 py-1.5 font-medium">{c.gameNumber}</td>
+                      <td className="px-3 py-1.5">{c.date}</td>
+                      <td className="px-3 py-1.5 capitalize">{c.group}</td>
+                      <td className="px-3 py-1.5">{c.playerName}</td>
+                      <td className="px-3 py-1.5 text-center">{c.slotPosition}</td>
+                      <td className="px-3 py-1.5 text-muted">
+                        {c.vacationStart === c.vacationEnd
+                          ? c.vacationStart
+                          : `${c.vacationStart} — ${c.vacationEnd}`}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

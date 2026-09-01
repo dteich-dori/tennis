@@ -203,22 +203,49 @@ export default function ReportsPage() {
       const allGames = (await gamesRes.json()) as Game[];
       const allPlayers = (await playersRes.json()) as Player[];
 
-      // Run compliance checks across all weeks
+      // Run compliance checks across all weeks (both dons and solo)
       const totalWeeks = season.totalWeeks ?? 36;
       const allViolations: { rule: string; severity: "error" | "warning"; gameId: number; gameNumber: number; date: string; playerName: string; detail: string }[] = [];
       for (let wk = 1; wk <= totalWeeks; wk++) {
-        try {
-          const res = await fetch(`/api/games/compliance?seasonId=${season.id}&weekNumber=${wk}&group=dons`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.violations) {
-              // Only keep game-level violations (gameId > 0)
-              allViolations.push(...data.violations.filter((v: { gameId: number }) => v.gameId > 0));
+        for (const grp of ["dons", "solo"] as const) {
+          try {
+            const res = await fetch(`/api/games/compliance?seasonId=${season.id}&weekNumber=${wk}&group=${grp}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.violations) {
+                allViolations.push(...data.violations.filter((v: { gameId: number }) => v.gameId > 0));
+              }
+            }
+          } catch {
+            // skip week on error
+          }
+        }
+      }
+
+      // Season-wide vacation conflict check (catches post-assignment vacation changes)
+      try {
+        const vacRes = await fetch(`/api/games/vacation-conflicts?seasonId=${season.id}`);
+        if (vacRes.ok) {
+          const vacData = await vacRes.json();
+          for (const c of vacData.conflicts ?? []) {
+            const already = allViolations.some(
+              (v) => v.rule === "Vacation conflict" && v.gameId === c.gameId && v.playerName === c.playerName
+            );
+            if (!already) {
+              allViolations.push({
+                rule: "Vacation conflict",
+                severity: "error",
+                gameId: c.gameId,
+                gameNumber: c.gameNumber,
+                date: c.date,
+                playerName: c.playerName,
+                detail: `On vacation ${c.vacationStart}${c.vacationStart !== c.vacationEnd ? ` through ${c.vacationEnd}` : ""} (${c.group})`,
+              });
             }
           }
-        } catch {
-          // skip week on error
         }
+      } catch {
+        // skip on error
       }
 
       // Also detect game-level issues directly from game data.
