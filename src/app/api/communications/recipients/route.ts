@@ -4,6 +4,7 @@ import { players, emailSettings } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getPlayerIdsBelowStandardDeposit } from "@/lib/owesDeposit";
 import { hasSmsCapability } from "@/lib/email";
+import { filterByRecipientGroup } from "@/lib/recipientGroups";
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
         cellNumber: players.cellNumber,
         carrier: players.carrier,
         contractedFrequency: players.contractedFrequency,
+        soloGames: players.soloGames,
       })
       .from(players)
       .where(
@@ -67,15 +69,12 @@ export async function GET(request: NextRequest) {
       return hasEmail || hasSms;
     });
 
-    if (group === "Contract Players") {
-      filtered = filtered.filter((p) => p.contractedFrequency !== "0");
-    } else if (group === "Subs") {
-      filtered = filtered.filter((p) => p.contractedFrequency === "0");
-    } else if (group === "Owes Deposit") {
-      const owingIds = await getPlayerIdsBelowStandardDeposit(parseInt(seasonId));
-      filtered = filtered.filter((p) => owingIds.has(p.id));
-    }
-    // "ALL" = no additional filter
+    const owingIds =
+      group === "Owes Deposit"
+        ? await getPlayerIdsBelowStandardDeposit(parseInt(seasonId))
+        : undefined;
+    filtered = filterByRecipientGroup(filtered, group, owingIds);
+    // "ALL" / "Players" = no additional filter
 
     // Sort by last name, first name
     filtered.sort((a, b) =>

@@ -65,11 +65,23 @@ interface HistoryEntry {
 
 type RecipientGroup =
   | "ALL"
+  | "Don's Group"
   | "Contract Players"
   | "Subs"
   | "Owes Deposit"
+  | "Solo Group"
   | "Players"
   | "Test";
+
+//  The filter is laid out in sections so the Don's side and the Solo
+//  side read as separate groups. They deliberately OVERLAP: every solo
+//  player also holds a Don's contract and still owes Don's fees, so a
+//  Don's message must reach them too.
+const RECIPIENT_SECTIONS: { label: string; groups: RecipientGroup[] }[] = [
+  { label: "Don's", groups: ["Don's Group", "Contract Players", "Subs", "Owes Deposit"] },
+  { label: "Solo", groups: ["Solo Group"] },
+  { label: "Other", groups: ["ALL", "Players", "Test"] },
+];
 type TabView = "compose" | "templates" | "history" | "scheduledReminders";
 
 export default function CommunicationsPage() {
@@ -699,20 +711,35 @@ export default function CommunicationsPage() {
           {/* Recipient group */}
           <div>
             <label className="block text-sm font-medium mb-2">Recipient Group</label>
-            <div className="flex gap-4">
-              {(["ALL", "Contract Players", "Subs", "Owes Deposit", "Players", "Test"] as RecipientGroup[]).map((group) => (
-                <label key={group} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="recipientGroup"
-                    value={group}
-                    checked={recipientGroup === group}
-                    onChange={() => { clearSendBanners(); setRecipientGroup(group); }}
-                  />
-                  {group}
-                </label>
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              {RECIPIENT_SECTIONS.map((section) => (
+                <div key={section.label} className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wide text-muted">
+                    {section.label}
+                  </span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {section.groups.map((group) => (
+                      <label key={group} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input
+                          type="radio"
+                          name="recipientGroup"
+                          value={group}
+                          checked={recipientGroup === group}
+                          onChange={() => { clearSendBanners(); setRecipientGroup(group); }}
+                        />
+                        {group}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
+            {recipientGroup === "Solo Group" && (
+              <p className="text-xs text-muted mt-2">
+                Players with a solo contract. They also hold Don&rsquo;s contracts, so
+                they appear in the Don&rsquo;s groups too.
+              </p>
+            )}
 
             {/* Multi-player selection (check one or more) */}
             {recipientGroup === "Players" && (

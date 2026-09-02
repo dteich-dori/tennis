@@ -23,6 +23,7 @@ import {
   templateHasVariables,
   type AvailabilityData,
 } from "@/lib/templateSubstitute";
+import { filterByRecipientGroup } from "@/lib/recipientGroups";
 import type { AccountSummary } from "@/lib/playerAccountSummary";
 
 interface EmailRecipientWithPlayer {
@@ -249,6 +250,7 @@ export async function POST(request: NextRequest) {
           cellNumber: players.cellNumber,
           carrier: players.carrier,
           contractedFrequency: players.contractedFrequency,
+          soloGames: players.soloGames,
           smsOptOut: players.smsOptOut,
         })
         .from(players)
@@ -256,15 +258,13 @@ export async function POST(request: NextRequest) {
           and(eq(players.seasonId, seasonId), eq(players.isActive, true))
         );
 
-      // Filter by group
+      //  Filter by group — shared with the recipients preview endpoint
+      //  via lib/recipientGroups so the audience previewed is exactly the
+      //  audience mailed.
       let filtered = allPlayers;
-      if (recipientGroup === "Contract Players") {
-        filtered = allPlayers.filter((p) => p.contractedFrequency !== "0");
-      } else if (recipientGroup === "Subs") {
-        filtered = allPlayers.filter((p) => p.contractedFrequency === "0");
-      } else if (recipientGroup === "Owes Deposit") {
+      if (recipientGroup === "Owes Deposit") {
         const owingIds = await getPlayerIdsBelowStandardDeposit(seasonId);
-        filtered = allPlayers.filter((p) => owingIds.has(p.id));
+        filtered = filterByRecipientGroup(allPlayers, recipientGroup, owingIds);
         if (filtered.length === 0) {
           return NextResponse.json(
             { error: "No contract players currently owe their standard deposit." },
@@ -293,6 +293,10 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+      } else {
+        //  Every remaining group (Don's Group, Solo Group, Contract
+        //  Players, Subs) — and "ALL", for which the helper is a no-op.
+        filtered = filterByRecipientGroup(allPlayers, recipientGroup);
       }
 
       // Build email / SMS recipient lists based on channel
