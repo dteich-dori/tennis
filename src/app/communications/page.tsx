@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { TEMPLATE_VARIABLES } from "@/lib/templateSubstitute";
 
 interface Season {
   id: number;
@@ -114,29 +115,6 @@ export default function CommunicationsPage() {
   const [sendMessage, setSendMessage] = useState("");
   const [sendError, setSendError] = useState("");
   const [sendWarnings, setSendWarnings] = useState<string[]>([]);
-
-  // List of variables admins can use in subject/body (mirrors the server-side
-  // TEMPLATE_VARIABLES in src/lib/templateSubstitute.ts).
-  const TEMPLATE_VARIABLES_INFO: Array<{
-    token: string;
-    description: string;
-    example: string;
-  }> = [
-    { token: "firstName",   description: "First name",                              example: "Alice" },
-    { token: "lastName",    description: "Last name",                               example: "Smith" },
-    { token: "name",        description: "First Last",                              example: "Alice Smith" },
-    { token: "contract",    description: "Contract tier",                           example: "2x" },
-    { token: "games",       description: "Don's games this season",                 example: "72" },
-    { token: "fee",         description: "Total fee charged",                      example: "$1,500" },
-    { token: "deposits",    description: "Total payments paid",                    example: "$500" },
-    { token: "balance",     description: "Outstanding balance",                    example: "$1,000" },
-    { token: "stdDeposit",  description: "Tier's standard deposit",                example: "$750" },
-    { token: "depositDue",  description: "Standard deposit still owed",            example: "$250" },
-    { token: "extraGames",  description: "Extra games (2x+ / sub)",                example: "3" },
-    { token: "extraFee",    description: "Dollar amount of extras",                example: "$150" },
-    { token: "blockedDays", description: "Days of week the player is blocked from", example: "Monday, Wednesday" },
-    { token: "vacations",   description: "Bulleted list of vacation dates",         example: "• Fri, Dec 25\n• Mon, Jan 5 — Fri, Jan 9" },
-  ];
 
   // Clear post-send banners whenever the user starts composing a new message
   const clearSendBanners = () => {
@@ -388,7 +366,7 @@ export default function CommunicationsPage() {
     // the admin doesn't accidentally email a template like
     // "Hi {firstanme}" with a typo.
     const KNOWN = new Set(
-      TEMPLATE_VARIABLES_INFO.map((v) => v.token.toLowerCase())
+      TEMPLATE_VARIABLES.map((v) => v.token.toLowerCase())
     );
     const allTokens = new Set<string>();
     for (const text of [subject, messageBody]) {
@@ -953,7 +931,7 @@ export default function CommunicationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {TEMPLATE_VARIABLES_INFO.map((v) => (
+                {TEMPLATE_VARIABLES.map((v) => (
                   <tr key={v.token} className="border-t border-border">
                     <td className="px-2 py-1">
                       <code>{`{${v.token}}`}</code>
@@ -1296,7 +1274,7 @@ export default function CommunicationsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {TEMPLATE_VARIABLES_INFO.map((v) => (
+                      {TEMPLATE_VARIABLES.map((v) => (
                         <tr key={v.token} className="border-t border-blue-200/50">
                           <td className="px-2 py-1">
                             <code>{`{${v.token}}`}</code>
