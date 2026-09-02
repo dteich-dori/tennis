@@ -49,6 +49,7 @@ export async function loadAccountSummariesForSeason(
       priorYearCredit: players.priorYearCredit,
       soloGames: players.soloGames,
       soloDeposit: players.soloDeposit,
+      soloCredit: players.soloCredit,
     })
     .from(players)
     .where(eq(players.seasonId, seasonId));

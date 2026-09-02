@@ -93,6 +93,7 @@ export async function GET(request: NextRequest) {
         lastName: players.lastName,
         soloGames: players.soloGames,
         soloDeposit: players.soloDeposit,
+        soloCredit: players.soloCredit,
       })
       .from(players)
       .where(billable(sid));
@@ -103,6 +104,7 @@ export async function GET(request: NextRequest) {
         name: `${p.firstName} ${p.lastName}`,
         soloGames: p.soloGames!,
         soloDeposit: p.soloDeposit ?? 0,
+        soloCredit: p.soloCredit ?? 0,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 

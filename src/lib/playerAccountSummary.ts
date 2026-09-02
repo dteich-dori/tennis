@@ -19,8 +19,9 @@
  *
  * Solo is billed independently of the Don's contract:
  *   soloFee     = soloGames × priceSolo
- *   soloBalance = soloFee − soloDeposit
- * soloDeposit is its own bucket, NOT the Don's payment ledger.
+ *   soloBalance = soloFee − soloDeposit − soloCredit
+ * soloDeposit and soloCredit are their own buckets, NOT the Don's
+ * payment ledger or priorYearCredit.
  *
  * Overriding all of the above: a player flagged noCharge is comped —
  * base, extras and fee are all forced to 0, whatever their tier or game
@@ -50,6 +51,8 @@ export interface AccountInputPlayer {
   soloGames?: number | null;
   /** Deposits against the SOLO fee — separate from the Don's ledger. */
   soloDeposit?: number;
+  /** Credit against the SOLO fee — the solo counterpart to priorYearCredit. */
+  soloCredit?: number;
 }
 
 export interface AccountInputPayment {
@@ -91,7 +94,8 @@ export interface AccountSummary {
   soloGames: number;      // contracted solo games (0 = not in the solo group)
   soloFee: number;        // soloGames × priceSolo
   soloDeposit: number;    // deposits against the solo fee
-  soloBalance: number;    // soloFee − soloDeposit
+  soloCredit: number;     // credit against the solo fee
+  soloBalance: number;    // soloFee − soloDeposit − soloCredit
   stdDeposit: number;     // tier's standard deposit ($0 for sub)
   depositDue: number;     // max(0, stdDeposit − deposits)
   noCharge: boolean;      // comped — fee forced to $0
@@ -200,6 +204,7 @@ export function computeAccountSummaries(input: {
     const soloGames = p.soloGames ?? 0;
     const soloFee = noCharge ? 0 : soloGames * (rates.priceSolo ?? 0);
     const soloDeposit = p.soloDeposit ?? 0;
+    const soloCredit = noCharge ? 0 : (p.soloCredit ?? 0);
 
     out.push({
       playerId: p.id,
@@ -218,7 +223,8 @@ export function computeAccountSummaries(input: {
       soloGames,
       soloFee,
       soloDeposit,
-      soloBalance: soloFee - soloDeposit,
+      soloCredit,
+      soloBalance: soloFee - soloDeposit - soloCredit,
       stdDeposit,
       depositDue,
       noCharge,

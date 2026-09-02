@@ -32,7 +32,7 @@ interface ComputedData {
   extraGames2plus: number;
   extraGames1plus: number;
   subsGameCount: number;
-  soloPlayers: { name: string; soloGames: number; soloDeposit: number }[];
+  soloPlayers: { name: string; soloGames: number; soloDeposit: number; soloCredit: number }[];
   donsCourtsPerWeek: number;
   soloCourtsPerWeek: number;
 }
@@ -319,21 +319,24 @@ export function generateBookkeepingPdf(
   // ===== Solo Income =====
   sectionTitle("Solo Income");
   const soloCols = [
-    { header: "Player", width: tableWidth * 0.34 },
-    { header: "Games", width: tableWidth * 0.12, align: "right" as const },
-    { header: "Revenue", width: tableWidth * 0.18, align: "right" as const },
-    { header: "Deposit", width: tableWidth * 0.18, align: "right" as const },
-    { header: "Balance Due", width: tableWidth * 0.18, align: "right" as const },
+    { header: "Player", width: tableWidth * 0.30 },
+    { header: "Games", width: tableWidth * 0.10, align: "right" as const },
+    { header: "Revenue", width: tableWidth * 0.15, align: "right" as const },
+    { header: "Deposit", width: tableWidth * 0.15, align: "right" as const },
+    { header: "Credit", width: tableWidth * 0.13, align: "right" as const },
+    { header: "Balance Due", width: tableWidth * 0.17, align: "right" as const },
   ];
   const soloDepositTotal = soloPlayerList.reduce((s, p) => s + p.soloDeposit, 0);
+  const soloCreditTotal = soloPlayerList.reduce((s, p) => s + p.soloCredit, 0);
   const soloRows: string[][] = soloPlayerList.map((p) => {
     const rev = p.soloGames * params.priceSolo;
-    const due = rev - p.soloDeposit;
+    const due = rev - p.soloDeposit - p.soloCredit;
     return [
       p.name,
       String(p.soloGames),
       formatCurrency(rev),
       formatCurrency(p.soloDeposit),
+      formatCurrency(p.soloCredit),
       due < 0 ? `(${formatCurrency(-due)})` : formatCurrency(due),
     ];
   });
@@ -345,7 +348,8 @@ export function generateBookkeepingPdf(
       String(soloPlayerList.reduce((s, p) => s + p.soloGames, 0)),
       formatCurrency(soloIncome),
       formatCurrency(soloDepositTotal),
-      formatCurrency(soloIncome - soloDepositTotal),
+      formatCurrency(soloCreditTotal),
+      formatCurrency(soloIncome - soloDepositTotal - soloCreditTotal),
     ]
   );
 

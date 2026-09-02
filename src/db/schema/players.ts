@@ -64,6 +64,9 @@ export const players = sqliteTable("players", {
   // separate from the Don's deposit ledger (player_payments), which
   // covers the Don's contract only.
   soloDeposit: real("solo_deposit").notNull().default(0),
+  // Accounts: credit against the SOLO fee, the solo-side counterpart to
+  // priorYearCredit. Subtracted from the solo balance.
+  soloCredit: real("solo_credit").notNull().default(0),
   smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
   smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
   smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text

@@ -49,7 +49,7 @@ interface ComputedData {
   extraGames1plus: number;
   subsGameCount: number;
   totalSoloGamesFromDB: number;
-  soloPlayers: { id: number; name: string; soloGames: number; soloDeposit: number }[];
+  soloPlayers: { id: number; name: string; soloGames: number; soloDeposit: number; soloCredit: number }[];
   donsCourtsPerWeek: number;
   soloCourtsPerWeek: number;
 }
@@ -90,7 +90,9 @@ export default function BudgetPage() {
 
   // Solo deposit inline editing — held locally while the field has focus
   // so typing doesn't fire a save per keystroke; committed on blur/Enter.
-  const [soloDepositDraft, setSoloDepositDraft] = useState<{ id: number; value: string } | null>(null);
+  const [soloDraft, setSoloDraft] = useState<
+    { id: number; field: "soloDeposit" | "soloCredit"; value: string } | null
+  >(null);
 
   // Add/edit item state
   const [addingCategory, setAddingCategory] = useState<"income" | "expense" | null>(null);
@@ -148,27 +150,30 @@ export default function BudgetPage() {
 
   // Save a player's solo deposit, then refresh so Balance Due and the
   // totals row pick up the new value.
-  const commitSoloDeposit = useCallback(
-    async (playerId: number, raw: string) => {
-      setSoloDepositDraft(null);
+  const commitSoloField = useCallback(
+    async (
+      playerId: number,
+      field: "soloDeposit" | "soloCredit",
+      raw: string
+    ) => {
+      setSoloDraft(null);
       const trimmed = raw.trim();
       const value = trimmed === "" ? 0 : parseFloat(trimmed);
       if (!Number.isFinite(value)) {
-        alert("Deposit must be a number.");
+        alert(`${field === "soloDeposit" ? "Deposit" : "Credit"} must be a number.`);
         return;
       }
-      const current =
-        computed?.soloPlayers.find((p) => p.id === playerId)?.soloDeposit ?? 0;
+      const current = computed?.soloPlayers.find((p) => p.id === playerId)?.[field] ?? 0;
       if (value === current) return; // unchanged — skip the round-trip
       try {
         const res = await fetch("/api/players", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: playerId, soloDeposit: value }),
+          body: JSON.stringify({ id: playerId, [field]: value }),
         });
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
-          alert(`Failed to save deposit: ${data.error ?? "unknown"}`);
+          alert(`Failed to save: ${data.error ?? "unknown"}`);
           return;
         }
         if (season) await loadComputed(season.id);
@@ -334,7 +339,8 @@ export default function BudgetPage() {
   // Solo deposits are tracked per player, separately from the Don's
   // deposit ledger. Balance Due = solo revenue − solo deposit.
   const soloDepositTotal = soloPlayerList.reduce((s, p) => s + p.soloDeposit, 0);
-  const soloBalanceDueTotal = soloIncome - soloDepositTotal;
+  const soloCreditTotal = soloPlayerList.reduce((s, p) => s + p.soloCredit, 0);
+  const soloBalanceDueTotal = soloIncome - soloDepositTotal - soloCreditTotal;
 
   const computedIncome = donsIncome + soloIncome;
 
@@ -663,7 +669,13 @@ export default function BudgetPage() {
                   </th>
                   <th
                     className="text-right px-3 py-2 font-medium w-32"
-                    title="Solo revenue minus the solo deposit."
+                    title="Credit against this player's solo fee. Separate from the Don's credit."
+                  >
+                    Credit
+                  </th>
+                  <th
+                    className="text-right px-3 py-2 font-medium w-32"
+                    title="Solo revenue minus the solo deposit and solo credit."
                   >
                     Balance Due
                   </th>
@@ -672,7 +684,7 @@ export default function BudgetPage() {
               <tbody>
                 {soloPlayerList.map((player) => {
                   const gameRev = player.soloGames * params.priceSolo;
-                  const balanceDue = gameRev - player.soloDeposit;
+                  const balanceDue = gameRev - player.soloDeposit - player.soloCredit;
                   return (
                     <tr key={player.id} className="bg-gray-50 border-t border-border">
                       <td className="px-3 py-2 text-muted">{player.name}</td>
@@ -680,29 +692,31 @@ export default function BudgetPage() {
                       <td className="px-3 py-2 text-right font-medium">
                         {gameRev > 0 ? formatCurrency(gameRev) : "\u2014"}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={
-                            soloDepositDraft?.id === player.id
-                              ? soloDepositDraft.value
-                              : player.soloDeposit === 0
-                                ? ""
-                                : String(player.soloDeposit)
-                          }
-                          placeholder="0.00"
-                          onChange={(e) =>
-                            setSoloDepositDraft({ id: player.id, value: e.target.value })
-                          }
-                          onBlur={(e) => commitSoloDeposit(player.id, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                            if (e.key === "Escape") setSoloDepositDraft(null);
-                          }}
-                          className="border border-border rounded px-2 py-1 text-sm w-24 text-right"
-                        />
-                      </td>
+                      {(["soloDeposit", "soloCredit"] as const).map((field) => (
+                        <td key={field} className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={
+                              soloDraft?.id === player.id && soloDraft.field === field
+                                ? soloDraft.value
+                                : player[field] === 0
+                                  ? ""
+                                  : String(player[field])
+                            }
+                            placeholder="0.00"
+                            onChange={(e) =>
+                              setSoloDraft({ id: player.id, field, value: e.target.value })
+                            }
+                            onBlur={(e) => commitSoloField(player.id, field, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                              if (e.key === "Escape") setSoloDraft(null);
+                            }}
+                            className="border border-border rounded px-2 py-1 text-sm w-24 text-right"
+                          />
+                        </td>
+                      ))}
                       <td
                         className={`px-3 py-2 text-right font-medium ${
                           balanceDue > 0
@@ -726,6 +740,7 @@ export default function BudgetPage() {
                     <td className="px-3 py-2 text-right">{soloPlayerList.reduce((s, p) => s + p.soloGames, 0)}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(soloIncome)}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(soloDepositTotal)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(soloCreditTotal)}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(soloBalanceDueTotal)}</td>
                   </tr>
                 )}

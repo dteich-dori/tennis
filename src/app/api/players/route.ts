@@ -89,7 +89,7 @@ function validatePlayerFields(body: PlayerBody): string | null {
     const n = Number(body.preassignedGamesWanted);
     if (!Number.isInteger(n) || n < 1 || n > 50) return "preassignedGamesWanted must be an integer between 1 and 50";
   }
-  for (const money of ["priorYearCredit", "soloDeposit"] as const) {
+  for (const money of ["priorYearCredit", "soloDeposit", "soloCredit"] as const) {
     if (body[money] !== undefined && body[money] !== null) {
       if (!Number.isFinite(Number(body[money]))) return `${money} must be a number`;
     }
@@ -227,6 +227,7 @@ export async function POST(request: NextRequest) {
       noCharge,
       priorYearCredit,
       soloDeposit,
+      soloCredit,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -321,6 +322,7 @@ export async function POST(request: NextRequest) {
         noCharge: noCharge ?? false,
         priorYearCredit: priorYearCredit ?? 0,
         soloDeposit: soloDeposit ?? 0,
+        soloCredit: soloCredit ?? 0,
         cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : null,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
@@ -449,6 +451,7 @@ export async function PUT(request: NextRequest) {
       noCharge,
       priorYearCredit,
       soloDeposit,
+      soloCredit,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -500,6 +503,7 @@ export async function PUT(request: NextRequest) {
       priorYearCredit:
         priorYearCredit !== undefined ? (priorYearCredit ?? 0) : currentPlayer.priorYearCredit,
       soloDeposit: soloDeposit !== undefined ? (soloDeposit ?? 0) : currentPlayer.soloDeposit,
+      soloCredit: soloCredit !== undefined ? (soloCredit ?? 0) : currentPlayer.soloCredit,
       cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
       groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,
