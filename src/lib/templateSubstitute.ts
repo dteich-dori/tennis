@@ -21,11 +21,13 @@ export const TEMPLATE_VARIABLES: Array<{
   { token: "games",       description: "Don's games scheduled this season",         example: "72" },
   // --- Don's money. {fee}/{deposits}/{balance} are the original names;
   //     the dons* forms are aliases that pair visibly with the solo* set. ---
-  { token: "fee",         description: "Don's total fee for the season (annual fee + extra charges)", example: "$1,500" },
-  { token: "donsFee",     description: "Don's total fee — same value as {fee}",      example: "$1,500" },
+  { token: "fee",         description: "Don's annual contract fee, WITHOUT extra charges", example: "$1,500" },
+  { token: "donsFee",     description: "Don's annual contract fee — same value as {fee}", example: "$1,500" },
+  { token: "annualFee",   description: "Don's annual contract fee — same value as {fee}", example: "$1,500" },
+  { token: "totalFee",    description: "Don's annual fee PLUS extra charges",        example: "$1,675" },
   { token: "deposits",    description: "Don's deposits/payments paid so far",        example: "$500" },
   { token: "donsDeposits", description: "Don's deposits — same value as {deposits}", example: "$500" },
-  { token: "balance",     description: "Don's balance due (fee − deposits − credit)", example: "$1,000" },
+  { token: "balance",     description: "Don's balance due (annual fee + extras − deposits − credit)", example: "$1,000" },
   { token: "donsBalance", description: "Don's balance due — same value as {balance}", example: "$1,000" },
   { token: "credit",      description: "Don's credit from the previous year's distribution", example: "$75" },
   { token: "donsCredit",  description: "Don's credit — same value as {credit}",      example: "$75" },
@@ -38,7 +40,7 @@ export const TEMPLATE_VARIABLES: Array<{
   { token: "stdDeposit",  description: "Standard deposit for this contract tier",   example: "$750" },
   { token: "depositDue",  description: "Standard deposit still owed (clamped to 0)", example: "$250" },
   { token: "extraGames",  description: "Extra-games count (2x+ players or subs)",   example: "3" },
-  { token: "extraFee",    description: "Dollar amount charged for extras",          example: "$150" },
+  { token: "extraFee",    description: "Dollar amount charged for extra games",     example: "$150" },
   { token: "blockedDays", description: "Comma-separated tennis-week days the player is blocked from", example: "Monday, Wednesday" },
   { token: "vacations",   description: "Bulleted list of vacation date ranges (each on its own line)", example: "• Fri, Dec 25, 2026\n• Mon, Jan 5, 2027 — Fri, Jan 9, 2027" },
 ];
@@ -112,8 +114,15 @@ export function buildContext(
     name: `${s.firstName} ${s.lastName}`,
     contract: s.contractLabel,
     games: String(s.scheduledGames),
-    fee: fmt$(s.fee),
-    donsfee: fmt$(s.fee),
+    //  {fee} is the ANNUAL contract fee only — deliberately WITHOUT
+    //  extras, so a template can state the contract fee and {extraFee}
+    //  separately without double-counting. {totalFee} is the sum.
+    //  AccountSummary.fee stays the total: it is what {balance} is
+    //  derived from.
+    fee: fmt$(s.base),
+    donsfee: fmt$(s.base),
+    annualfee: fmt$(s.base),
+    totalfee: fmt$(s.fee),
     deposits: fmt$(s.deposits),
     donsdeposits: fmt$(s.deposits),
     balance: fmt$(s.balance),
