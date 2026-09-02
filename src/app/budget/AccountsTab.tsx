@@ -241,11 +241,13 @@ export default function AccountsTab({ season, params }: Props) {
   const totals = rows.reduce(
     (acc, r) => ({
       fee: acc.fee + r.fee,
+      base: acc.base + r.base,
+      extras: acc.extras + r.extras,
       deposits: acc.deposits + r.deposits,
       credit: acc.credit + r.credit,
       balance: acc.balance + r.balance,
     }),
-    { fee: 0, deposits: 0, credit: 0, balance: 0 }
+    { fee: 0, base: 0, extras: 0, deposits: 0, credit: 0, balance: 0 }
   );
 
   const openPaymentForm = (playerId: number) => {
@@ -439,6 +441,8 @@ export default function AccountsTab({ season, params }: Props) {
         scheduledGames: r.scheduledGames,
         extraGames: r.extraGames,
         fee: r.fee,
+        base: r.base,
+        extras: r.extras,
         deposits: r.deposits,
         credit: r.credit,
         balance: r.balance,
@@ -537,7 +541,18 @@ export default function AccountsTab({ season, params }: Props) {
               <th className="text-left px-3 py-2 font-medium">Last, First</th>
               <th className="text-center px-3 py-2 font-medium">Contract</th>
               <th className="text-right px-3 py-2 font-medium">Games</th>
-              <th className="text-right px-3 py-2 font-medium">Fee</th>
+              <th
+                className="text-right px-3 py-2 font-medium"
+                title="The season contract fee for this player's tier. Subs have no annual fee — they are billed per game."
+              >
+                Annual Fee
+              </th>
+              <th
+                className="text-right px-3 py-2 font-medium"
+                title="Charge for extra games: a 2x+ player's games above their contract at the extra-game rate, or a sub's games at the sub rate."
+              >
+                Extra Charges
+              </th>
               <th className="text-right px-3 py-2 font-medium">Deposits</th>
               <th
                 className="text-right px-3 py-2 font-medium"
@@ -553,7 +568,7 @@ export default function AccountsTab({ season, params }: Props) {
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-3 py-8 text-center text-sm text-muted"
                 >
                   No contract players found for this season.
@@ -598,7 +613,17 @@ export default function AccountsTab({ season, params }: Props) {
                       {r.scheduledGames}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
-                      {fmt(r.fee)}
+                      {r.base > 0 ? fmt(r.base) : <span className="text-muted">&mdash;</span>}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-right font-mono"
+                      title={
+                        r.extraGames > 0
+                          ? `${r.extraGames} extra game${r.extraGames !== 1 ? "s" : ""}`
+                          : undefined
+                      }
+                    >
+                      {r.extras > 0 ? fmt(r.extras) : <span className="text-muted">&mdash;</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
                       {fmt(r.deposits)}
@@ -648,7 +673,7 @@ export default function AccountsTab({ season, params }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-blue-50/50">
-                      <td colSpan={8} className="px-3 py-3 border-t border-border">
+                      <td colSpan={9} className="px-3 py-3 border-t border-border">
                         <div className="text-xs text-muted mb-2 font-medium">
                           Payments — {r.player.lastName}, {r.player.firstName}
                         </div>
@@ -783,7 +808,8 @@ export default function AccountsTab({ season, params }: Props) {
                 <td colSpan={3} className="px-3 py-2">
                   Totals ({rows.length} player{rows.length !== 1 ? "s" : ""})
                 </td>
-                <td className="px-3 py-2 text-right font-mono">{fmt(totals.fee)}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(totals.base)}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(totals.extras)}</td>
                 <td className="px-3 py-2 text-right font-mono">
                   {fmt(totals.deposits)}
                 </td>

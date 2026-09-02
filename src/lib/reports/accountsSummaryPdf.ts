@@ -9,6 +9,8 @@ interface AccountRow {
   scheduledGames: number;
   extraGames: number; // 2x+ extras above 2/wk, OR all games for subs
   fee: number;        // total fee (base + extras)
+  base: number;       // annual/contract fee for the tier ($0 for subs)
+  extras: number;     // charge for extra games
   deposits: number;   // sum of payments
   credit?: number;    // prior-year distribution credit
   balance: number;    // fee - deposits - credit (negative = credit)
@@ -85,14 +87,19 @@ export function generateAccountsSummaryPdf(
 
   // Column layout
   const columns = [
-    { header: "Last, First", width: tableWidth * 0.26, align: "left" as const },
-    { header: "Contract", width: tableWidth * 0.09, align: "center" as const },
-    { header: "Games", width: tableWidth * 0.07, align: "right" as const },
-    { header: "Extras", width: tableWidth * 0.07, align: "right" as const },
-    { header: "Fee Charged", width: tableWidth * 0.15, align: "right" as const },
-    { header: "Deposits", width: tableWidth * 0.13, align: "right" as const },
-    { header: "Credit", width: tableWidth * 0.1, align: "right" as const },
-    { header: "Balance Due", width: tableWidth * 0.13, align: "right" as const },
+    //  Widths are measured, not guessed: each is the wider of its header
+    //  and its widest possible value at 9pt Helvetica, plus 4pt padding
+    //  either side. The name column is held to the minimum that fits the
+    //  longest roster name, and the slack goes to the money columns.
+    { header: "Last, First", width: tableWidth * 0.1955, align: "left" as const },
+    { header: "Contract", width: tableWidth * 0.0885, align: "center" as const },
+    { header: "Games", width: tableWidth * 0.0755, align: "right" as const },
+    { header: "Extra Gms", width: tableWidth * 0.1068, align: "right" as const },
+    { header: "Annual Fee", width: tableWidth * 0.1198, align: "right" as const },
+    { header: "Extra Chg", width: tableWidth * 0.1085, align: "right" as const },
+    { header: "Deposits", width: tableWidth * 0.1000, align: "right" as const },
+    { header: "Credit", width: tableWidth * 0.0810, align: "right" as const },
+    { header: "Balance Due", width: tableWidth * 0.1244, align: "right" as const },
   ];
 
   const rowHeight = 18;
@@ -129,7 +136,8 @@ export function generateAccountsSummaryPdf(
   // Sort by last name
   const sorted = [...rows].sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  let totalFees = 0;
+  let totalBase = 0;
+  let totalExtras = 0;
   let totalDeposits = 0;
   let totalCredits = 0;
   let totalBalance = 0;
@@ -165,7 +173,7 @@ export function generateAccountsSummaryPdf(
 
     const cells: { value: string; align: "left" | "right" | "center"; bold?: boolean; color?: [number, number, number] }[] = [
       {
-        value: `${r.lastName}, ${r.firstName}${r.noCharge ? " (no charge)" : ""}`,
+        value: `${r.lastName}, ${r.firstName}${r.noCharge ? " *" : ""}`,
         align: "left",
       },
       { value: contractLabel, align: "center" },
@@ -177,7 +185,8 @@ export function generateAccountsSummaryPdf(
             : "—",
         align: "right",
       },
-      { value: fmt$(r.fee), align: "right" },
+      { value: r.base ? fmt$(r.base) : "—", align: "right" },
+      { value: r.extras ? fmt$(r.extras) : "—", align: "right" },
       { value: fmt$(r.deposits), align: "right" },
       { value: r.credit ? fmt$(r.credit) : "—", align: "right" },
       {
@@ -208,7 +217,8 @@ export function generateAccountsSummaryPdf(
     doc.setFont("helvetica", "normal");
     currentY += rowHeight;
 
-    totalFees += r.fee;
+    totalBase += r.base;
+    totalExtras += r.extras;
     totalDeposits += r.deposits;
     totalCredits += r.credit ?? 0;
     totalBalance += r.balance;
@@ -241,10 +251,11 @@ export function generateAccountsSummaryPdf(
     if (i === 0) {
       value = `Totals (${sorted.length} player${sorted.length !== 1 ? "s" : ""})`;
       align = "left";
-    } else if (i === 4) value = fmt$(totalFees);
-    else if (i === 5) value = fmt$(totalDeposits);
-    else if (i === 6) value = fmt$(totalCredits);
-    else if (i === 7) value = fmt$(totalBalance);
+    } else if (i === 4) value = fmt$(totalBase);
+    else if (i === 5) value = fmt$(totalExtras);
+    else if (i === 6) value = fmt$(totalDeposits);
+    else if (i === 7) value = fmt$(totalCredits);
+    else if (i === 8) value = fmt$(totalBalance);
     if (value) {
       const tx =
         align === "right"
@@ -258,6 +269,20 @@ export function generateAccountsSummaryPdf(
   }
   currentY += rowHeight;
   doc.setFont("helvetica", "normal");
+
+  // Footnote for the "*" marker — only when someone actually carries it.
+  if (sorted.some((r) => r.noCharge)) {
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text(
+      "* No charge — this player is not billed a season fee or a per-game fee.",
+      marginLeft,
+      currentY + 12
+    );
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    currentY += rowHeight;
+  }
 
   // Footer on every page
   const totalPages = doc.getNumberOfPages();
