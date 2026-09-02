@@ -74,8 +74,6 @@ interface AccountRow {
   payments: Payment[];
   deposits: number;
   balance: number;
-  /** True when this tier reports an extras count (2x+ or sub) */
-  hasExtras: boolean;
   /** True if the player is comped — fee forced to $0 */
   noCharge: boolean;
   /** Prior-year distribution credit, subtracted from the balance */
@@ -186,9 +184,6 @@ export default function AccountsTab({ season, params }: Props) {
       let extras = 0;
       let extraGames = 0;
       const noCharge = p.noCharge === true;
-      // Only 2x+ players and subs carry an extras count; everyone else
-      // shows "—" in that column.
-      const hasExtras = contract === "2+" || contract === "0";
 
       if (contract === "1") {
         base = params.priceDons1;
@@ -235,7 +230,6 @@ export default function AccountsTab({ season, params }: Props) {
         deposits,
         credit,
         balance,
-        hasExtras,
         noCharge,
       });
     }
@@ -543,7 +537,6 @@ export default function AccountsTab({ season, params }: Props) {
               <th className="text-left px-3 py-2 font-medium">Last, First</th>
               <th className="text-center px-3 py-2 font-medium">Contract</th>
               <th className="text-right px-3 py-2 font-medium">Games</th>
-              <th className="text-right px-3 py-2 font-medium">Extras</th>
               <th className="text-right px-3 py-2 font-medium">Fee</th>
               <th className="text-right px-3 py-2 font-medium">Deposits</th>
               <th
@@ -560,7 +553,7 @@ export default function AccountsTab({ season, params }: Props) {
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={8}
                   className="px-3 py-8 text-center text-sm text-muted"
                 >
                   No contract players found for this season.
@@ -603,9 +596,6 @@ export default function AccountsTab({ season, params }: Props) {
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
                       {r.scheduledGames}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {r.hasExtras ? r.extraGames : "—"}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
                       {fmt(r.fee)}
@@ -658,7 +648,7 @@ export default function AccountsTab({ season, params }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-blue-50/50">
-                      <td colSpan={9} className="px-3 py-3 border-t border-border">
+                      <td colSpan={8} className="px-3 py-3 border-t border-border">
                         <div className="text-xs text-muted mb-2 font-medium">
                           Payments — {r.player.lastName}, {r.player.firstName}
                         </div>
@@ -790,7 +780,7 @@ export default function AccountsTab({ season, params }: Props) {
           {rows.length > 0 && (
             <tfoot className="bg-gray-100 font-semibold">
               <tr className="border-t-2 border-border">
-                <td colSpan={4} className="px-3 py-2">
+                <td colSpan={3} className="px-3 py-2">
                   Totals ({rows.length} player{rows.length !== 1 ? "s" : ""})
                 </td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(totals.fee)}</td>
