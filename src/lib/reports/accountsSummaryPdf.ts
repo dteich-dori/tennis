@@ -10,7 +10,8 @@ interface AccountRow {
   extraGames: number; // 2x+ extras above 2/wk, OR all games for subs
   fee: number;        // total fee (base + extras)
   deposits: number;   // sum of payments
-  balance: number;    // fee - deposits (negative = credit)
+  credit?: number;    // prior-year distribution credit
+  balance: number;    // fee - deposits - credit (negative = credit)
   locked?: boolean;   // extras frozen at lockedExtraGames
   noCharge?: boolean; // comped — fee is $0, no season or per-game charge
 }
@@ -85,13 +86,14 @@ export function generateAccountsSummaryPdf(
 
   // Column layout
   const columns = [
-    { header: "Last, First", width: tableWidth * 0.28, align: "left" as const },
-    { header: "Contract", width: tableWidth * 0.1, align: "center" as const },
-    { header: "Games", width: tableWidth * 0.08, align: "right" as const },
-    { header: "Extras", width: tableWidth * 0.08, align: "right" as const },
-    { header: "Fee Charged", width: tableWidth * 0.16, align: "right" as const },
-    { header: "Deposits", width: tableWidth * 0.15, align: "right" as const },
-    { header: "Balance Due", width: tableWidth * 0.15, align: "right" as const },
+    { header: "Last, First", width: tableWidth * 0.26, align: "left" as const },
+    { header: "Contract", width: tableWidth * 0.09, align: "center" as const },
+    { header: "Games", width: tableWidth * 0.07, align: "right" as const },
+    { header: "Extras", width: tableWidth * 0.07, align: "right" as const },
+    { header: "Fee Charged", width: tableWidth * 0.15, align: "right" as const },
+    { header: "Deposits", width: tableWidth * 0.13, align: "right" as const },
+    { header: "Credit", width: tableWidth * 0.1, align: "right" as const },
+    { header: "Balance Due", width: tableWidth * 0.13, align: "right" as const },
   ];
 
   const rowHeight = 18;
@@ -130,6 +132,7 @@ export function generateAccountsSummaryPdf(
 
   let totalFees = 0;
   let totalDeposits = 0;
+  let totalCredits = 0;
   let totalBalance = 0;
 
   for (let rowIdx = 0; rowIdx < sorted.length; rowIdx++) {
@@ -179,6 +182,7 @@ export function generateAccountsSummaryPdf(
       },
       { value: fmt$(r.fee), align: "right" },
       { value: fmt$(r.deposits), align: "right" },
+      { value: r.credit ? fmt$(r.credit) : "—", align: "right" },
       {
         value: r.balance < 0 ? `(${fmt$(-r.balance)})` : fmt$(r.balance),
         align: "right",
@@ -209,6 +213,7 @@ export function generateAccountsSummaryPdf(
 
     totalFees += r.fee;
     totalDeposits += r.deposits;
+    totalCredits += r.credit ?? 0;
     totalBalance += r.balance;
   }
 
@@ -241,7 +246,8 @@ export function generateAccountsSummaryPdf(
       align = "left";
     } else if (i === 4) value = fmt$(totalFees);
     else if (i === 5) value = fmt$(totalDeposits);
-    else if (i === 6) value = fmt$(totalBalance);
+    else if (i === 6) value = fmt$(totalCredits);
+    else if (i === 7) value = fmt$(totalBalance);
     if (value) {
       const tx =
         align === "right"

@@ -49,7 +49,7 @@ interface ComputedData {
   extraGames1plus: number;
   subsGameCount: number;
   totalSoloGamesFromDB: number;
-  soloPlayers: { name: string; soloGames: number }[];
+  soloPlayers: { id: number; name: string; soloGames: number; soloDeposit: number }[];
   donsCourtsPerWeek: number;
   soloCourtsPerWeek: number;
 }
@@ -87,6 +87,10 @@ export default function BudgetPage() {
 
   // Track whether initial load is complete (skip auto-save on first render)
   const paramsLoaded = useRef(false);
+
+  // Solo deposit inline editing — held locally while the field has focus
+  // so typing doesn't fire a save per keystroke; committed on blur/Enter.
+  const [soloDepositDraft, setSoloDepositDraft] = useState<{ id: number; value: string } | null>(null);
 
   // Add/edit item state
   const [addingCategory, setAddingCategory] = useState<"income" | "expense" | null>(null);
@@ -141,6 +145,39 @@ export default function BudgetPage() {
       setComputed(data);
     }
   }, []);
+
+  // Save a player's solo deposit, then refresh so Balance Due and the
+  // totals row pick up the new value.
+  const commitSoloDeposit = useCallback(
+    async (playerId: number, raw: string) => {
+      setSoloDepositDraft(null);
+      const trimmed = raw.trim();
+      const value = trimmed === "" ? 0 : parseFloat(trimmed);
+      if (!Number.isFinite(value)) {
+        alert("Deposit must be a number.");
+        return;
+      }
+      const current =
+        computed?.soloPlayers.find((p) => p.id === playerId)?.soloDeposit ?? 0;
+      if (value === current) return; // unchanged — skip the round-trip
+      try {
+        const res = await fetch("/api/players", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: playerId, soloDeposit: value }),
+        });
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          alert(`Failed to save deposit: ${data.error ?? "unknown"}`);
+          return;
+        }
+        if (season) await loadComputed(season.id);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [computed, season, loadComputed]
+  );
 
   useEffect(() => {
     loadSeason();
@@ -294,6 +331,10 @@ export default function BudgetPage() {
   // Solo income: per-game revenue
   const soloPlayerList = computed?.soloPlayers ?? [];
   const soloIncome = soloPlayerList.reduce((s, p) => s + p.soloGames * params.priceSolo, 0);
+  // Solo deposits are tracked per player, separately from the Don's
+  // deposit ledger. Balance Due = solo revenue − solo deposit.
+  const soloDepositTotal = soloPlayerList.reduce((s, p) => s + p.soloDeposit, 0);
+  const soloBalanceDueTotal = soloIncome - soloDepositTotal;
 
   const computedIncome = donsIncome + soloIncome;
 
@@ -366,10 +407,14 @@ export default function BudgetPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 border-b border-border">
+        {/* NOTE: the tab KEYS are historical and no longer match their
+            labels \u2014 "dons" is the season Budget projection, "accounts" is
+            the per-player Don's ledger. Keys are left alone so saved state
+            and existing conditionals keep working. */}
         {([
-          { key: "dons" as BudgetTab, label: "Don\u2019s" },
+          { key: "dons" as BudgetTab, label: "Budget" },
           { key: "solo" as BudgetTab, label: "Solo" },
-          { key: "accounts" as BudgetTab, label: "Accounts" },
+          { key: "accounts" as BudgetTab, label: "Don\u2019s" },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -610,17 +655,66 @@ export default function BudgetPage() {
                   <th className="text-left px-3 py-2 font-medium">Player</th>
                   <th className="text-right px-3 py-2 font-medium w-20">Games</th>
                   <th className="text-right px-3 py-2 font-medium w-28">Revenue</th>
+                  <th
+                    className="text-right px-3 py-2 font-medium w-32"
+                    title="Deposits received against this player's solo fee. Separate from the Don's deposit."
+                  >
+                    Deposit
+                  </th>
+                  <th
+                    className="text-right px-3 py-2 font-medium w-32"
+                    title="Solo revenue minus the solo deposit."
+                  >
+                    Balance Due
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {soloPlayerList.map((player) => {
                   const gameRev = player.soloGames * params.priceSolo;
+                  const balanceDue = gameRev - player.soloDeposit;
                   return (
-                    <tr key={player.name} className="bg-gray-50 border-t border-border">
+                    <tr key={player.id} className="bg-gray-50 border-t border-border">
                       <td className="px-3 py-2 text-muted">{player.name}</td>
                       <td className="px-3 py-2 text-right text-muted">{player.soloGames}</td>
                       <td className="px-3 py-2 text-right font-medium">
                         {gameRev > 0 ? formatCurrency(gameRev) : "\u2014"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={
+                            soloDepositDraft?.id === player.id
+                              ? soloDepositDraft.value
+                              : player.soloDeposit === 0
+                                ? ""
+                                : String(player.soloDeposit)
+                          }
+                          placeholder="0.00"
+                          onChange={(e) =>
+                            setSoloDepositDraft({ id: player.id, value: e.target.value })
+                          }
+                          onBlur={(e) => commitSoloDeposit(player.id, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") setSoloDepositDraft(null);
+                          }}
+                          className="border border-border rounded px-2 py-1 text-sm w-24 text-right"
+                        />
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-medium ${
+                          balanceDue > 0
+                            ? "text-red-700"
+                            : balanceDue < 0
+                              ? "text-green-700"
+                              : ""
+                        }`}
+                      >
+                        {balanceDue < 0
+                          ? `(${formatCurrency(-balanceDue)})`
+                          : formatCurrency(balanceDue)}
                       </td>
                     </tr>
                   );
@@ -631,6 +725,8 @@ export default function BudgetPage() {
                     <td className="px-3 py-2">Total ({soloPlayerList.length} players)</td>
                     <td className="px-3 py-2 text-right">{soloPlayerList.reduce((s, p) => s + p.soloGames, 0)}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(soloIncome)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(soloDepositTotal)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(soloBalanceDueTotal)}</td>
                   </tr>
                 )}
               </tbody>

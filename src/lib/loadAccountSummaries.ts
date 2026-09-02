@@ -27,6 +27,7 @@ interface LoadResult {
     priceDons2: number;
     priceExtraHour: number;
     priceSubs: number;
+    priceSolo: number;
   };
   baseWeeks: number;
 }
@@ -46,6 +47,9 @@ export async function loadAccountSummariesForSeason(
       isActive: players.isActive,
       lockedExtraGames: players.lockedExtraGames,
       noCharge: players.noCharge,
+      priorYearCredit: players.priorYearCredit,
+      soloGames: players.soloGames,
+      soloDeposit: players.soloDeposit,
     })
     .from(players)
     .where(eq(players.seasonId, seasonId));
@@ -111,6 +115,7 @@ export async function loadAccountSummariesForSeason(
     priceDons2: p?.priceDons2 ?? 0,
     priceExtraHour: p?.priceExtraHour ?? 0,
     priceSubs: p?.priceSubs ?? 0,
+    priceSolo: p?.priceSolo ?? 0,
   };
   const baseWeeks = p?.weeksPerSeason ?? 36;
 

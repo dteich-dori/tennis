@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { seasons } from "./seasons";
 
 export const players = sqliteTable("players", {
@@ -61,6 +61,13 @@ export const players = sqliteTable("players", {
   // comped subs; honored for every contract tier so the flag can't go
   // silently stale if a player's frequency changes.
   noCharge: integer("no_charge", { mode: "boolean" }).notNull().default(false),
+  // Accounts: credit carried over from the previous year's distribution.
+  // Subtracted from the player's Don's balance (fee − deposits − credit).
+  priorYearCredit: real("prior_year_credit").notNull().default(0),
+  // Accounts: deposits received against this player's SOLO fee. Kept
+  // separate from the Don's deposit ledger (player_payments), which
+  // covers the Don's contract only.
+  soloDeposit: real("solo_deposit").notNull().default(0),
   smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
   smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
   smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text

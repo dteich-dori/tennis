@@ -32,7 +32,7 @@ interface ComputedData {
   extraGames2plus: number;
   extraGames1plus: number;
   subsGameCount: number;
-  soloPlayers: { name: string; soloGames: number }[];
+  soloPlayers: { name: string; soloGames: number; soloDeposit: number }[];
   donsCourtsPerWeek: number;
   soloCourtsPerWeek: number;
 }
@@ -319,15 +319,24 @@ export function generateBookkeepingPdf(
   // ===== Solo Income =====
   sectionTitle("Solo Income");
   const soloCols = [
-    { header: "Player", width: tableWidth * 0.5 },
-    { header: "Games", width: tableWidth * 0.2, align: "right" as const },
-    { header: "Revenue", width: tableWidth * 0.3, align: "right" as const },
+    { header: "Player", width: tableWidth * 0.34 },
+    { header: "Games", width: tableWidth * 0.12, align: "right" as const },
+    { header: "Revenue", width: tableWidth * 0.18, align: "right" as const },
+    { header: "Deposit", width: tableWidth * 0.18, align: "right" as const },
+    { header: "Balance Due", width: tableWidth * 0.18, align: "right" as const },
   ];
-  const soloRows: string[][] = soloPlayerList.map((p) => [
-    p.name,
-    String(p.soloGames),
-    formatCurrency(p.soloGames * params.priceSolo),
-  ]);
+  const soloDepositTotal = soloPlayerList.reduce((s, p) => s + p.soloDeposit, 0);
+  const soloRows: string[][] = soloPlayerList.map((p) => {
+    const rev = p.soloGames * params.priceSolo;
+    const due = rev - p.soloDeposit;
+    return [
+      p.name,
+      String(p.soloGames),
+      formatCurrency(rev),
+      formatCurrency(p.soloDeposit),
+      due < 0 ? `(${formatCurrency(-due)})` : formatCurrency(due),
+    ];
+  });
   drawTable(
     soloCols,
     soloRows,
@@ -335,6 +344,8 @@ export function generateBookkeepingPdf(
       `Total (${soloPlayerList.length} players)`,
       String(soloPlayerList.reduce((s, p) => s + p.soloGames, 0)),
       formatCurrency(soloIncome),
+      formatCurrency(soloDepositTotal),
+      formatCurrency(soloIncome - soloDepositTotal),
     ]
   );
 

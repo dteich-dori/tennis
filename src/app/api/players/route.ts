@@ -93,6 +93,11 @@ function validatePlayerFields(body: PlayerBody): string | null {
     const n = Number(body.lockedExtraGames);
     if (!Number.isInteger(n) || n < 0) return "lockedExtraGames must be a non-negative integer or null";
   }
+  for (const money of ["priorYearCredit", "soloDeposit"] as const) {
+    if (body[money] !== undefined && body[money] !== null) {
+      if (!Number.isFinite(Number(body[money]))) return `${money} must be a number`;
+    }
+  }
   if (body.blockedDays) {
     for (const day of body.blockedDays) {
       if (typeof day !== "number" || day < 0 || day > 6) return "blockedDays must contain values 0-6";
@@ -224,6 +229,8 @@ export async function POST(request: NextRequest) {
       noVacationMakeup,
       alwaysAvailable,
       noCharge,
+      priorYearCredit,
+      soloDeposit,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -317,6 +324,8 @@ export async function POST(request: NextRequest) {
         noVacationMakeup: noVacationMakeup ?? false,
         alwaysAvailable: alwaysAvailable ?? false,
         noCharge: noCharge ?? false,
+        priorYearCredit: priorYearCredit ?? 0,
+        soloDeposit: soloDeposit ?? 0,
         cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : null,
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
@@ -444,6 +453,8 @@ export async function PUT(request: NextRequest) {
       noVacationMakeup,
       alwaysAvailable,
       noCharge,
+      priorYearCredit,
+      soloDeposit,
       cGamesLimit,
       soloGames,
       blockedDays,
@@ -491,6 +502,11 @@ export async function PUT(request: NextRequest) {
       noVacationMakeup: noVacationMakeup !== undefined ? noVacationMakeup : currentPlayer.noVacationMakeup,
       alwaysAvailable: alwaysAvailable !== undefined ? alwaysAvailable : currentPlayer.alwaysAvailable,
       noCharge: noCharge !== undefined ? noCharge : currentPlayer.noCharge,
+      // Both columns are NOT NULL — coerce an explicit null to 0 rather
+      // than letting it reach the DB.
+      priorYearCredit:
+        priorYearCredit !== undefined ? (priorYearCredit ?? 0) : currentPlayer.priorYearCredit,
+      soloDeposit: soloDeposit !== undefined ? (soloDeposit ?? 0) : currentPlayer.soloDeposit,
       cGamesLimit: cGamesLimit !== undefined ? cGamesLimit : currentPlayer.cGamesLimit,
       soloGames: soloGames !== undefined ? (soloGames || null) : currentPlayer.soloGames,
       groupPct: groupPct !== undefined ? groupPct : currentPlayer.groupPct,

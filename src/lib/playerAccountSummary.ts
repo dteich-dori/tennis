@@ -14,6 +14,14 @@
  *   sub:           fee = extraGames × priceSubs
  *                 extraGames = locked override OR scheduledGames
  *
+ * Balance = fee − deposits − credit, where credit is the player's
+ * carry-over from the previous year's distribution.
+ *
+ * Solo is billed independently of the Don's contract:
+ *   soloFee     = soloGames × priceSolo
+ *   soloBalance = soloFee − soloDeposit
+ * soloDeposit is its own bucket, NOT the Don's payment ledger.
+ *
  * Overriding all of the above: a player flagged noCharge is comped —
  * base, extras and fee are all forced to 0, whatever their tier or game
  * count. Their scheduledGames / extraGames still report the real counts
@@ -37,6 +45,12 @@ export interface AccountInputPlayer {
   lockedExtraGames: number | null;
   /** Comped player — never billed a season fee or a per-game fee. */
   noCharge?: boolean;
+  /** Credit from the previous year's distribution — reduces the Don's balance. */
+  priorYearCredit?: number;
+  /** Contracted solo games for the season (null = not in the solo group). */
+  soloGames?: number | null;
+  /** Deposits against the SOLO fee — separate from the Don's ledger. */
+  soloDeposit?: number;
 }
 
 export interface AccountInputPayment {
@@ -55,6 +69,8 @@ export interface AccountInputRates {
   priceDons2: number;
   priceExtraHour: number;
   priceSubs: number;
+  /** Per-game solo rate. Absent → solo figures compute as 0. */
+  priceSolo?: number;
 }
 
 export interface AccountSummary {
@@ -71,7 +87,12 @@ export interface AccountSummary {
   extras: number;
   fee: number;
   deposits: number;
-  balance: number;        // fee − deposits  (positive = owes; negative = credit)
+  credit: number;         // prior-year distribution credit
+  balance: number;        // fee − deposits − credit  (positive = owes; negative = credit)
+  soloGames: number;      // contracted solo games (0 = not in the solo group)
+  soloFee: number;        // soloGames × priceSolo
+  soloDeposit: number;    // deposits against the solo fee
+  soloBalance: number;    // soloFee − soloDeposit
   stdDeposit: number;     // tier's standard deposit ($0 for sub)
   depositDue: number;     // max(0, stdDeposit − deposits)
   locked: boolean;        // extras are frozen by lockedExtraGames
@@ -177,6 +198,16 @@ export function computeAccountSummaries(input: {
     const stdDeposit = noCharge ? 0 : (STANDARD_DEPOSIT[freq] ?? 0);
     const depositDue = Math.max(0, stdDeposit - deposits);
 
+    // Credit carried over from last year's distribution. Reduces what the
+    // player owes, on top of anything they've already paid in.
+    const credit = noCharge ? 0 : (p.priorYearCredit ?? 0);
+
+    // Solo is billed separately from the Don's contract: contracted solo
+    // games × the per-game solo rate, against its own deposit bucket.
+    const soloGames = p.soloGames ?? 0;
+    const soloFee = noCharge ? 0 : soloGames * (rates.priceSolo ?? 0);
+    const soloDeposit = p.soloDeposit ?? 0;
+
     out.push({
       playerId: p.id,
       firstName: p.firstName,
@@ -189,7 +220,12 @@ export function computeAccountSummaries(input: {
       extras,
       fee,
       deposits,
-      balance: fee - deposits,
+      credit,
+      balance: fee - deposits - credit,
+      soloGames,
+      soloFee,
+      soloDeposit,
+      soloBalance: soloFee - soloDeposit,
       stdDeposit,
       depositDue,
       locked,

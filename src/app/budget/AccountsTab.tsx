@@ -28,6 +28,8 @@ interface PlayerLite {
   lockedExtraGames: number | null;
   /** Comped player — never billed a season fee or a per-game fee. */
   noCharge: boolean;
+  /** Credit from the previous year's distribution. */
+  priorYearCredit: number;
 }
 
 const STANDARD_DEPOSITS: Record<string, number> = {
@@ -79,6 +81,8 @@ interface AccountRow {
   lockable: boolean;
   /** True if the player is comped — fee forced to $0 */
   noCharge: boolean;
+  /** Prior-year distribution credit, subtracted from the balance */
+  credit: number;
 }
 
 interface Props {
@@ -218,7 +222,11 @@ export default function AccountsTab({ season, params }: Props) {
         (a, b) => a.paidDate.localeCompare(b.paidDate)
       );
       const deposits = myPayments.reduce((s, x) => s + x.amount, 0);
-      const balance = fee - deposits;
+      // Prior-year distribution credit reduces what the player owes, on
+      // top of anything they've already paid in. A comped player owes
+      // nothing either way, so their credit doesn't apply.
+      const credit = noCharge ? 0 : (p.priorYearCredit ?? 0);
+      const balance = fee - deposits - credit;
 
       out.push({
         player: p,
@@ -230,6 +238,7 @@ export default function AccountsTab({ season, params }: Props) {
         fee,
         payments: myPayments,
         deposits,
+        credit,
         balance,
         locked,
         lockable,
@@ -245,9 +254,10 @@ export default function AccountsTab({ season, params }: Props) {
     (acc, r) => ({
       fee: acc.fee + r.fee,
       deposits: acc.deposits + r.deposits,
+      credit: acc.credit + r.credit,
       balance: acc.balance + r.balance,
     }),
-    { fee: 0, deposits: 0, balance: 0 }
+    { fee: 0, deposits: 0, credit: 0, balance: 0 }
   );
 
   const openPaymentForm = (playerId: number) => {
@@ -293,6 +303,38 @@ export default function AccountsTab({ season, params }: Props) {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // --- Edit a player's prior-year distribution credit ---
+  //  Held in local state while the field has focus so typing "12.50"
+  //  doesn't fire a save per keystroke; committed on blur / Enter.
+  const [creditDraft, setCreditDraft] = useState<{ id: number; value: string } | null>(null);
+
+  const commitCredit = async (playerId: number, raw: string) => {
+    setCreditDraft(null);
+    const trimmed = raw.trim();
+    const value = trimmed === "" ? 0 : parseFloat(trimmed);
+    if (!Number.isFinite(value)) {
+      alert("Credit must be a number.");
+      return;
+    }
+    const current = players.find((p) => p.id === playerId)?.priorYearCredit ?? 0;
+    if (value === current) return; // nothing changed — skip the round-trip
+    try {
+      const res = await fetch("/api/players", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: playerId, priorYearCredit: value }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        alert(`Failed to save credit: ${data.error ?? "unknown"}`);
+        return;
+      }
+      await loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -456,6 +498,7 @@ export default function AccountsTab({ season, params }: Props) {
         extraGames: r.extraGames,
         fee: r.fee,
         deposits: r.deposits,
+        credit: r.credit,
         balance: r.balance,
         locked: r.locked,
         noCharge: r.noCharge,
@@ -559,6 +602,12 @@ export default function AccountsTab({ season, params }: Props) {
               </th>
               <th className="text-right px-3 py-2 font-medium">Fee</th>
               <th className="text-right px-3 py-2 font-medium">Deposits</th>
+              <th
+                className="text-right px-3 py-2 font-medium"
+                title="Credit from the previous year's distribution. Subtracted from the balance."
+              >
+                Credit
+              </th>
               <th className="text-right px-3 py-2 font-medium">Balance</th>
               <th className="w-12 px-2 py-2"></th>
             </tr>
@@ -567,7 +616,7 @@ export default function AccountsTab({ season, params }: Props) {
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-3 py-8 text-center text-sm text-muted"
                 >
                   No contract players found for this season.
@@ -663,6 +712,36 @@ export default function AccountsTab({ season, params }: Props) {
                     <td className="px-3 py-2 text-right font-mono">
                       {fmt(r.deposits)}
                     </td>
+                    <td
+                      className="px-3 py-2 text-right font-mono"
+                      title="Credit from the previous year's distribution. Subtracted from the balance."
+                    >
+                      {r.noCharge ? (
+                        <span className="text-muted">&mdash;</span>
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={
+                            creditDraft?.id === r.player.id
+                              ? creditDraft.value
+                              : r.credit === 0
+                                ? ""
+                                : String(r.credit)
+                          }
+                          placeholder="0.00"
+                          onChange={(e) =>
+                            setCreditDraft({ id: r.player.id, value: e.target.value })
+                          }
+                          onBlur={(e) => commitCredit(r.player.id, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") setCreditDraft(null);
+                          }}
+                          className="border border-border rounded px-1 py-0.5 text-sm w-24 text-right bg-white font-mono"
+                        />
+                      )}
+                    </td>
                     <td className={`px-3 py-2 text-right font-mono ${balanceClass}`}>
                       {r.balance < 0 ? `(${fmt(-r.balance)})` : fmt(r.balance)}
                     </td>
@@ -678,7 +757,7 @@ export default function AccountsTab({ season, params }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-blue-50/50">
-                      <td colSpan={9} className="px-3 py-3 border-t border-border">
+                      <td colSpan={10} className="px-3 py-3 border-t border-border">
                         <div className="text-xs text-muted mb-2 font-medium">
                           Payments — {r.player.lastName}, {r.player.firstName}
                         </div>
@@ -816,6 +895,9 @@ export default function AccountsTab({ season, params }: Props) {
                 <td className="px-3 py-2 text-right font-mono">{fmt(totals.fee)}</td>
                 <td className="px-3 py-2 text-right font-mono">
                   {fmt(totals.deposits)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {fmt(totals.credit)}
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-mono ${

@@ -84,17 +84,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Get individual solo player details for budget display
+    //  id and soloDeposit come along so the Solo tab can show each
+    //  player's deposit and balance due, and write the deposit back.
     const soloPlayerRows = await database
       .select({
+        id: players.id,
         firstName: players.firstName,
         lastName: players.lastName,
         soloGames: players.soloGames,
+        soloDeposit: players.soloDeposit,
       })
       .from(players)
       .where(billable(sid));
     const soloPlayers = soloPlayerRows
       .filter((p) => p.soloGames != null && p.soloGames > 0)
-      .map((p) => ({ name: `${p.firstName} ${p.lastName}`, soloGames: p.soloGames! }))
+      .map((p) => ({
+        id: p.id,
+        name: `${p.firstName} ${p.lastName}`,
+        soloGames: p.soloGames!,
+        soloDeposit: p.soloDeposit ?? 0,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     // Get weeksPerSeason from budget params (or default 36) — needed by
