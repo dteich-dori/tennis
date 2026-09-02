@@ -338,31 +338,11 @@ export default function AccountsTab({ season, params }: Props) {
     }
   };
 
-  // --- Lock / unlock the extras portion of a player's fee ---
-  const toggleLock = async (row: AccountRow) => {
-    if (!row.lockable) return;
-    const newValue = row.locked ? null : row.extraGames;
-    try {
-      const res = await fetch("/api/players", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: row.player.id,
-          lockedExtraGames: newValue,
-        }),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        alert(`Failed to ${row.locked ? "unlock" : "lock"}: ${data.error ?? "unknown"}`);
-        return;
-      }
-      await loadData();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   // --- Edit the locked extras count on a player ---
+  //  The Lock column was removed in v2.276, so nothing in this UI can
+  //  set lockedExtraGames any more. This stays for players whose lock
+  //  was set previously (or via the API) — their Extras cell is still
+  //  editable so the frozen count can be corrected.
   const updateLockedExtras = async (playerId: number, newCount: number) => {
     try {
       const res = await fetch("/api/players", {
@@ -597,9 +577,6 @@ export default function AccountsTab({ season, params }: Props) {
               <th className="text-center px-3 py-2 font-medium">Contract</th>
               <th className="text-right px-3 py-2 font-medium">Games</th>
               <th className="text-right px-3 py-2 font-medium">Extras</th>
-              <th className="text-center px-2 py-2 font-medium w-12" title="Lock the extras count so it doesn't change when auto-assign is re-run">
-                Lock
-              </th>
               <th className="text-right px-3 py-2 font-medium">Fee</th>
               <th className="text-right px-3 py-2 font-medium">Deposits</th>
               <th
@@ -616,7 +593,7 @@ export default function AccountsTab({ season, params }: Props) {
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={9}
                   className="px-3 py-8 text-center text-sm text-muted"
                 >
                   No contract players found for this season.
@@ -685,23 +662,6 @@ export default function AccountsTab({ season, params }: Props) {
                         "—"
                       )}
                     </td>
-                    <td className="px-2 py-2 text-center">
-                      {r.lockable && (
-                        <button
-                          onClick={() => toggleLock(r)}
-                          title={
-                            r.locked
-                              ? "Unlock — extras will follow scheduled games again"
-                              : "Lock — freeze extras at the current count"
-                          }
-                          className={`text-base hover:scale-110 transition-transform ${
-                            r.locked ? "" : "opacity-30 hover:opacity-70"
-                          }`}
-                        >
-                          {r.locked ? "🔒" : "🔓"}
-                        </button>
-                      )}
-                    </td>
                     <td
                       className={`px-3 py-2 text-right font-mono ${
                         r.locked ? "bg-amber-50" : ""
@@ -757,7 +717,7 @@ export default function AccountsTab({ season, params }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-blue-50/50">
-                      <td colSpan={10} className="px-3 py-3 border-t border-border">
+                      <td colSpan={9} className="px-3 py-3 border-t border-border">
                         <div className="text-xs text-muted mb-2 font-medium">
                           Payments — {r.player.lastName}, {r.player.firstName}
                         </div>
@@ -889,7 +849,7 @@ export default function AccountsTab({ season, params }: Props) {
           {rows.length > 0 && (
             <tfoot className="bg-gray-100 font-semibold">
               <tr className="border-t-2 border-border">
-                <td colSpan={5} className="px-3 py-2">
+                <td colSpan={4} className="px-3 py-2">
                   Totals ({rows.length} player{rows.length !== 1 ? "s" : ""})
                 </td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(totals.fee)}</td>
