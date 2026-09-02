@@ -13,6 +13,11 @@
  *                 extraGames = locked override OR max(0, scheduledGames − 2 × baseWeeks)
  *   sub:           fee = extraGames × priceSubs
  *                 extraGames = locked override OR scheduledGames
+ *
+ * Overriding all of the above: a player flagged noCharge is comped —
+ * base, extras and fee are all forced to 0, whatever their tier or game
+ * count. Their scheduledGames / extraGames still report the real counts
+ * so the Accounts tab can show what they played for $0.
  */
 
 export const STANDARD_DEPOSIT: Record<string, number> = {
@@ -30,6 +35,8 @@ export interface AccountInputPlayer {
   contractedFrequency: string; // "0" | "1" | "2" | "2+"
   isActive: boolean;
   lockedExtraGames: number | null;
+  /** Comped player — never billed a season fee or a per-game fee. */
+  noCharge?: boolean;
 }
 
 export interface AccountInputPayment {
@@ -68,6 +75,7 @@ export interface AccountSummary {
   stdDeposit: number;     // tier's standard deposit ($0 for sub)
   depositDue: number;     // max(0, stdDeposit − deposits)
   locked: boolean;        // extras are frozen by lockedExtraGames
+  noCharge: boolean;      // comped — fee forced to $0
 }
 
 function contractLabel(freq: string): string {
@@ -153,9 +161,20 @@ export function computeAccountSummaries(input: {
       if (extraGames === 0) continue;
     }
 
+    // Comped player: zero out both the season/contract fee and the
+    // per-game extras. scheduledGames/extraGames keep their real values
+    // so the row still shows what the player actually played, at $0.
+    const noCharge = p.noCharge === true;
+    if (noCharge) {
+      base = 0;
+      extras = 0;
+    }
+
     const fee = base + extras;
     const deposits = depositsByPlayer.get(p.id) ?? 0;
-    const stdDeposit = STANDARD_DEPOSIT[freq] ?? 0;
+    // A comped player owes nothing, so the tier's standard deposit
+    // doesn't apply to them either.
+    const stdDeposit = noCharge ? 0 : (STANDARD_DEPOSIT[freq] ?? 0);
     const depositDue = Math.max(0, stdDeposit - deposits);
 
     out.push({
@@ -174,6 +193,7 @@ export function computeAccountSummaries(input: {
       stdDeposit,
       depositDue,
       locked,
+      noCharge,
     });
   }
 

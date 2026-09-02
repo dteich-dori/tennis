@@ -5,6 +5,19 @@ import { eq, and, sql } from "drizzle-orm";
 import { countPerPlayer } from "@/lib/dedupeAssignments";
 
 /**
+ * Active, billable players for a season: excludes anyone flagged
+ * no_charge, who is comped and must never contribute to projected
+ * income (season fee or per-game fee).
+ */
+function billable(seasonId: number) {
+  return and(
+    eq(players.seasonId, seasonId),
+    eq(players.isActive, true),
+    eq(players.noCharge, false)
+  );
+}
+
+/**
  * GET /api/budget-computed?seasonId=N
  * Returns aggregated data for budget computed values:
  * - Game counts by status and group
@@ -40,7 +53,12 @@ export async function GET(request: NextRequest) {
       if (row.status === "holiday") holidayGames += row.count;
     }
 
-    // Count active players by frequency
+    // Count active players by frequency.
+    //  Players flagged no_charge are comped — they pay neither a season
+    //  fee nor a per-game fee — so they must not appear in any of the
+    //  counts below, all of which are multiplied by a price to project
+    //  income on the Budget page. Every query in this route filters them
+    //  out for the same reason.
     const allPlayers = await database
       .select({
         contractedFrequency: players.contractedFrequency,
@@ -49,7 +67,7 @@ export async function GET(request: NextRequest) {
         isSub: players.contractedFrequency,
       })
       .from(players)
-      .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
+      .where(billable(sid));
 
     let dons0 = 0, dons1 = 0, dons1plus = 0, dons2 = 0, dons2plus = 0, soloCount = 0;
     let totalSoloGamesFromDB = 0;
@@ -73,7 +91,7 @@ export async function GET(request: NextRequest) {
         soloGames: players.soloGames,
       })
       .from(players)
-      .where(and(eq(players.seasonId, sid), eq(players.isActive, true)));
+      .where(billable(sid));
     const soloPlayers = soloPlayerRows
       .filter((p) => p.soloGames != null && p.soloGames > 0)
       .map((p) => ({ name: `${p.firstName} ${p.lastName}`, soloGames: p.soloGames! }))
@@ -120,7 +138,7 @@ export async function GET(request: NextRequest) {
       const plus2Rows = await database
         .select({ id: players.id })
         .from(players)
-        .where(and(eq(players.seasonId, sid), eq(players.isActive, true), eq(players.contractedFrequency, "2+")));
+        .where(and(billable(sid), eq(players.contractedFrequency, "2+")));
       const plus2Ids = plus2Rows.map((r) => r.id);
 
       if (plus2Ids.length > 0) {
@@ -142,7 +160,7 @@ export async function GET(request: NextRequest) {
       const plus1Rows = await database
         .select({ id: players.id })
         .from(players)
-        .where(and(eq(players.seasonId, sid), eq(players.isActive, true), eq(players.contractedFrequency, "1+")));
+        .where(and(billable(sid), eq(players.contractedFrequency, "1+")));
       const plus1Ids = plus1Rows.map((r) => r.id);
 
       if (plus1Ids.length > 0) {
@@ -160,7 +178,7 @@ export async function GET(request: NextRequest) {
       const subRows = await database
         .select({ id: players.id })
         .from(players)
-        .where(and(eq(players.seasonId, sid), eq(players.isActive, true), eq(players.contractedFrequency, "0")));
+        .where(and(billable(sid), eq(players.contractedFrequency, "0")));
       const subIds = subRows.map((r) => r.id);
 
       if (subIds.length > 0) {

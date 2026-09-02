@@ -26,6 +26,8 @@ interface PlayerLite {
   contractedFrequency: string;
   isActive: boolean;
   lockedExtraGames: number | null;
+  /** Comped player — never billed a season fee or a per-game fee. */
+  noCharge: boolean;
 }
 
 const STANDARD_DEPOSITS: Record<string, number> = {
@@ -75,6 +77,8 @@ interface AccountRow {
   locked: boolean;
   /** True if this player's fee can be locked (2x+ or sub) */
   lockable: boolean;
+  /** True if the player is comped — fee forced to $0 */
+  noCharge: boolean;
 }
 
 interface Props {
@@ -181,7 +185,9 @@ export default function AccountsTab({ season, params }: Props) {
       let extras = 0;
       let extraGames = 0;
       const locked = p.lockedExtraGames !== null && p.lockedExtraGames !== undefined;
-      const lockable = contract === "2+" || contract === "0";
+      const noCharge = p.noCharge === true;
+      // Nothing to lock on a comped player — their fee is $0 either way.
+      const lockable = !noCharge && (contract === "2+" || contract === "0");
 
       if (contract === "1") {
         base = params.priceDons1;
@@ -199,6 +205,14 @@ export default function AccountsTab({ season, params }: Props) {
         extraGames = locked ? (p.lockedExtraGames as number) : scheduledGames;
         extras = extraGames * params.priceSubs;
       }
+      // Comped player: no season/contract fee and no per-game fee.
+      // scheduledGames / extraGames keep their real values so the row
+      // still shows what they played — just at $0.
+      if (noCharge) {
+        base = 0;
+        extras = 0;
+      }
+
       const fee = base + extras;
       const myPayments = (paymentsByPlayer.get(p.id) ?? []).sort(
         (a, b) => a.paidDate.localeCompare(b.paidDate)
@@ -219,6 +233,7 @@ export default function AccountsTab({ season, params }: Props) {
         balance,
         locked,
         lockable,
+        noCharge,
       });
     }
 
@@ -339,6 +354,10 @@ export default function AccountsTab({ season, params }: Props) {
     const added: string[] = [];
     const skipped: string[] = [];
     for (const r of rows) {
+      if (r.noCharge) {
+        skipped.push(`${r.player.lastName}, ${r.player.firstName} (no charge)`);
+        continue;
+      }
       const std = STANDARD_DEPOSITS[r.contract] ?? 0;
       if (std <= 0) {
         skipped.push(`${r.player.lastName}, ${r.player.firstName} (no standard deposit for ${r.contract})`);
@@ -439,6 +458,7 @@ export default function AccountsTab({ season, params }: Props) {
         deposits: r.deposits,
         balance: r.balance,
         locked: r.locked,
+        noCharge: r.noCharge,
       })),
       { startDate: season.startDate, endDate: season.endDate },
       {
@@ -572,6 +592,14 @@ export default function AccountsTab({ season, params }: Props) {
                   >
                     <td className="px-3 py-2">
                       {r.player.lastName}, {r.player.firstName}
+                      {r.noCharge && (
+                        <span
+                          className="ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-100 text-green-800 align-middle"
+                          title="No charge — this player is not billed a season fee or a per-game fee."
+                        >
+                          No charge
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-center">
                       {r.contract === "0"

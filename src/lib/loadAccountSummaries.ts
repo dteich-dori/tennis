@@ -45,6 +45,7 @@ export async function loadAccountSummariesForSeason(
       contractedFrequency: players.contractedFrequency,
       isActive: players.isActive,
       lockedExtraGames: players.lockedExtraGames,
+      noCharge: players.noCharge,
     })
     .from(players)
     .where(eq(players.seasonId, seasonId));

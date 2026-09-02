@@ -54,6 +54,13 @@ export const players = sqliteTable("players", {
   // Used by the clear-swap adjustment pass as a general-pool fallback
   // (without 1:1 swap attribution) when no scheduled sub is found.
   alwaysAvailable: integer("always_available", { mode: "boolean" }).notNull().default(false),
+  // Accounts: when true, this player is never billed — no season/contract
+  // fee and no per-game fee. Their fee is forced to $0 everywhere the
+  // accounting code runs (Accounts tab, PDFs, {balance} templates) and
+  // they are left out of the Budget page's projected income. Intended for
+  // comped subs; honored for every contract tier so the flag can't go
+  // silently stale if a player's frequency changes.
+  noCharge: integer("no_charge", { mode: "boolean" }).notNull().default(false),
   smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
   smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
   smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text

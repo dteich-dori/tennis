@@ -42,6 +42,7 @@ interface Player {
   noEarlyGames: boolean;
   noVacationMakeup: boolean;
   alwaysAvailable: boolean;
+  noCharge: boolean;
   cGamesLimit: number | null;
   soloGames: number | null;
   groupPct: number;
@@ -85,6 +86,7 @@ const emptyPlayer = {
   noEarlyGames: false,
   noVacationMakeup: false,
   alwaysAvailable: false,
+  noCharge: false,
   cGamesLimit: null as number | null,
   soloGames: null as number | null,
   groupPct: 0,
@@ -182,6 +184,7 @@ export default function PlayersPage() {
       noEarlyGames: player.noEarlyGames,
       noVacationMakeup: player.noVacationMakeup ?? false,
       alwaysAvailable: player.alwaysAvailable ?? false,
+      noCharge: player.noCharge ?? false,
       cGamesLimit: player.cGamesLimit ?? null,
       soloGames: player.soloGames ?? null,
       groupPct: player.groupPct ?? 0,
@@ -951,6 +954,17 @@ export default function PlayersPage() {
                   onChange={(e) => setForm({ ...form, alwaysAvailable: e.target.checked })}
                 />
                 Always available
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="When checked, this player is never billed — no season/contract fee and no per-game fee. Their Accounts row shows the games they played at $0, they are skipped by the standard-deposit macro, and they are left out of the Budget page's projected income. Intended for comped subs."
+              >
+                <input
+                  type="checkbox"
+                  checked={form.noCharge}
+                  onChange={(e) => setForm({ ...form, noCharge: e.target.checked })}
+                />
+                No charge (comped — no season or per-game fee)
               </label>
               <label
                 className="flex items-center gap-2 text-sm"

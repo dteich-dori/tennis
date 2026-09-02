@@ -12,6 +12,7 @@ interface AccountRow {
   deposits: number;   // sum of payments
   balance: number;    // fee - deposits (negative = credit)
   locked?: boolean;   // extras frozen at lockedExtraGames
+  noCharge?: boolean; // comped — fee is $0, no season or per-game charge
 }
 
 interface Season {
@@ -161,7 +162,10 @@ export function generateAccountsSummaryPdf(
             : "1/wk";
 
     const cells: { value: string; align: "left" | "right" | "center"; bold?: boolean; color?: [number, number, number] }[] = [
-      { value: `${r.lastName}, ${r.firstName}`, align: "left" },
+      {
+        value: `${r.lastName}, ${r.firstName}${r.noCharge ? " (no charge)" : ""}`,
+        align: "left",
+      },
       { value: contractLabel, align: "center" },
       { value: String(r.scheduledGames), align: "right" },
       {
