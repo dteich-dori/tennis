@@ -25,7 +25,6 @@ interface PlayerLite {
   lastName: string;
   contractedFrequency: string;
   isActive: boolean;
-  lockedExtraGames: number | null;
   /** Comped player — never billed a season fee or a per-game fee. */
   noCharge: boolean;
   /** Credit from the previous year's distribution. */
@@ -75,10 +74,8 @@ interface AccountRow {
   payments: Payment[];
   deposits: number;
   balance: number;
-  /** True if extras are frozen by lockedExtraGames being non-null */
-  locked: boolean;
-  /** True if this player's fee can be locked (2x+ or sub) */
-  lockable: boolean;
+  /** True when this tier reports an extras count (2x+ or sub) */
+  hasExtras: boolean;
   /** True if the player is comped — fee forced to $0 */
   noCharge: boolean;
   /** Prior-year distribution credit, subtracted from the balance */
@@ -188,10 +185,10 @@ export default function AccountsTab({ season, params }: Props) {
       let base = 0;
       let extras = 0;
       let extraGames = 0;
-      const locked = p.lockedExtraGames !== null && p.lockedExtraGames !== undefined;
       const noCharge = p.noCharge === true;
-      // Nothing to lock on a comped player — their fee is $0 either way.
-      const lockable = !noCharge && (contract === "2+" || contract === "0");
+      // Only 2x+ players and subs carry an extras count; everyone else
+      // shows "—" in that column.
+      const hasExtras = contract === "2+" || contract === "0";
 
       if (contract === "1") {
         base = params.priceDons1;
@@ -199,14 +196,12 @@ export default function AccountsTab({ season, params }: Props) {
         base = params.priceDons2;
       } else if (contract === "2+") {
         base = params.priceDons2;
-        extraGames = locked
-          ? (p.lockedExtraGames as number)
-          : Math.max(0, scheduledGames - 2 * baseWeeks);
+        extraGames = Math.max(0, scheduledGames - 2 * baseWeeks);
         extras = extraGames * params.priceExtraHour;
       } else if (contract === "0") {
         // Subs: no base fee — charged per game played
         base = 0;
-        extraGames = locked ? (p.lockedExtraGames as number) : scheduledGames;
+        extraGames = scheduledGames;
         extras = extraGames * params.priceSubs;
       }
       // Comped player: no season/contract fee and no per-game fee.
@@ -240,8 +235,7 @@ export default function AccountsTab({ season, params }: Props) {
         deposits,
         credit,
         balance,
-        locked,
-        lockable,
+        hasExtras,
         noCharge,
       });
     }
@@ -330,32 +324,6 @@ export default function AccountsTab({ season, params }: Props) {
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
         alert(`Failed to save credit: ${data.error ?? "unknown"}`);
-        return;
-      }
-      await loadData();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  // --- Edit the locked extras count on a player ---
-  //  The Lock column was removed in v2.276, so nothing in this UI can
-  //  set lockedExtraGames any more. This stays for players whose lock
-  //  was set previously (or via the API) — their Extras cell is still
-  //  editable so the frozen count can be corrected.
-  const updateLockedExtras = async (playerId: number, newCount: number) => {
-    try {
-      const res = await fetch("/api/players", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: playerId,
-          lockedExtraGames: newCount,
-        }),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        alert(`Failed: ${data.error ?? "unknown"}`);
         return;
       }
       await loadData();
@@ -480,7 +448,6 @@ export default function AccountsTab({ season, params }: Props) {
         deposits: r.deposits,
         credit: r.credit,
         balance: r.balance,
-        locked: r.locked,
         noCharge: r.noCharge,
       })),
       { startDate: season.startDate, endDate: season.endDate },
@@ -637,36 +604,10 @@ export default function AccountsTab({ season, params }: Props) {
                     <td className="px-3 py-2 text-right font-mono">
                       {r.scheduledGames}
                     </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${
-                        r.locked ? "bg-amber-50" : ""
-                      }`}
-                    >
-                      {r.lockable ? (
-                        r.locked ? (
-                          <input
-                            type="number"
-                            min={0}
-                            value={r.extraGames}
-                            onChange={(e) => {
-                              const n = parseInt(e.target.value);
-                              if (!Number.isFinite(n) || n < 0) return;
-                              updateLockedExtras(r.player.id, n);
-                            }}
-                            className="border border-border rounded px-1 py-0.5 text-sm w-16 text-right bg-white"
-                          />
-                        ) : (
-                          r.extraGames
-                        )
-                      ) : (
-                        "—"
-                      )}
+                    <td className="px-3 py-2 text-right font-mono">
+                      {r.hasExtras ? r.extraGames : "—"}
                     </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${
-                        r.locked ? "bg-amber-50" : ""
-                      }`}
-                    >
+                    <td className="px-3 py-2 text-right font-mono">
                       {fmt(r.fee)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">

@@ -89,10 +89,6 @@ function validatePlayerFields(body: PlayerBody): string | null {
     const n = Number(body.preassignedGamesWanted);
     if (!Number.isInteger(n) || n < 1 || n > 50) return "preassignedGamesWanted must be an integer between 1 and 50";
   }
-  if (body.lockedExtraGames !== undefined && body.lockedExtraGames !== null) {
-    const n = Number(body.lockedExtraGames);
-    if (!Number.isInteger(n) || n < 0) return "lockedExtraGames must be a non-negative integer or null";
-  }
   for (const money of ["priorYearCredit", "soloDeposit"] as const) {
     if (body[money] !== undefined && body[money] !== null) {
       if (!Number.isFinite(Number(body[money]))) return `${money} must be a number`;
@@ -240,7 +236,6 @@ export async function POST(request: NextRequest) {
       groupPct,
       groupMembers,
       preassignedGamesWanted,
-      lockedExtraGames,
       excludedFromAutoAssign,
       groupAnchorId,
       smsOptOut,
@@ -330,7 +325,6 @@ export async function POST(request: NextRequest) {
         soloGames: soloGames || null,
         groupPct: groupPct ?? 0,
         preassignedGamesWanted: preassignedGamesWanted || null,
-        lockedExtraGames: lockedExtraGames ?? null,
         excludedFromAutoAssign: excludedFromAutoAssign ?? false,
         smsOptOut: !!smsOptOut,
         smsOptOutAt: smsOptOut ? new Date().toISOString() : null,
@@ -464,7 +458,6 @@ export async function PUT(request: NextRequest) {
       groupPct,
       groupMembers,
       preassignedGamesWanted,
-      lockedExtraGames,
       excludedFromAutoAssign,
       groupAnchorId,
       smsOptOut,
@@ -514,10 +507,6 @@ export async function PUT(request: NextRequest) {
         preassignedGamesWanted !== undefined
           ? (preassignedGamesWanted || null)
           : currentPlayer.preassignedGamesWanted,
-      lockedExtraGames:
-        lockedExtraGames !== undefined
-          ? (lockedExtraGames === null ? null : lockedExtraGames)
-          : currentPlayer.lockedExtraGames,
       excludedFromAutoAssign:
         excludedFromAutoAssign !== undefined
           ? excludedFromAutoAssign

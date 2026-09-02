@@ -45,7 +45,6 @@ export async function loadAccountSummariesForSeason(
       lastName: players.lastName,
       contractedFrequency: players.contractedFrequency,
       isActive: players.isActive,
-      lockedExtraGames: players.lockedExtraGames,
       noCharge: players.noCharge,
       priorYearCredit: players.priorYearCredit,
       soloGames: players.soloGames,

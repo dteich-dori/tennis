@@ -12,7 +12,6 @@ interface AccountRow {
   deposits: number;   // sum of payments
   credit?: number;    // prior-year distribution credit
   balance: number;    // fee - deposits - credit (negative = credit)
-  locked?: boolean;   // extras frozen at lockedExtraGames
   noCharge?: boolean; // comped — fee is $0, no season or per-game charge
 }
 
@@ -174,9 +173,7 @@ export function generateAccountsSummaryPdf(
       {
         value:
           r.contractedFrequency === "2+" || r.contractedFrequency === "0"
-            ? r.locked
-              ? `${r.extraGames} (L)`
-              : String(r.extraGames)
+            ? String(r.extraGames)
             : "—",
         align: "right",
       },

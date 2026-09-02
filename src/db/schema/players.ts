@@ -31,10 +31,6 @@ export const players = sqliteTable("players", {
   soloGames: integer("solo_games"), // 1-36 target games per season, null = not in solo group
   groupPct: integer("group_pct").notNull().default(0), // 0, 25, 50, 100 — percentage of games filled from preferred group
   preassignedGamesWanted: integer("preassigned_games_wanted"), // null = not set; 1–50 = target pre-assigned games for subs
-  // Accounts: when set, freezes the "extras" portion of the fee at this
-  // count. null = dynamically computed from current scheduled games.
-  // Applies to 2x+ players (extras above 2/wk) and subs (total games).
-  lockedExtraGames: integer("locked_extra_games"),
   // When true, this player is skipped by auto-assign entirely. They remain
   // visible everywhere else (manual assignment, communications, reports).
   excludedFromAutoAssign: integer("excluded_from_auto_assign", { mode: "boolean" })

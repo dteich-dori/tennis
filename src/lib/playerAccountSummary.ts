@@ -7,12 +7,12 @@
  * Mirrors the formula the Accounts tab uses today:
  *   1x  contract: fee = priceDons1
  *   1x+ contract: fee = priceDons1 + extraGames × priceSubs
- *                 extraGames = locked override OR max(0, scheduledGames − 1 × baseWeeks)
+ *                 extraGames = max(0, scheduledGames − 1 × baseWeeks)
  *   2x  contract: fee = priceDons2
  *   2+  contract: fee = priceDons2 + extraGames × priceExtraHour
- *                 extraGames = locked override OR max(0, scheduledGames − 2 × baseWeeks)
+ *                 extraGames = max(0, scheduledGames − 2 × baseWeeks)
  *   sub:           fee = extraGames × priceSubs
- *                 extraGames = locked override OR scheduledGames
+ *                 extraGames = scheduledGames
  *
  * Balance = fee − deposits − credit, where credit is the player's
  * carry-over from the previous year's distribution.
@@ -42,7 +42,6 @@ export interface AccountInputPlayer {
   lastName: string;
   contractedFrequency: string; // "0" | "1" | "2" | "2+"
   isActive: boolean;
-  lockedExtraGames: number | null;
   /** Comped player — never billed a season fee or a per-game fee. */
   noCharge?: boolean;
   /** Credit from the previous year's distribution — reduces the Don's balance. */
@@ -95,7 +94,6 @@ export interface AccountSummary {
   soloBalance: number;    // soloFee − soloDeposit
   stdDeposit: number;     // tier's standard deposit ($0 for sub)
   depositDue: number;     // max(0, stdDeposit − deposits)
-  locked: boolean;        // extras are frozen by lockedExtraGames
   noCharge: boolean;      // comped — fee forced to $0
 }
 
@@ -150,7 +148,6 @@ export function computeAccountSummaries(input: {
     if (!["0", "1", "1+", "2", "2+"].includes(freq)) continue;
 
     const scheduledGames = gamesByPlayer.get(p.id) ?? 0;
-    const locked = p.lockedExtraGames !== null && p.lockedExtraGames !== undefined;
 
     let base = 0;
     let extraGames = 0;
@@ -161,24 +158,20 @@ export function computeAccountSummaries(input: {
       // 1+ player: 1x base + sub-rate billing for any extra games beyond
       // their 1-game-per-week contract.
       base = rates.priceDons1;
-      extraGames = locked
-        ? (p.lockedExtraGames as number)
-        : Math.max(0, scheduledGames - 1 * baseWeeks);
+      extraGames = Math.max(0, scheduledGames - 1 * baseWeeks);
       extras = extraGames * rates.priceSubs;
     } else if (freq === "2") {
       base = rates.priceDons2;
     } else if (freq === "2+") {
       base = rates.priceDons2;
-      extraGames = locked
-        ? (p.lockedExtraGames as number)
-        : Math.max(0, scheduledGames - 2 * baseWeeks);
+      extraGames = Math.max(0, scheduledGames - 2 * baseWeeks);
       extras = extraGames * rates.priceExtraHour;
     } else if (freq === "0") {
       // Sub
       base = 0;
-      extraGames = locked ? (p.lockedExtraGames as number) : scheduledGames;
+      extraGames = scheduledGames;
       extras = extraGames * rates.priceSubs;
-      // Skip subs with no scheduled games and no locked override
+      // Skip subs with no scheduled games — nothing to bill
       if (extraGames === 0) continue;
     }
 
@@ -228,7 +221,6 @@ export function computeAccountSummaries(input: {
       soloBalance: soloFee - soloDeposit,
       stdDeposit,
       depositDue,
-      locked,
       noCharge,
     });
   }

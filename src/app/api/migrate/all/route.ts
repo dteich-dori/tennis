@@ -93,21 +93,9 @@ const MIGRATIONS: Migration[] = [
       return "applied";
     },
   },
-  {
-    name: "locked-extra-games",
-    description: "players: add locked_extra_games column",
-    run: async (database) => {
-      try {
-        await database.run(
-          sql`ALTER TABLE players ADD COLUMN locked_extra_games INTEGER`
-        );
-        return "applied";
-      } catch (err) {
-        if (isColumnAlreadyExists(err)) return "already";
-        throw err;
-      }
-    },
-  },
+  // The locked-extra-games step was removed in v2.277 along with the
+  // whole extras-lock mechanism — re-adding the column here would undo
+  // migration 0024, which drops it.
   {
     name: "reminders-enabled",
     description: "email_settings: add reminders_enabled column",
