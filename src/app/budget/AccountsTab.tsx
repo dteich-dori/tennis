@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from "react";
 import { countPerPlayer } from "@/lib/dedupeAssignments";
+import { computeAccountSummaries } from "@/lib/playerAccountSummary";
 import { generateAccountsSummaryPdf } from "@/lib/reports/accountsSummaryPdf";
 
 interface Season {
@@ -31,8 +32,10 @@ interface PlayerLite {
   priorYearCredit: number;
 }
 
+//  Mirrors STANDARD_DEPOSIT in lib/playerAccountSummary — keep in step.
 const STANDARD_DEPOSITS: Record<string, number> = {
   "1": 500,
+  "1+": 500,
   "2": 750,
   "2+": 750,
   "0": 0, // subs — no deposit
@@ -61,12 +64,14 @@ interface Payment {
   createdAt: string;
 }
 
-type ContractKind = "1" | "2" | "2+" | "0";
+type ContractKind = "1" | "1+" | "2" | "2+" | "0";
 
 interface AccountRow {
   player: PlayerLite;
   scheduledGames: number;
   contract: ContractKind;
+  /** Display label from the shared helper ("1x", "1x+", "2x+", "Sub", …) */
+  contractLabel: string;
   base: number;
   extras: number;
   extraGames: number;
@@ -94,12 +99,6 @@ const fmt = (n: number): string =>
   }).format(n);
 
 const todayIso = () => new Date().toISOString().split("T")[0];
-
-function isBilledFrequency(
-  p: PlayerLite
-): p is PlayerLite & { contractedFrequency: ContractKind } {
-  return ["0", "1", "2", "2+"].includes(p.contractedFrequency);
-}
 
 export default function AccountsTab({ season, params }: Props) {
   const [players, setPlayers] = useState<PlayerLite[]>([]);
@@ -144,6 +143,12 @@ export default function AccountsTab({ season, params }: Props) {
   }, [loadData]);
 
   // --- Compute per-player rows (Don's contract players only) ---
+  //  The money comes from computeAccountSummaries, the same helper the
+  //  communications templates and the accounts PDF use. This tab used to
+  //  carry its own copy of the fee formula, which silently dropped the
+  //  "1+" tier the shared helper has always handled — a 1+ player simply
+  //  vanished from this screen (v2.284). Only the payment ledger, which
+  //  the helper doesn't return, is assembled here.
   const rows: AccountRow[] = (() => {
     if (!season) return [];
     // Use the Budget config "weeksPerSeason" as the contract base length.
@@ -151,7 +156,6 @@ export default function AccountsTab({ season, params }: Props) {
     // priced for the standard season length (typically 36 weeks).
     const baseWeeks = params.weeksPerSeason || 36;
 
-    // Count games per player (Don's, normal status only).
     // `game_assignments` holds duplicate rows for some (game, slot) pairs —
     // see lib/dedupeAssignments.ts — and these counts drive what players are
     // billed, so count only the rows the Schedule grid actually displays.
@@ -160,77 +164,59 @@ export default function AccountsTab({ season, params }: Props) {
       .flatMap((g) => g.assignments ?? []);
     const gamesByPlayer = countPerPlayer(donsNormalAssignments);
 
-    // Group payments by player
+    // Re-expand the deduped per-player counts into the shape the shared
+    // helper expects (it does its own tallying).
+    const assignmentsForHelper = [...gamesByPlayer.entries()].flatMap(
+      ([playerId, n]) =>
+        Array.from({ length: n }, () => ({
+          playerId,
+          gameStatus: "normal",
+          gameGroup: "dons",
+        }))
+    );
+
+    const summaries = computeAccountSummaries({
+      players,
+      payments: payments.map((p) => ({ playerId: p.playerId, amount: p.amount })),
+      donsNormalAssignments: assignmentsForHelper,
+      rates: {
+        priceDons1: params.priceDons1,
+        priceDons2: params.priceDons2,
+        priceExtraHour: params.priceExtraHour,
+        priceSubs: params.priceSubs,
+      },
+      baseWeeks,
+    });
+
+    // Group payments by player for the expandable ledger
     const paymentsByPlayer = new Map<number, Payment[]>();
     for (const p of payments) {
       const arr = paymentsByPlayer.get(p.playerId) ?? [];
       arr.push(p);
       paymentsByPlayer.set(p.playerId, arr);
     }
+    const playerById = new Map(players.map((p) => [p.id, p]));
 
     const out: AccountRow[] = [];
-    for (const p of players) {
-      if (!p.isActive) continue;
-      if (!isBilledFrequency(p)) continue;
-
-      const scheduledGames = gamesByPlayer.get(p.id) ?? 0;
-      const contract = p.contractedFrequency as ContractKind;
-
-      // Subs with zero scheduled games have nothing to bill — skip them so
-      // the table doesn't get cluttered with $0 rows for inactive subs.
-      if (contract === "0" && scheduledGames === 0) continue;
-
-      let base = 0;
-      let extras = 0;
-      let extraGames = 0;
-      const noCharge = p.noCharge === true;
-
-      if (contract === "1") {
-        base = params.priceDons1;
-      } else if (contract === "2") {
-        base = params.priceDons2;
-      } else if (contract === "2+") {
-        base = params.priceDons2;
-        extraGames = Math.max(0, scheduledGames - 2 * baseWeeks);
-        extras = extraGames * params.priceExtraHour;
-      } else if (contract === "0") {
-        // Subs: no base fee — charged per game played
-        base = 0;
-        extraGames = scheduledGames;
-        extras = extraGames * params.priceSubs;
-      }
-      // Comped player: no season/contract fee and no per-game fee.
-      // scheduledGames / extraGames keep their real values so the row
-      // still shows what they played — just at $0.
-      if (noCharge) {
-        base = 0;
-        extras = 0;
-      }
-
-      const fee = base + extras;
-      const myPayments = (paymentsByPlayer.get(p.id) ?? []).sort(
-        (a, b) => a.paidDate.localeCompare(b.paidDate)
-      );
-      const deposits = myPayments.reduce((s, x) => s + x.amount, 0);
-      // Prior-year distribution credit reduces what the player owes, on
-      // top of anything they've already paid in. A comped player owes
-      // nothing either way, so their credit doesn't apply.
-      const credit = noCharge ? 0 : (p.priorYearCredit ?? 0);
-      const balance = fee - deposits - credit;
-
+    for (const s of summaries) {
+      const player = playerById.get(s.playerId);
+      if (!player) continue;
       out.push({
-        player: p,
-        scheduledGames,
-        contract,
-        base,
-        extras,
-        extraGames,
-        fee,
-        payments: myPayments,
-        deposits,
-        credit,
-        balance,
-        noCharge,
+        player,
+        scheduledGames: s.scheduledGames,
+        contract: s.contractedFrequency as ContractKind,
+        contractLabel: s.contractLabel,
+        base: s.base,
+        extras: s.extras,
+        extraGames: s.extraGames,
+        fee: s.fee,
+        payments: (paymentsByPlayer.get(s.playerId) ?? []).sort((a, b) =>
+          a.paidDate.localeCompare(b.paidDate)
+        ),
+        deposits: s.deposits,
+        credit: s.credit,
+        balance: s.balance,
+        noCharge: s.noCharge,
       });
     }
 
@@ -605,11 +591,7 @@ export default function AccountsTab({ season, params }: Props) {
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r.contract === "0"
-                        ? "Sub"
-                        : r.contract === "2+"
-                          ? "2+/wk"
-                          : `${r.contract}/wk`}
+                      {r.contractLabel}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
                       {r.scheduledGames}

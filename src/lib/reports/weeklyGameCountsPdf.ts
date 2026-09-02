@@ -52,11 +52,26 @@ export function generateWeeklyGameCountsPdf(
   const endYear = season.endDate.substring(0, 4);
   const totalWeeks = season.totalWeeks ?? 36;
 
-  // Active, auto-assignable players sorted: contract first, then subs;
-  // within each, by lastName. Players flagged "Exclude from auto-assign"
-  // are dropped from this report — they're not part of the schedule.
+  //  Which players actually hold a scheduled game. "Exclude from
+  //  auto-assign" only stops auto-assign from picking a player — they can
+  //  still be assigned by hand, and per the schema they stay visible in
+  //  reports. Filtering on that flag alone hid manually-scheduled subs
+  //  from a report about who is scheduled (v2.284: a sub with 17 games
+  //  showed no weekly counts at all).
+  const playersWithGames = new Set<number>();
+  for (const g of games) {
+    if (g.status !== "normal" || g.group !== "dons") continue;
+    for (const a of g.assignments) playersWithGames.add(a.playerId);
+  }
+
+  // Active players sorted: contract first, then subs; within each, by
+  // lastName. An excluded player is listed only when they actually have
+  // games — otherwise they'd add an empty row to every week.
   const sortedPlayers = [...players]
-    .filter((p) => p.isActive && !p.excludedFromAutoAssign)
+    .filter(
+      (p) =>
+        p.isActive && (!p.excludedFromAutoAssign || playersWithGames.has(p.id))
+    )
     .sort((a, b) => {
       const aSub = a.contractedFrequency === "0" ? 1 : 0;
       const bSub = b.contractedFrequency === "0" ? 1 : 0;
