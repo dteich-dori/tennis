@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { countPerPlayer } from "@/lib/dedupeAssignments";
 import { generateAccountsSummaryPdf } from "@/lib/reports/accountsSummaryPdf";
 
@@ -584,9 +584,11 @@ export default function AccountsTab({ season, params }: Props) {
                     ? "text-green-700"
                     : "";
               return (
-                <>
+                //  The Fragment — not the <tr> inside it — is what map()
+                //  returns, so the key belongs here. A shorthand <> cannot
+                //  take one.
+                <Fragment key={r.player.id}>
                   <tr
-                    key={r.player.id}
                     className={`border-t border-border ${
                       isOpen ? "bg-blue-50" : ""
                     }`}
@@ -798,7 +800,7 @@ export default function AccountsTab({ season, params }: Props) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
