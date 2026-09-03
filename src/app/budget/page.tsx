@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import AccountsTab from "./AccountsTab";
+import { generateBookkeepingPdf } from "@/lib/reports/bookkeepingPdf";
 
 interface Season {
   id: number;
@@ -187,6 +188,21 @@ export default function BudgetPage() {
     },
     [computed, season, loadComputed]
   );
+
+  //  Produce the real Bookkeeping report rather than printing the web
+  //  page. The generator (lib/reports/bookkeepingPdf) already existed and
+  //  is what the Reports page uses; this page's button used to call
+  //  window.print(), which just rendered the screen.
+  const handleBookkeepingPdf = useCallback(() => {
+    if (!season || !computed) return;
+    generateBookkeepingPdf(
+      season,
+      params,
+      computed,
+      items,
+      (season as { scheduleVersion?: number }).scheduleVersion
+    );
+  }, [season, params, computed, items]);
 
   useEffect(() => {
     loadSeason();
@@ -384,11 +400,12 @@ export default function BudgetPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Bookkeeping</h1>
         <button
-          onClick={() => window.print()}
-          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors print:hidden"
-          title="Print this page or save as PDF"
+          onClick={handleBookkeepingPdf}
+          disabled={!season || !computed}
+          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 print:hidden"
+          title="Generate the Bookkeeping PDF report (Don's, Solo and Combined summaries)"
         >
-          Print / PDF
+          Bookkeeping PDF
         </button>
       </div>
 
