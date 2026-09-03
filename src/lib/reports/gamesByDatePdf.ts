@@ -869,8 +869,18 @@ export function generateGamesByDateWorksheetPdf(
     doc.text(preparedText, marginLeft, footerY);
     doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+
+    //  Matches the compact report's footer: emphasised by weight and
+    //  colour, not a highlight panel — nothing guarantees a free band
+    //  this close to the page edge.
     doc.setFont("helvetica", "bold");
-    doc.text("Free Clinic Mondays 12-1", pageWidth / 2, footerY + 10, { align: "center" });
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Free Clinic Mondays 12-1 Court 2", pageWidth / 2, footerY + 10, {
+      align: "center",
+    });
+
+    doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
   }
 
