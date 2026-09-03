@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import AccountsTab from "./AccountsTab";
-import { generateBookkeepingPdf } from "@/lib/reports/bookkeepingPdf";
+import { generateAccountsSummaryPdf } from "@/lib/reports/accountsSummaryPdf";
+import { computeAccountSummaries } from "@/lib/playerAccountSummary";
+import { countPerPlayer } from "@/lib/dedupeAssignments";
 
 interface Season {
   id: number;
@@ -189,20 +191,86 @@ export default function BudgetPage() {
     [computed, season, loadComputed]
   );
 
-  //  Produce the real Bookkeeping report rather than printing the web
-  //  page. The generator (lib/reports/bookkeepingPdf) already existed and
-  //  is what the Reports page uses; this page's button used to call
-  //  window.print(), which just rendered the screen.
-  const handleBookkeepingPdf = useCallback(() => {
-    if (!season || !computed) return;
-    generateBookkeepingPdf(
-      season,
-      params,
-      computed,
-      items,
-      (season as { scheduleVersion?: number }).scheduleVersion
-    );
-  }, [season, params, computed, items]);
+  //  Accounts listing for every billable active player, contract
+  //  players and Subs in separate sections, with the same columns as
+  //  the Don's tab. Money comes from computeAccountSummaries — the
+  //  shared helper the tab and the templates use — so this report can
+  //  never disagree with the screen.
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const handleAccountsPdf = useCallback(async () => {
+    if (!season) return;
+    setPdfBusy(true);
+    try {
+      const [pRes, gRes, payRes] = await Promise.all([
+        fetch(`/api/players?seasonId=${season.id}`),
+        fetch(`/api/games?seasonId=${season.id}`),
+        fetch(`/api/player-payments?seasonId=${season.id}`),
+      ]);
+      if (!pRes.ok || !gRes.ok || !payRes.ok) {
+        alert("Failed to load account data for the report.");
+        return;
+      }
+      const playersData = await pRes.json();
+      const gamesData = await gRes.json();
+      const paymentsData = await payRes.json();
+
+      //  Count Don's normal games per player, keeping one row per slot —
+      //  game_assignments holds duplicates (see lib/dedupeAssignments).
+      const donsNormal = (gamesData as { status: string; group: string; assignments?: unknown[] }[])
+        .filter((g) => g.status === "normal" && g.group === "dons")
+        .flatMap((g) => (g.assignments ?? []) as { id: number; gameId: number; slotPosition: number; playerId: number }[]);
+      const perPlayer = countPerPlayer(donsNormal);
+      const assignments = [...perPlayer.entries()].flatMap(([playerId, n]) =>
+        Array.from({ length: n }, () => ({ playerId, gameStatus: "normal", gameGroup: "dons" }))
+      );
+
+      const summaries = computeAccountSummaries({
+        players: playersData,
+        payments: (paymentsData as { playerId: number; amount: number }[]).map((x) => ({
+          playerId: x.playerId,
+          amount: x.amount,
+        })),
+        donsNormalAssignments: assignments,
+        rates: {
+          priceDons1: params.priceDons1,
+          priceDons2: params.priceDons2,
+          priceExtraHour: params.priceExtraHour,
+          priceSubs: params.priceSubs,
+          priceDons1Limited: params.priceDons1Limited,
+        },
+        baseWeeks: params.weeksPerSeason || 36,
+      });
+
+      generateAccountsSummaryPdf(
+        summaries.map((s) => ({
+          lastName: s.lastName,
+          firstName: s.firstName,
+          contractedFrequency: s.contractedFrequency,
+          scheduledGames: s.scheduledGames,
+          extraGames: s.extraGames,
+          fee: s.fee,
+          base: s.base,
+          extras: s.extras,
+          deposits: s.deposits,
+          credit: s.credit,
+          balance: s.balance,
+          noCharge: s.noCharge,
+        })),
+        { startDate: season.startDate, endDate: season.endDate },
+        {
+          priceDons1: params.priceDons1,
+          priceDons2: params.priceDons2,
+          priceExtraHour: params.priceExtraHour,
+          priceSubs: params.priceSubs,
+        },
+        (season as { scheduleVersion?: number }).scheduleVersion
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [season, params]);
 
   useEffect(() => {
     loadSeason();
@@ -400,12 +468,12 @@ export default function BudgetPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Bookkeeping</h1>
         <button
-          onClick={handleBookkeepingPdf}
-          disabled={!season || !computed}
+          onClick={handleAccountsPdf}
+          disabled={!season || pdfBusy}
           className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 print:hidden"
-          title="Generate the Bookkeeping PDF report (Don's, Solo and Combined summaries)"
+          title="Accounts report: every billable active player, contract players and Subs in separate sections"
         >
-          Bookkeeping PDF
+          {pdfBusy ? "Generating…" : "Accounts PDF"}
         </button>
       </div>
 

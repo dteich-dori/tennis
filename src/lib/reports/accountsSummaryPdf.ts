@@ -133,8 +133,75 @@ export function generateAccountsSummaryPdf(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
 
-  // Sort by last name
-  const sorted = [...rows].sort((a, b) => a.lastName.localeCompare(b.lastName));
+  //  Two sections: contract players first, then Subs. Each is sorted by
+  //  last name and closed with its own subtotal; the grand total below
+  //  covers both.
+  const byLastName = (a: AccountRow, b: AccountRow) =>
+    a.lastName.localeCompare(b.lastName);
+  const sections: { title: string; rows: AccountRow[] }[] = [
+    {
+      title: "Contract Players",
+      rows: rows.filter((r) => r.contractedFrequency !== "0").sort(byLastName),
+    },
+    {
+      title: "Subs",
+      rows: rows.filter((r) => r.contractedFrequency === "0").sort(byLastName),
+    },
+  ].filter((sec) => sec.rows.length > 0);
+
+  const sorted = sections.flatMap((sec) => sec.rows);
+
+  /** Section heading band. */
+  function drawSectionHeading(title: string, n: number) {
+    if (currentY + rowHeight * 2 > pageHeight - 60) {
+      doc.addPage();
+      drawPageHeader();
+      currentY = 90;
+      drawTableHeader();
+    }
+    doc.setFillColor(226, 232, 240);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${title} (${n})`, marginLeft + 4, currentY + 11);
+    currentY += rowHeight;
+    doc.setFont("helvetica", "normal");
+  }
+
+  /** Subtotal line closing a section. */
+  function drawSubtotal(label: string, t: {
+    base: number; extras: number; deposits: number; credits: number; balance: number;
+  }) {
+    if (currentY + rowHeight > pageHeight - 60) {
+      doc.addPage();
+      drawPageHeader();
+      currentY = 90;
+      drawTableHeader();
+    }
+    doc.setFillColor(244, 246, 248);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.rect(marginLeft, currentY - 2, tableWidth, rowHeight, "S");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const vals = [label, "", "", "", fmt$(t.base), fmt$(t.extras), fmt$(t.deposits), fmt$(t.credits), fmt$(t.balance)];
+    let sx = marginLeft;
+    for (let i = 0; i < columns.length; i++) {
+      const col = columns[i];
+      const v = vals[i];
+      if (v) {
+        const align = i === 0 ? "left" : "right";
+        doc.text(v, align === "right" ? sx + col.width - 4 : sx + 4, currentY + 11, { align });
+      }
+      sx += col.width;
+    }
+    currentY += rowHeight + 6;
+    doc.setFont("helvetica", "normal");
+  }
 
   let totalBase = 0;
   let totalExtras = 0;
@@ -142,8 +209,13 @@ export function generateAccountsSummaryPdf(
   let totalCredits = 0;
   let totalBalance = 0;
 
-  for (let rowIdx = 0; rowIdx < sorted.length; rowIdx++) {
-    const r = sorted[rowIdx];
+  let rowIdx = -1;
+  for (const section of sections) {
+    drawSectionHeading(section.title, section.rows.length);
+    const sub = { base: 0, extras: 0, deposits: 0, credits: 0, balance: 0 };
+
+    for (const r of section.rows) {
+      rowIdx++;
 
     // Page break check (leave ~50pt for the totals row + footer)
     if (currentY + rowHeight > pageHeight - 60) {
@@ -226,6 +298,15 @@ export function generateAccountsSummaryPdf(
     totalDeposits += r.deposits;
     totalCredits += r.credit ?? 0;
     totalBalance += r.balance;
+
+    sub.base += r.base;
+    sub.extras += r.extras;
+    sub.deposits += r.deposits;
+    sub.credits += r.credit ?? 0;
+    sub.balance += r.balance;
+    }
+
+    drawSubtotal(`${section.title} subtotal`, sub);
   }
 
   // Totals row (bold, with top double-rule emphasis)
