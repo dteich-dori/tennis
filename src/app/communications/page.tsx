@@ -80,7 +80,11 @@ type RecipientGroup =
 const RECIPIENT_SECTIONS: { label: string; groups: RecipientGroup[] }[] = [
   { label: "Don's", groups: ["Don's Group", "Contract Players", "Subs", "Owes Deposit"] },
   { label: "Solo", groups: ["Solo Group"] },
-  { label: "Other", groups: ["ALL", "Players", "Test"] },
+  //  "Players" is the free-form picker: every active player with a
+  //  checkbox, independent of contract. Its own section so it doesn't
+  //  read as a leftover under "Other".
+  { label: "Pick people", groups: ["Players"] },
+  { label: "Other", groups: ["ALL", "Test"] },
 ];
 type TabView = "compose" | "templates" | "history" | "scheduledReminders";
 
@@ -159,6 +163,10 @@ export default function CommunicationsPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [showRecipients, setShowRecipients] = useState(false);
+  //  Per-recipient ticks for the "Show recipients" list. Every recipient
+  //  starts ticked; unticking narrows the send. Reset whenever the group
+  //  reloads, so a stale id can never carry over between groups.
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<number[]>([]);
   const [sending, setSending] = useState(false);
   const [sendMessage, setSendMessage] = useState("");
   const [sendError, setSendError] = useState("");
@@ -239,6 +247,7 @@ export default function CommunicationsPage() {
     const res = await fetch(`/api/communications/recipients?seasonId=${seasonId}&group=${group}`);
     const data = (await res.json()) as { recipients: Recipient[]; count: number; message?: string };
     setRecipients(data.recipients);
+    setSelectedRecipientIds(data.recipients.map((r) => r.id));
     setRecipientCount(data.count);
   }, []);
 
@@ -299,6 +308,13 @@ export default function CommunicationsPage() {
       setRecipientCount(selectedPlayerIds.length);
     }
   }, [recipientGroup, selectedPlayerIds]);
+
+  // Groups that show the recipient list bill their count from the ticks.
+  useEffect(() => {
+    if (recipientGroup !== "Players" && recipientGroup !== "Test") {
+      setRecipientCount(selectedRecipientIds.length);
+    }
+  }, [recipientGroup, selectedRecipientIds]);
 
   // Save settings
   const handleSaveSettings = async () => {
@@ -439,6 +455,16 @@ export default function CommunicationsPage() {
             ? "Text → Email on failure"
             : "Email + Text";
     let confirmMsg: string;
+    if (
+      recipientGroup !== "Test" &&
+      recipientGroup !== "Players" &&
+      recipients.length > 0 &&
+      selectedRecipientIds.length === 0
+    ) {
+      setSendError("No recipients selected — tick at least one in the recipient list.");
+      return;
+    }
+
     if (recipientGroup === "Test") {
       confirmMsg = `Send test (${channelLabel})?`;
     } else if (recipientGroup === "Players") {
@@ -493,7 +519,15 @@ export default function CommunicationsPage() {
           replyTo,
           channel,
           attachPersonalSchedule: channel === "sms" ? false : attachPersonalSchedule,
-          selectedPlayerIds: recipientGroup === "Players" ? selectedPlayerIds : undefined,
+          //  "Players" sends its own picker's ids; every other group
+          //  sends the ticks from the recipient list. The server applies
+          //  this AFTER the group filter, so it can only narrow.
+          selectedPlayerIds:
+            recipientGroup === "Players"
+              ? selectedPlayerIds
+              : recipientGroup === "Test"
+                ? undefined
+                : selectedRecipientIds,
           // Always pass for Test sends so template variables ({firstName}, etc.)
           // can resolve — server only uses it for the calendar link when the
           // calendar attach is also on.
@@ -896,15 +930,55 @@ export default function CommunicationsPage() {
 
             {/* Recipient list */}
             {showRecipients && recipients.length > 0 && (
-              <div className="mt-2 border border-border rounded max-h-48 overflow-y-auto">
+              <div className="mt-2 border border-border rounded">
+                <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border bg-muted-bg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSendBanners();
+                      setSelectedRecipientIds(recipients.map((r) => r.id));
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSendBanners();
+                      setSelectedRecipientIds([]);
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Clear
+                  </button>
+                  <span className="text-xs text-muted">
+                    {selectedRecipientIds.length} of {recipients.length} selected
+                  </span>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
                 {recipients.map((r, idx) => (
-                  <div
+                  <label
                     key={r.id}
-                    className={`px-3 py-1.5 text-sm flex justify-between items-center ${
+                    className={`px-3 py-1.5 text-sm flex justify-between items-center cursor-pointer ${
                       idx % 2 === 0 ? "bg-white" : "bg-[#fdf8f0]"
                     }`}
                   >
-                    <span>{r.lastName}, {r.firstName}</span>
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecipientIds.includes(r.id)}
+                        onChange={(e) => {
+                          clearSendBanners();
+                          setSelectedRecipientIds((prev) =>
+                            e.target.checked
+                              ? [...prev, r.id]
+                              : prev.filter((id) => id !== r.id)
+                          );
+                        }}
+                      />
+                      {r.lastName}, {r.firstName}
+                    </span>
                     <span className="text-muted text-xs">
                       {r.hasEmail && (
                         <span title={r.email || ""} aria-label="Has email">
@@ -921,8 +995,9 @@ export default function CommunicationsPage() {
                         </span>
                       )}
                     </span>
-                  </div>
+                  </label>
                 ))}
+                </div>
               </div>
             )}
           </div>

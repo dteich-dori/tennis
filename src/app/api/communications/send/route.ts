@@ -304,6 +304,26 @@ export async function POST(request: NextRequest) {
         filtered = filterByRecipientGroup(allPlayers, recipientGroup);
       }
 
+      //  The Compose screen lets the sender untick individuals in the
+      //  recipient list. Narrow to that subset — applied AFTER the group
+      //  filter, so it can only ever remove someone the group already
+      //  allowed, never add a recipient the group excluded.
+      if (
+        recipientGroup !== "Player" &&
+        recipientGroup !== "Players" &&
+        Array.isArray(selectedPlayerIds) &&
+        selectedPlayerIds.length > 0
+      ) {
+        const keep = new Set<number>(selectedPlayerIds);
+        filtered = filtered.filter((p) => keep.has(p.id));
+        if (filtered.length === 0) {
+          return NextResponse.json(
+            { error: "None of the selected recipients are in this group." },
+            { status: 400 }
+          );
+        }
+      }
+
       // Build email / SMS recipient lists based on channel
       for (const p of filtered) {
         const name = `${p.firstName} ${p.lastName}`;
