@@ -346,8 +346,20 @@ export function generateGamesByDatePdf(
     doc.text(preparedText, marginLeft, footerY);
     doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+
+    //  Clinic notice, emphasised by weight and colour rather than a
+    //  highlight panel: this sits close to the page edge and there is no
+    //  guaranteed free band to draw a box into — the pageHeight - 40
+    //  checks above are page-break thresholds against an ESTIMATED row
+    //  height, not a reserved footer area.
     doc.setFont("helvetica", "bold");
-    doc.text("Free Clinic Mondays 12-1", pageWidth / 2, footerY + 10, { align: "center" });
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Free Clinic Mondays 12-1 Court 2", pageWidth / 2, footerY + 10, {
+      align: "center",
+    });
+
+    doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
   }
 
