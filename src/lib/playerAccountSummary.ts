@@ -6,6 +6,8 @@
  *
  * Mirrors the formula the Accounts tab uses today:
  *   1x  contract: fee = priceDons1
+ *   1x limited:   fee = priceDons1Limited, flat — extra games are never
+ *                 billed for this tier, however many are scheduled
  *   1x+ contract: fee = priceDons1 + extraGames × priceSubs
  *                 extraGames = max(0, scheduledGames − 1 × baseWeeks)
  *   2x  contract: fee = priceDons2
@@ -29,9 +31,12 @@
  * so the Accounts tab can show what they played for $0.
  */
 
+import { contractLabel } from "./contractFrequency";
+
 export const STANDARD_DEPOSIT: Record<string, number> = {
   "1": 500,
   "1+": 500,
+  // "1L" deliberately absent — 1x limited carries no standard deposit.
   "2": 750,
   "2+": 750,
   // subs deliberately omitted — no standard deposit
@@ -71,6 +76,8 @@ export interface AccountInputRates {
   priceDons2: number;
   priceExtraHour: number;
   priceSubs: number;
+  /** Season fee for the "1x limited" tier. */
+  priceDons1Limited?: number;
   /** Per-game solo rate. Absent → solo figures compute as 0. */
   priceSolo?: number;
 }
@@ -99,23 +106,6 @@ export interface AccountSummary {
   stdDeposit: number;     // tier's standard deposit ($0 for sub)
   depositDue: number;     // max(0, stdDeposit − deposits)
   noCharge: boolean;      // comped — fee forced to $0
-}
-
-function contractLabel(freq: string): string {
-  switch (freq) {
-    case "0":
-      return "Sub";
-    case "1":
-      return "1x";
-    case "1+":
-      return "1x+";
-    case "2":
-      return "2x";
-    case "2+":
-      return "2x+";
-    default:
-      return freq;
-  }
 }
 
 export function computeAccountSummaries(input: {
@@ -149,7 +139,7 @@ export function computeAccountSummaries(input: {
   for (const p of players) {
     if (!p.isActive) continue;
     const freq = p.contractedFrequency;
-    if (!["0", "1", "1+", "2", "2+"].includes(freq)) continue;
+    if (!["0", "1", "1L", "1+", "2", "2+"].includes(freq)) continue;
 
     const scheduledGames = gamesByPlayer.get(p.id) ?? 0;
 
@@ -158,6 +148,10 @@ export function computeAccountSummaries(input: {
     let extras = 0;
     if (freq === "1") {
       base = rates.priceDons1;
+    } else if (freq === "1L") {
+      //  1x limited: flat season fee, and extras are never charged —
+      //  extraGames stays 0 so nothing downstream bills them.
+      base = rates.priceDons1Limited ?? 0;
     } else if (freq === "1+") {
       // 1+ player: 1x base + sub-rate billing for any extra games beyond
       // their 1-game-per-week contract.

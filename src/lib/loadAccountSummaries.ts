@@ -27,6 +27,7 @@ interface LoadResult {
     priceDons2: number;
     priceExtraHour: number;
     priceSubs: number;
+    priceDons1Limited: number;
     priceSolo: number;
   };
   baseWeeks: number;
@@ -115,6 +116,7 @@ export async function loadAccountSummariesForSeason(
     priceDons2: p?.priceDons2 ?? 0,
     priceExtraHour: p?.priceExtraHour ?? 0,
     priceSubs: p?.priceSubs ?? 0,
+    priceDons1Limited: p?.priceDons1Limited ?? 0,
     priceSolo: p?.priceSolo ?? 0,
   };
   const baseWeeks = p?.weeksPerSeason ?? 36;

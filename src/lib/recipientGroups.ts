@@ -12,7 +12,7 @@
  */
 
 /** Contract tiers that constitute a Don's contract (subs included). */
-const DONS_CONTRACTS = ["0", "1", "1+", "2", "2+"];
+const DONS_CONTRACTS = ["0", "1", "1L", "1+", "2", "2+"];
 
 export interface GroupFilterablePlayer {
   id: number;

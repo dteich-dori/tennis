@@ -12,6 +12,7 @@ interface BudgetParamsData {
   gameDurationHours: number;
   costPerCourtPerHour: number;
   priceDons1: number;
+  priceDons1Limited: number;
   priceDons2: number;
   priceDons2plus: number;
   priceSubs: number;
@@ -24,6 +25,7 @@ interface ComputedData {
   playerCounts: {
     dons0: number;
     dons1: number;
+    dons1limited: number;
     dons1plus: number;
     dons2: number;
     dons2plus: number;
@@ -244,6 +246,7 @@ export function generateBookkeepingPdf(
 
   const donsIncomeRows: { label: string; qty: number; unit: string; price: number }[] = [
     { label: "1x/week", qty: computed.playerCounts.dons1, unit: "players", price: params.priceDons1 },
+    { label: "1x limited", qty: computed.playerCounts.dons1limited, unit: "players", price: params.priceDons1Limited },
     { label: "1+/week", qty: computed.playerCounts.dons1plus, unit: "players", price: params.priceDons1 },
     { label: "1+ Extra Games", qty: extraGames1plus, unit: "games", price: params.priceSubs },
     { label: "2x/week", qty: computed.playerCounts.dons2, unit: "players", price: params.priceDons2 },

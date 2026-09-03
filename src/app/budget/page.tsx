@@ -15,6 +15,7 @@ interface BudgetParamsData {
   gameDurationHours: number;
   costPerCourtPerHour: number;
   priceDons1: number;
+  priceDons1Limited: number;
   priceDons2: number;
   priceDons2plus: number;
   priceSubs: number;
@@ -40,6 +41,7 @@ interface ComputedData {
   playerCounts: {
     dons0: number;
     dons1: number;
+    dons1limited: number;
     dons1plus: number;
     dons2: number;
     dons2plus: number;
@@ -59,6 +61,7 @@ const PARAM_DEFAULTS: BudgetParamsData = {
   gameDurationHours: 1.5,
   costPerCourtPerHour: 1740,
   priceDons1: 0,
+  priceDons1Limited: 0,
   priceDons2: 0,
   priceDons2plus: 0,
   priceSubs: 0,
@@ -120,6 +123,7 @@ export default function BudgetPage() {
         gameDurationHours: data.gameDurationHours ?? PARAM_DEFAULTS.gameDurationHours,
         costPerCourtPerHour: data.costPerCourtPerHour ?? PARAM_DEFAULTS.costPerCourtPerHour,
         priceDons1: data.priceDons1 ?? 0,
+        priceDons1Limited: data.priceDons1Limited ?? 0,
         priceDons2: data.priceDons2 ?? 0,
         priceDons2plus: data.priceDons2plus ?? 0,
         priceSubs: data.priceSubs ?? 0,
@@ -214,6 +218,7 @@ export default function BudgetPage() {
             gameDurationHours: params.gameDurationHours,
             costPerCourtPerHour: params.costPerCourtPerHour,
             priceDons1: params.priceDons1,
+            priceDons1Limited: params.priceDons1Limited,
             priceDons2: params.priceDons2,
             priceDons2plus: params.priceDons2plus,
             priceSubs: params.priceSubs,
@@ -324,6 +329,7 @@ export default function BudgetPage() {
 
   const donsIncomeRows = computed ? [
     { label: "1x/week", qty: computed.playerCounts.dons1, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
+    { label: "1x limited", qty: computed.playerCounts.dons1limited, unit: "players", price: params.priceDons1Limited, priceUnit: "$/player", key: "priceDons1Limited" as const },
     { label: "1+/week", qty: computed.playerCounts.dons1plus, unit: "players", price: params.priceDons1, priceUnit: "$/player", key: "priceDons1" as const },
     { label: "1+ Extra Games", qty: extraGames1plus, unit: "games", price: params.priceSubs, priceUnit: "$/game", key: "priceSubs" as const },
     { label: "2x/week", qty: computed.playerCounts.dons2, unit: "players", price: params.priceDons2, priceUnit: "$/player", key: "priceDons2" as const },
@@ -806,6 +812,7 @@ export default function BudgetPage() {
           params={{
             weeksPerSeason: params.weeksPerSeason,
             priceDons1: params.priceDons1,
+            priceDons1Limited: params.priceDons1Limited,
             priceDons2: params.priceDons2,
             priceExtraHour: params.priceExtraHour,
             priceSubs: params.priceSubs,

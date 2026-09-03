@@ -183,6 +183,13 @@
       "when": 1784100000000,
       "tag": "0025_solo_credit",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1784200000000,
+      "tag": "0026_price_dons_1_limited",
+      "breakpoints": true
     }
   ]
 }

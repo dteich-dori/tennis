@@ -4,6 +4,10 @@
  * Allowed values:
  *   "0"  — Sub (no contract)
  *   "1"  — 1 game/week
+ *   "1L" — 1x limited: 1 game/week, cheaper season fee, and extra games
+ *          above the contract are NEVER billed. The weekly game only
+ *          materialises when the player is included in auto-assign —
+ *          untick that and they get nothing automatically.
  *   "1+" — 1 game/week, also eligible to sub (sub priority over "0")
  *   "2"  — 2 games/week
  *   "2+" — 2 games/week, plus extra games billed at extra-hour rate
@@ -12,11 +16,12 @@
  * when extracting numeric weekly counts.
  */
 
-export type ContractFrequency = "0" | "1" | "1+" | "2" | "2+";
+export type ContractFrequency = "0" | "1" | "1L" | "1+" | "2" | "2+";
 
 export const ALL_CONTRACT_FREQUENCIES: ContractFrequency[] = [
   "0",
   "1",
+  "1L",
   "1+",
   "2",
   "2+",
@@ -26,6 +31,7 @@ export const ALL_CONTRACT_FREQUENCIES: ContractFrequency[] = [
 export function weeklyContractedGames(freq: string): number {
   switch (freq) {
     case "1":
+    case "1L":
     case "1+":
       return 1;
     case "2":
@@ -58,6 +64,8 @@ export function contractLabel(freq: string): string {
       return "Sub";
     case "1":
       return "1x";
+    case "1L":
+      return "1x ltd";
     case "1+":
       return "1x+";
     case "2":

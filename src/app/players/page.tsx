@@ -790,6 +790,7 @@ export default function PlayersPage() {
               >
                 <option value="0">Sub</option>
                 <option value="1">1x/week</option>
+                <option value="1L">1x limited</option>
                 <option
                   value="1+"
                   disabled={!canPlayerHaveExtras("1+", form.blockedDays, season?.daysPerWeek ?? 5)}

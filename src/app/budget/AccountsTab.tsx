@@ -18,6 +18,7 @@ interface BudgetParamsData {
   priceDons2: number;
   priceExtraHour: number;
   priceSubs: number;
+  priceDons1Limited: number;
 }
 
 interface PlayerLite {
@@ -64,7 +65,7 @@ interface Payment {
   createdAt: string;
 }
 
-type ContractKind = "1" | "1+" | "2" | "2+" | "0";
+type ContractKind = "1" | "1L" | "1+" | "2" | "2+" | "0";
 
 interface AccountRow {
   player: PlayerLite;
@@ -184,6 +185,7 @@ export default function AccountsTab({ season, params }: Props) {
         priceDons2: params.priceDons2,
         priceExtraHour: params.priceExtraHour,
         priceSubs: params.priceSubs,
+        priceDons1Limited: params.priceDons1Limited,
       },
       baseWeeks,
     });

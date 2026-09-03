@@ -11,6 +11,9 @@ export const budgetParams = sqliteTable("budget_params", {
   gameDurationHours: real("game_duration_hours").notNull().default(1.5),
   costPerCourtPerHour: real("cost_per_court_per_hour").notNull().default(1740),
   priceDons1: real("price_dons_1").notNull().default(0),
+  // "1x limited" season fee. That tier is never billed for extra games,
+  // so it needs no companion extras rate.
+  priceDons1Limited: real("price_dons_1_limited").notNull().default(0),
   priceDons2: real("price_dons_2").notNull().default(0),
   priceDons2plus: real("price_dons_2plus").notNull().default(0),
   priceSubs: real("price_subs").notNull().default(0),

@@ -169,7 +169,11 @@ export function generateAccountsSummaryPdf(
           ? "2+/wk"
           : r.contractedFrequency === "2"
             ? "2/wk"
-            : "1/wk";
+            : r.contractedFrequency === "1L"
+              ? "1x ltd"
+              : r.contractedFrequency === "1+"
+                ? "1+/wk"
+                : "1/wk";
 
     const cells: { value: string; align: "left" | "right" | "center"; bold?: boolean; color?: [number, number, number] }[] = [
       {

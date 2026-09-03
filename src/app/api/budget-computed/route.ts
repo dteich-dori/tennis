@@ -69,11 +69,12 @@ export async function GET(request: NextRequest) {
       .from(players)
       .where(billable(sid));
 
-    let dons0 = 0, dons1 = 0, dons1plus = 0, dons2 = 0, dons2plus = 0, soloCount = 0;
+    let dons0 = 0, dons1 = 0, dons1limited = 0, dons1plus = 0, dons2 = 0, dons2plus = 0, soloCount = 0;
     let totalSoloGamesFromDB = 0;
     for (const p of allPlayers) {
       if (p.contractedFrequency === "0") dons0++;
       else if (p.contractedFrequency === "1") dons1++;
+      else if (p.contractedFrequency === "1L") dons1limited++;
       else if (p.contractedFrequency === "1+") dons1plus++;
       else if (p.contractedFrequency === "2") dons2++;
       else if (p.contractedFrequency === "2+") dons2plus++;
@@ -221,7 +222,7 @@ export async function GET(request: NextRequest) {
       normalSoloGames,
       normalGameCount: normalDonsGames + normalSoloGames,
       holidayGames,
-      playerCounts: { dons0, dons1, dons1plus, dons2, dons2plus, solo: soloCount },
+      playerCounts: { dons0, dons1, dons1limited, dons1plus, dons2, dons2plus, solo: soloCount },
       extraGames2plus,
       extraGames1plus,
       subsGameCount,

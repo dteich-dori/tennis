@@ -48,7 +48,7 @@ export function availableDays(
 
 /** Basic per-week game count implied by the contract (ignoring "+"). */
 export function basicGamesPerWeek(contractedFrequency: string): number {
-  if (contractedFrequency === "1" || contractedFrequency === "1+") return 1;
+  if (contractedFrequency === "1" || contractedFrequency === "1L" || contractedFrequency === "1+") return 1;
   if (contractedFrequency === "2" || contractedFrequency === "2+") return 2;
   return 0;
 }
