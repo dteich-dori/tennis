@@ -1,3 +1,4 @@
+import { boldToHtml, stripBoldMarkers } from "./richText";
 import nodemailer from "nodemailer";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,10 +130,14 @@ export interface EmailAttachment {
  * Gmail don't shrink the text on small screens.
  */
 export function buildMobileFriendlyHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  //  Escape first, then turn **bold** into <strong> — boldToHtml is the
+  //  only thing allowed to introduce a tag here.
+  const escaped = boldToHtml(
+    text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+  );
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -189,7 +194,9 @@ export async function sendEmail({
       to,
       replyTo: replyTo || undefined,
       subject,
-      text,
+      //  Plain-text alternative can't show bold, so drop the markers
+      //  rather than mail literal asterisks.
+      text: stripBoldMarkers(text),
       html: html || undefined,
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
     });
@@ -287,7 +294,7 @@ export async function sendBulkSms(
       continue;
     }
 
-    const sendResult = await sendSmsViaTwilio(r.phone, text);
+    const sendResult = await sendSmsViaTwilio(r.phone, stripBoldMarkers(text));
     if (sendResult.success) {
       result.smsSent++;
       result.recipients.push(`${r.name} (SMS)`);

@@ -24,6 +24,7 @@ import {
   type AvailabilityData,
 } from "@/lib/templateSubstitute";
 import { filterByRecipientGroup } from "@/lib/recipientGroups";
+import { boldToHtml } from "@/lib/richText";
 import type { AccountSummary } from "@/lib/playerAccountSummary";
 
 interface EmailRecipientWithPlayer {
@@ -56,11 +57,15 @@ function buildLinkBlockText(landingUrl: string): string {
  * because Gmail and some other clients strip or sanitize webcal:// hrefs.
  */
 function buildHtmlBody(bodyText: string, landingUrl: string): string {
-  const escapedBody = bodyText
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
+  //  Escape, then **bold** -> <strong>, then line breaks. Bold is
+  //  resolved before \n becomes <br> so a marker can never pair across
+  //  two lines.
+  const escapedBody = boldToHtml(
+    bodyText
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+  ).replace(/\n/g, "<br>");
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1e293b;max-width:600px;">
   <div>${escapedBody}</div>
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">

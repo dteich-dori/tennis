@@ -1020,6 +1020,13 @@ export default function CommunicationsPage() {
               that text for recipients whose value is empty or zero. Example:{" "}
               <code>{"{#if extraFee}You owe {extraFee} for extras.{/if}"}</code>
             </p>
+            <p className="text-xs text-muted mt-2">
+              <strong>Bold:</strong> wrap text in double asterisks —{" "}
+              <code>{"You now owe **{donsBalance}**."}</code> — and it arrives
+              bold in the email. The asterisks are removed from the plain-text
+              and SMS versions, where bold can&rsquo;t be shown. HTML tags are
+              not supported and appear literally.
+            </p>
           </details>
 
           {/* Channel selection */}
