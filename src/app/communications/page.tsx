@@ -143,7 +143,10 @@ export default function CommunicationsPage() {
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
 
   // Channel selection
-  const [channel, setChannel] = useState<Channel>("both");
+  //  Email is the default channel (v2.288). It reaches every player with
+  //  an address, costs nothing to send, and carries formatting and
+  //  attachments that SMS cannot.
+  const [channel, setChannel] = useState<Channel>("email");
   const [attachPersonalSchedule, setAttachPersonalSchedule] = useState(false);
 
   // File attachments (email only — transient; cleared after each send)
