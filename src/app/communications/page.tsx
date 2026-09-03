@@ -84,6 +84,39 @@ const RECIPIENT_SECTIONS: { label: string; groups: RecipientGroup[] }[] = [
 ];
 type TabView = "compose" | "templates" | "history" | "scheduledReminders";
 
+/**
+ * Reachability icons for the recipient list. Deliberately inline SVG
+ * rather than the 📧 / 📱 emoji these replaced: emoji rendering depends
+ * on the browser's font fallback, which produced inconsistent glyphs.
+ */
+function MailIcon() {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" className="inline-block align-[-2px] text-muted"
+      aria-hidden="true"
+    >
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m2 7 10 6 10-6" />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" className="inline-block align-[-2px] text-muted"
+      aria-hidden="true"
+    >
+      <rect x="6" y="2" width="12" height="20" rx="2" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
+
 export default function CommunicationsPage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [activeTab, setActiveTab] = useState<TabView>("compose");
@@ -870,8 +903,20 @@ export default function CommunicationsPage() {
                   >
                     <span>{r.lastName}, {r.firstName}</span>
                     <span className="text-muted text-xs">
-                      {r.hasEmail && <span title={r.email || ""}>📧</span>}
-                      {r.hasSms && <span className="ml-1" title={`${r.cellNumber} (${r.carrier})`}>📱</span>}
+                      {r.hasEmail && (
+                        <span title={r.email || ""} aria-label="Has email">
+                          <MailIcon />
+                        </span>
+                      )}
+                      {r.hasSms && (
+                        <span
+                          className="ml-1"
+                          title={`${r.cellNumber} (${r.carrier})`}
+                          aria-label="Can receive SMS"
+                        >
+                          <PhoneIcon />
+                        </span>
+                      )}
                     </span>
                   </div>
                 ))}

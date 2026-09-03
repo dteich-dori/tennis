@@ -11,8 +11,15 @@
   --color-danger: #dc2626;
   --color-success: #16a34a;
   --color-solo-orange: #ea580c;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /*  Geist carries no emoji or symbol glyphs, and with no fallback
+      chain the browser picked its own — which rendered ✓ ⚠ → and the
+      recipient-list icons inconsistently. Name the fallbacks, ending
+      with the platform emoji fonts. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
 }
 
 body {
