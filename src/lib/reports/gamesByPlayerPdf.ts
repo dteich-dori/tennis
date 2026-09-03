@@ -301,6 +301,19 @@ export function generateGamesByPlayerPdf(
     doc.setTextColor(130, 130, 130);
     doc.text(preparedText, marginLeft, footerY);
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+
+    //  Clinic notice, centred in the gap on the existing footer line.
+    //  Bold and black so it reads as a notice rather than metadata; kept
+    //  at 8pt so it stays on the same line. Worst case (longest weekday,
+    //  two-digit page numbers) leaves 44pt clear to the left and 153pt
+    //  to the right.
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Free Clinic Mondays 12-1 Court 2", pageWidth / 2, footerY, {
+      align: "center",
+    });
+
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
   }
 
