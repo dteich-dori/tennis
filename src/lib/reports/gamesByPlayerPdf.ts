@@ -300,28 +300,22 @@ export function generateGamesByPlayerPdf(
     doc.setFont("helvetica", "normal");
     doc.setTextColor(130, 130, 130);
     doc.text(preparedText, marginLeft, footerY);
+    //  Ball duty centred on the metadata line, clinic notice bold below
+    //  it — the same two-line footer the Games By Date reports use, so
+    //  the two read identically. Measured worst case (longest weekday,
+    //  two-digit page numbers): 63pt clear to the left of the ball note
+    //  and 172pt to the right.
+    doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
 
-    //  Clinic notice, centred in the gap on the existing footer line.
-    //  Bold and black so it reads as a notice rather than metadata; kept
-    //  at 8pt so it stays on the same line. Worst case (longest weekday,
-    //  two-digit page numbers) leaves 44pt clear to the left and 153pt
-    //  to the right.
     doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text("Free Clinic Mondays 12-1 Court 2", pageWidth / 2, footerY, {
+    doc.text("Free Clinic Mondays 12-1 Court 2", pageWidth / 2, footerY + 10, {
       align: "center",
     });
 
-    //  Ball duty, on a second line — the centre of the line above is
-    //  taken by the clinic notice. Same position the Games By Date
-    //  reports use for their second footer line.
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(130, 130, 130);
-    doc.text("Player 1 brings new balls", pageWidth / 2, footerY + 10, {
-      align: "center",
-    });
-
+    doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
   }
 
