@@ -313,7 +313,18 @@ export function generateGamesByPlayerPdf(
       align: "center",
     });
 
+    //  Ball duty, on a second line — the centre of the line above is
+    //  taken by the clinic notice. Same position the Games By Date
+    //  reports use for their second footer line.
     doc.setFont("helvetica", "normal");
+    doc.setTextColor(130, 130, 130);
+    doc.text(
+      "Player in first column Brings Fresh Tennis Balls",
+      pageWidth / 2,
+      footerY + 10,
+      { align: "center" }
+    );
+
     doc.setTextColor(0, 0, 0);
   }
 
