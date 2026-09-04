@@ -318,12 +318,9 @@ export function generateGamesByPlayerPdf(
     //  reports use for their second footer line.
     doc.setFont("helvetica", "normal");
     doc.setTextColor(130, 130, 130);
-    doc.text(
-      "Player in first column Brings Fresh Tennis Balls",
-      pageWidth / 2,
-      footerY + 10,
-      { align: "center" }
-    );
+    doc.text("Player 1 brings new balls", pageWidth / 2, footerY + 10, {
+      align: "center",
+    });
 
     doc.setTextColor(0, 0, 0);
   }
