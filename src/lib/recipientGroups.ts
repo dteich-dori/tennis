@@ -18,6 +18,8 @@ export interface GroupFilterablePlayer {
   id: number;
   contractedFrequency: string;
   soloGames: number | null;
+  /** Scratch flag for the ad-hoc "Flagged" group. */
+  flagged?: boolean;
 }
 
 /**
@@ -40,6 +42,10 @@ export function filterByRecipientGroup<T extends GroupFilterablePlayer>(
       return players.filter((p) => DONS_CONTRACTS.includes(p.contractedFrequency));
     case "Solo Group":
       return players.filter((p) => p.soloGames != null && p.soloGames > 0);
+    case "Flagged":
+      //  Ad-hoc group built by ticking Flag on the Players list. Cuts
+      //  across contract tiers by design.
+      return players.filter((p) => p.flagged === true);
     case "Contract Players":
       return players.filter((p) => p.contractedFrequency !== "0");
     case "Subs":

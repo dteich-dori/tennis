@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
         carrier: players.carrier,
         contractedFrequency: players.contractedFrequency,
         soloGames: players.soloGames,
+        flagged: players.flagged,
       })
       .from(players)
       .where(

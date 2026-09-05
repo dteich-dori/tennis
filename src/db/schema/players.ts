@@ -67,6 +67,12 @@ export const players = sqliteTable("players", {
   // Accounts: credit against the SOLO fee, the solo-side counterpart to
   // priorYearCredit. Subtracted from the solo balance.
   soloCredit: real("solo_credit").notNull().default(0),
+  // Ad-hoc grouping: a scratch flag the admin sets from the Players
+  // list to build a one-off recipient group in Communications (e.g.
+  // "these people never received the schedule email"). Deliberately
+  // generic and cleared with one button — it carries no fixed meaning
+  // and nothing else in the app reads it.
+  flagged: integer("flagged", { mode: "boolean" }).notNull().default(false),
   smsOptOut: integer("sms_opt_out", { mode: "boolean" }).notNull().default(false),
   smsOptOutAt: text("sms_opt_out_at"),        // ISO timestamp of the last STOP
   smsOptOutReason: text("sms_opt_out_reason"), // exact incoming message text

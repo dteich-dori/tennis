@@ -34,6 +34,7 @@ interface Player {
   homeNumber: string | null;
   email: string | null;
   carrier: string | null;
+  flagged?: boolean;
   isActive: boolean;
   contractedFrequency: string;
   skillLevel: string;
@@ -129,6 +130,44 @@ export default function PlayersPage() {
     const data = (await res.json()) as Season[];
     if (data.length > 0) setSeason(data[data.length - 1]);
   }, []);
+
+  //  Ad-hoc "Flag" — a scratch marker used to build a one-off recipient
+  //  group in Communications. Saved per click; the row updates locally so
+  //  ticking a run of players stays responsive.
+  const toggleFlag = async (playerId: number, next: boolean) => {
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === playerId ? { ...p, flagged: next } : p))
+    );
+    try {
+      const res = await fetch("/api/players", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: playerId, flagged: next }),
+      });
+      if (!res.ok) throw new Error("save failed");
+    } catch {
+      // Put the row back the way it was so the UI never lies about
+      // what is stored.
+      setPlayers((prev) =>
+        prev.map((p) => (p.id === playerId ? { ...p, flagged: !next } : p))
+      );
+      alert("Failed to save the flag.");
+    }
+  };
+
+  const clearAllFlags = async () => {
+    const flagged = players.filter((p) => p.flagged);
+    if (flagged.length === 0) return;
+    if (!confirm(`Clear the flag on ${flagged.length} player${flagged.length !== 1 ? "s" : ""}?`)) return;
+    for (const p of flagged) {
+      await fetch("/api/players", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.id, flagged: false }),
+      });
+    }
+    setPlayers((prev) => prev.map((p) => ({ ...p, flagged: false })));
+  };
 
   const loadPlayers = useCallback(async (seasonId: number) => {
     const res = await fetch(`/api/players?seasonId=${seasonId}`, { cache: "no-store" });
@@ -1457,6 +1496,25 @@ export default function PlayersPage() {
         </div>
       )}
 
+      {/* Flag summary — only shown once something is flagged */}
+      {players.some((p) => p.flagged) && (
+        <div className="flex items-center gap-3 mb-2 text-sm">
+          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-medium">
+            {players.filter((p) => p.flagged).length} flagged
+          </span>
+          <span className="text-xs text-muted">
+            Send to these from Communications → Recipient Group →{" "}
+            <strong>Flagged</strong>.
+          </span>
+          <button
+            onClick={clearAllFlags}
+            className="text-xs text-primary hover:underline"
+          >
+            Clear all flags
+          </button>
+        </div>
+      )}
+
       {/* Player Table */}
       {sortedPlayers.length === 0 ? (
         <p className="text-muted text-sm">No players added yet.</p>
@@ -1464,6 +1522,12 @@ export default function PlayersPage() {
         <table className="w-full text-sm border border-border">
           <thead>
             <tr className="bg-gray-50">
+              <th
+                className="text-left px-2 py-1 border-b border-border"
+                title="Ad-hoc marker. Tick players here, then send to the &quot;Flagged&quot; recipient group in Communications."
+              >
+                Flag
+              </th>
               <SortHeader field="lastName" label="Last Name" />
               <SortHeader field="firstName" label="First Name" />
               <th className="text-left px-2 py-1 border-b border-border">Cell</th>
@@ -1489,6 +1553,14 @@ export default function PlayersPage() {
                 key={player.id}
                 className={`border-b border-border ${idx % 2 === 1 ? "bg-[#fdf8f0]" : "bg-white"} ${!player.isActive ? "opacity-50" : ""}`}
               >
+                <td className="px-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={player.flagged === true}
+                    onChange={(e) => toggleFlag(player.id, e.target.checked)}
+                    title="Flag for an ad-hoc email group"
+                  />
+                </td>
                 <td className="px-2 py-1 font-medium">
                   <button
                     onClick={() => handleEdit(player)}

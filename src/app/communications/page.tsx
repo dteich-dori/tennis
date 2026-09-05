@@ -70,6 +70,7 @@ type RecipientGroup =
   | "Subs"
   | "Owes Deposit"
   | "Solo Group"
+  | "Flagged"
   | "Players"
   | "Test";
 
@@ -83,6 +84,9 @@ const RECIPIENT_SECTIONS: { label: string; groups: RecipientGroup[] }[] = [
   //  "Players" is the free-form picker: every active player with a
   //  checkbox, independent of contract. Its own section so it doesn't
   //  read as a leftover under "Other".
+  //  "Flagged" is the ad-hoc group: tick Flag against players on the
+  //  Players list, send here, then clear the flags.
+  { label: "Ad-hoc", groups: ["Flagged"] },
   { label: "Pick people", groups: ["Players"] },
   { label: "Other", groups: ["ALL", "Test"] },
 ];
@@ -804,6 +808,13 @@ export default function CommunicationsPage() {
                 </div>
               ))}
             </div>
+            {recipientGroup === "Flagged" && (
+              <p className="text-xs text-muted mt-2">
+                Players you ticked <strong>Flag</strong> on the Players list. Use
+                it for one-off groups — e.g. people who never received an email —
+                then clear the flags there when you&rsquo;re done.
+              </p>
+            )}
             {recipientGroup === "Solo Group" && (
               <p className="text-xs text-muted mt-2">
                 Players with a solo contract. They also hold Don&rsquo;s contracts, so

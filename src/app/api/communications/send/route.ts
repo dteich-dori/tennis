@@ -256,6 +256,7 @@ export async function POST(request: NextRequest) {
           carrier: players.carrier,
           contractedFrequency: players.contractedFrequency,
           soloGames: players.soloGames,
+          flagged: players.flagged,
           smsOptOut: players.smsOptOut,
         })
         .from(players)
