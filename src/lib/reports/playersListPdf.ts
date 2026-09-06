@@ -35,9 +35,27 @@ export function generatePlayersListPdf(
   // Page dimensions
   const pageWidth = doc.internal.pageSize.getWidth(); // 612 for letter portrait
   const pageHeight = doc.internal.pageSize.getHeight(); // 792 for letter portrait
-  const marginLeft = 40;
-  const marginRight = 40;
-  const tableWidth = pageWidth - marginLeft - marginRight;
+  //  Mirrored margins for two-sided printing into a 3-hole binder.
+  //  The binding edge alternates: it is on the LEFT of odd (front) pages
+  //  and on the RIGHT of even (back) pages, because the back of a sheet
+  //  is bound on the opposite side. A fixed left margin would punch holes
+  //  through the text on every second page.
+  //
+  //  3-hole punches sit 1/4" in with a 1/4" hole, so ink must stay clear
+  //  of the first ~1/2". GUTTER is 1" for margin of error; the outer edge
+  //  keeps a normal 1/2".
+  const GUTTER = 72;       // 1" — binding side
+  const OUTER = 36;        // 0.5" — open side
+  //  Width is constant so columns don't shift between front and back.
+  const tableWidth = pageWidth - GUTTER - OUTER;
+
+  /** Left edge of the content for a given page number. */
+  function leftFor(pageNo: number): number {
+    return pageNo % 2 === 1 ? GUTTER : OUTER;
+  }
+
+  //  Updated on every page break; all drawing is relative to it.
+  let marginLeft = leftFor(1);
 
   // --- Header helper (drawn on every page) ---
   const title = `Players List \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
@@ -117,6 +135,7 @@ export function generatePlayersListPdf(
     // Check if we need a page break for the section title + header + at least 1 row
     if (currentY + 50 > pageHeight - 40) {
       doc.addPage();
+      marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
       drawPageHeader();
       currentY = 90;
     }
@@ -144,6 +163,7 @@ export function generatePlayersListPdf(
       // Page break check
       if (currentY + rowHeight > pageHeight - 40) {
         doc.addPage();
+      marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
         drawPageHeader();
         currentY = 90;
         drawTableHeader();
@@ -208,8 +228,9 @@ export function generatePlayersListPdf(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(130, 130, 130);
-    doc.text(preparedText, marginLeft, footerY);
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+    const left = leftFor(i);
+    doc.text(preparedText, left, footerY);
+    doc.text(`Page ${i} of ${totalPages}`, left + tableWidth, footerY, { align: "right" });
     doc.setTextColor(0, 0, 0);
   }
 
