@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: "Swap Finder",
   description: "Who can take a game, and what they can give back.",
   applicationName: "Swap Finder",
+  //  Its own manifest. The root one declares start_url "/online-schedule",
+  //  and iOS honours start_url over the page you are actually on — so
+  //  adding this page to the Home Screen produced an icon that opened the
+  //  schedule app instead (v2.306).
+  manifest: "/swap-manifest.json",
   appleWebApp: {
     capable: true,
     title: "Swap",
