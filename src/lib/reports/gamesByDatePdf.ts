@@ -307,7 +307,7 @@ export function generateGamesByDatePdf(
         x += colWidths[2];
 
         // Group
-        doc.text(game.group === "solo" ? "Solo" : "Don's", x + 2, textY);
+        doc.text(game.group === "solo" ? "SOLO" : "Don's", x + 2, textY);
         x += colWidths[3];
 
         if (isHoliday) {
@@ -851,7 +851,7 @@ export function generateGamesByDateWorksheetPdf(
         x += colWidths[2];
 
         // Group
-        doc.text(game.group === "solo" ? "Solo" : "Don's", x + 2, currentY + 9);
+        doc.text(game.group === "solo" ? "SOLO" : "Don's", x + 2, currentY + 9);
         x += colWidths[3];
 
         if (isHoliday) {
