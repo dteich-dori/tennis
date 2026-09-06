@@ -8,6 +8,7 @@ interface Assignment {
   playerId: number;
   slotPosition: number;
   isPrefill: boolean;
+  swapSerial?: number | null;
 }
 
 interface Game {
@@ -48,6 +49,31 @@ function getPlayerName(playerId: number, players: Player[]): string {
     return `${player.lastName}, ${player.firstName.charAt(0)}.`;
   }
   return player.lastName;
+}
+
+
+/**
+ * Draw a player name, followed by its swap serial in the smallest
+ * legible size — e.g. "Teich(1)". Both halves of a swap carry the same
+ * number, so a printed sheet can be read as a pair.
+ *
+ * The suffix is drawn separately at 5pt rather than baked into the
+ * string, so it stays small regardless of the row's font size.
+ */
+function drawNameWithSwap(
+  doc: jsPDF,
+  name: string,
+  swapSerial: number | null | undefined,
+  x: number,
+  y: number
+): void {
+  doc.text(name, x, y);
+  if (swapSerial == null) return;
+  const size = doc.getFontSize();
+  const w = doc.getTextWidth(name);
+  doc.setFontSize(5);
+  doc.text(`(${swapSerial})`, x + w + 0.5, y);
+  doc.setFontSize(size);
 }
 
 function formatDisplayDate(dateStr: string): string {
@@ -325,7 +351,7 @@ export function generateGamesByDatePdf(
           for (let slot = 1; slot <= 4; slot++) {
             const assignment = game.assignments.find((a) => a.slotPosition === slot);
             const name = assignment ? getPlayerName(assignment.playerId, players) : "\u2014";
-            doc.text(name, x + 2, textY);
+            drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, textY);
             x += colWidths[3 + slot];
           }
         }
@@ -540,7 +566,7 @@ export function generateSoloGamesByDatePdf(
     for (let slot = 1; slot <= 4; slot++) {
       const assignment = game.assignments.find((a) => a.slotPosition === slot);
       const name = assignment ? getPlayerName(assignment.playerId, players) : "\u2014";
-      doc.text(name, x + 2, textY);
+      drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, textY);
       x += colWidths[3 + slot];
     }
 
@@ -869,7 +895,7 @@ export function generateGamesByDateWorksheetPdf(
           for (let slot = 1; slot <= 4; slot++) {
             const assignment = game.assignments.find((a) => a.slotPosition === slot);
             const name = assignment ? getPlayerName(assignment.playerId, players) : "";
-            doc.text(name, x + 2, currentY + 9);
+            drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, currentY + 9);
             x += colWidths[3 + slot];
           }
         }

@@ -33,6 +33,7 @@ interface Assignment {
   slotPosition: number;
   isPrefill: boolean;
   coveringForPlayerId?: number | null;
+  swapSerial?: number | null;
 }
 
 interface Game {
@@ -1778,6 +1779,14 @@ export default function SchedulePage() {
                                           <span className="text-orange-500 font-bold text-xs ml-0.5" title="Derated player">D</span>
                                         ) : null;
                                       })()}
+                                      {assignment.swapSerial != null && (
+                                        <span
+                                          className="text-muted text-[9px] align-super ml-0.5"
+                                          title={`Swap #${assignment.swapSerial} — the other half of this swap carries the same number`}
+                                        >
+                                          ({assignment.swapSerial})
+                                        </span>
+                                      )}
                                       {assignment.coveringForPlayerId != null && (
                                         <span
                                           className="text-muted text-xs ml-1"

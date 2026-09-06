@@ -274,14 +274,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errB }, { status: 400 });
     }
 
+    //  Serial for this swap, numbered per season from 1. Both halves get
+    //  the SAME number so a printed schedule can be read as a pair:
+    //  "Teich(3)" in one game, "Klein(3)" in the other.
+    const usedSerials = await database
+      .select({ serial: gameAssignments.swapSerial })
+      .from(gameAssignments)
+      .innerJoin(games, eq(games.id, gameAssignments.gameId))
+      .where(eq(games.seasonId, gameA.seasonId));
+    const nextSerial =
+      usedSerials.reduce((max, r) => Math.max(max, r.serial ?? 0), 0) + 1;
+
     // All good — perform the swap: update playerId on both assignment rows.
     await database
       .update(gameAssignments)
-      .set({ playerId: playerBId })
+      .set({ playerId: playerBId, swapSerial: nextSerial })
       .where(eq(gameAssignments.id, assignA.id));
     await database
       .update(gameAssignments)
-      .set({ playerId: playerAId })
+      .set({ playerId: playerAId, swapSerial: nextSerial })
       .where(eq(gameAssignments.id, assignB.id));
 
     const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");
@@ -289,6 +300,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      swapSerial: nextSerial,
       swap: {
         gameA: {
           id: gameA.id,

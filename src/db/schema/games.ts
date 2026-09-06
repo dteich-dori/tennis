@@ -28,6 +28,13 @@ export const gameAssignments = sqliteTable("game_assignments", {
     .references(() => players.id, { onDelete: "cascade" }),
   slotPosition: integer("slot_position").notNull(), // 1-4
   isPrefill: integer("is_prefill", { mode: "boolean" }).notNull().default(false),
+  // v2.310: serial number of the swap that produced this assignment, set
+  // on BOTH sides of a swap so the two halves can be matched up on a
+  // printed schedule (e.g. "Teich(1)" in one game, "Klein(1)" in the
+  // other). Numbered per season from 1. Null for assignments that were
+  // never swapped. A later swap of the same slot overwrites it, so the
+  // mark always reflects the most recent swap.
+  swapSerial: integer("swap_serial"),
   // v2.254: set by auto-assign's Pass 2.9 (clear-swap sub priority) to
   // the vacationing player this sub is covering for — e.g. Golden's
   // assignment gets coveringForPlayerId = Klein's id. Null for every
