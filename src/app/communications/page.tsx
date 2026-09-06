@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { TEMPLATE_VARIABLES } from "@/lib/templateSubstitute";
+import { generateCallListPdf } from "@/lib/reports/callListPdf";
 
 interface Season {
   id: number;
@@ -15,6 +16,7 @@ interface Recipient {
   lastName: string;
   email: string | null;
   cellNumber: string | null;
+  homeNumber: string | null;
   carrier: string | null;
   hasEmail: boolean;
   hasSms: boolean;
@@ -187,7 +189,7 @@ export default function CommunicationsPage() {
   // Test-as-player (only used in Test + attach-ics mode)
   const [testAsPlayerId, setTestAsPlayerId] = useState<number | null>(null);
   const [testFirstEventOnly, setTestFirstEventOnly] = useState(true);
-  const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null }[]>([]);
+  const [activePlayers, setActivePlayers] = useState<{ id: number; firstName: string; lastName: string; email: string | null; cellNumber: string | null; homeNumber: string | null }[]>([]);
 
   // Multi-player recipient selection (used when recipientGroup === "Players")
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
@@ -273,7 +275,7 @@ export default function CommunicationsPage() {
   // Load all active players in the season (for "Test as player" dropdown)
   const loadActivePlayers = useCallback(async (seasonId: number) => {
     const res = await fetch(`/api/players?seasonId=${seasonId}`);
-    const data = (await res.json()) as { id: number; firstName: string; lastName: string; email: string | null; isActive: boolean }[];
+    const data = (await res.json()) as { id: number; firstName: string; lastName: string; email: string | null; cellNumber: string | null; homeNumber: string | null; isActive: boolean }[];
     const active = data
       .filter((p) => p.isActive)
       .sort((a, b) => {
@@ -282,6 +284,35 @@ export default function CommunicationsPage() {
       });
     setActivePlayers(active);
   }, []);
+
+  //  Printable call sheet for the current selection — names, both
+  //  numbers and a Notes column. Works off whichever picker the group
+  //  uses: the recipient-list ticks, or the Players multi-select.
+  const printSelection = useCallback(() => {
+    if (!season) return;
+    const entries =
+      recipientGroup === "Players"
+        ? activePlayers
+            .filter((p) => selectedPlayerIds.includes(p.id))
+            .map((p) => ({
+              lastName: p.lastName, firstName: p.firstName,
+              cellNumber: p.cellNumber, homeNumber: p.homeNumber, email: p.email,
+            }))
+        : recipients
+            .filter((r) => selectedRecipientIds.includes(r.id))
+            .map((r) => ({
+              lastName: r.lastName, firstName: r.firstName,
+              cellNumber: r.cellNumber, homeNumber: r.homeNumber, email: r.email,
+            }));
+    if (entries.length === 0) {
+      alert("Nothing selected to print.");
+      return;
+    }
+    generateCallListPdf(entries, recipientGroup, {
+      startDate: season.startDate,
+      endDate: season.endDate,
+    });
+  }, [season, recipientGroup, recipients, selectedRecipientIds, activePlayers, selectedPlayerIds]);
 
   useEffect(() => {
     loadSeason();
@@ -943,6 +974,15 @@ export default function CommunicationsPage() {
                   className="text-sm text-primary hover:underline"
                 >
                   {showRecipients ? "Hide" : "Show"} recipients
+                </button>
+              )}
+              {recipientCount > 0 && recipientGroup !== "Test" && (
+                <button
+                  onClick={printSelection}
+                  className="text-sm text-primary hover:underline"
+                  title="Printable call sheet: names, cell and home numbers, and a Notes column"
+                >
+                  Print selection
                 </button>
               )}
             </div>
