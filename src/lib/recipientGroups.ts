@@ -46,6 +46,10 @@ export function filterByRecipientGroup<T extends GroupFilterablePlayer>(
       //  Ad-hoc group built by ticking Flag on the Players list. Cuts
       //  across contract tiers by design.
       return players.filter((p) => p.flagged === true);
+    case "Not Flagged":
+      //  The inverse, and usually the more useful direction: tick people
+      //  off as they respond, then send to everyone still unticked.
+      return players.filter((p) => p.flagged !== true);
     case "Contract Players":
       return players.filter((p) => p.contractedFrequency !== "0");
     case "Subs":

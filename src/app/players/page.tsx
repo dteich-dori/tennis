@@ -1502,9 +1502,12 @@ export default function PlayersPage() {
           <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-medium">
             {players.filter((p) => p.flagged).length} flagged
           </span>
+          <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-medium">
+            {players.filter((p) => p.isActive && !p.flagged).length} active not flagged
+          </span>
           <span className="text-xs text-muted">
-            Send to these from Communications → Recipient Group →{" "}
-            <strong>Flagged</strong>.
+            Communications → Recipient Group → <strong>Flagged</strong> or{" "}
+            <strong>Not Flagged</strong>.
           </span>
           <button
             onClick={clearAllFlags}

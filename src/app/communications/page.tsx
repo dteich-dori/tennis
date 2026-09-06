@@ -71,6 +71,7 @@ type RecipientGroup =
   | "Owes Deposit"
   | "Solo Group"
   | "Flagged"
+  | "Not Flagged"
   | "Players"
   | "Test";
 
@@ -86,7 +87,7 @@ const RECIPIENT_SECTIONS: { label: string; groups: RecipientGroup[] }[] = [
   //  read as a leftover under "Other".
   //  "Flagged" is the ad-hoc group: tick Flag against players on the
   //  Players list, send here, then clear the flags.
-  { label: "Ad-hoc", groups: ["Flagged"] },
+  { label: "Ad-hoc", groups: ["Flagged", "Not Flagged"] },
   { label: "Pick people", groups: ["Players"] },
   { label: "Other", groups: ["ALL", "Test"] },
 ];
@@ -810,9 +811,16 @@ export default function CommunicationsPage() {
             </div>
             {recipientGroup === "Flagged" && (
               <p className="text-xs text-muted mt-2">
-                Players you ticked <strong>Flag</strong> on the Players list. Use
-                it for one-off groups — e.g. people who never received an email —
-                then clear the flags there when you&rsquo;re done.
+                Players you ticked <strong>Flag</strong> on the Players list —
+                the people you singled out. Clear the flags there when
+                you&rsquo;re done.
+              </p>
+            )}
+            {recipientGroup === "Not Flagged" && (
+              <p className="text-xs text-muted mt-2">
+                Everyone whose <strong>Flag</strong> is <em>un</em>ticked. Handy
+                for chasing non-responders: tick each player off as they reply,
+                then send to whoever is left.
               </p>
             )}
             {recipientGroup === "Solo Group" && (
