@@ -43,10 +43,12 @@ function buildLinkBlockText(landingUrl: string): string {
     "",
     "",
     "--",
-    "Add your personal Brooklake Tennis calendar to your phone or computer:",
+    "Add your games to your phone or computer calendar:",
     landingUrl,
     "",
-    'Click the link above. A separate "Brooklake Tennis" calendar will be added to your calendar app, which you can turn on or off without affecting your other calendars. It updates automatically if the schedule changes.',
+    "Tap the link, then confirm, and your season's games are added to your own calendar. You can edit or delete any of them afterwards.",
+    "",
+    "Please note: this does NOT update by itself. When you swap a game, delete it from your calendar and enter the new one. The swap board at the club stays the official record.",
   ].join("\n");
 }
 
@@ -70,15 +72,20 @@ function buildHtmlBody(bodyText: string, landingUrl: string): string {
   <div>${escapedBody}</div>
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
   <div>
-    <p style="margin:0 0 12px 0;font-weight:600;">Your personal Brooklake Tennis calendar</p>
+    <p style="margin:0 0 12px 0;font-weight:600;">Your games in your own calendar</p>
     <p style="margin:0 0 16px 0;">
       <a href="${landingUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">
-        Subscribe in Calendar
+        Add my games
       </a>
     </p>
-    <p style="margin:0;color:#475569;">
-      Click the button to add a separate <strong>Brooklake Tennis</strong> calendar to your phone or computer.
-      It can be turned on or off without affecting your other calendars, and it updates automatically if the schedule changes.
+    <p style="margin:0 0 12px 0;color:#475569;">
+      Tap the button, then confirm, and your season&rsquo;s games are added to your own
+      calendar. You can edit or delete any of them afterwards.
+    </p>
+    <p style="margin:0;padding:12px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#444;">
+      <strong>Please note:</strong> this does not update by itself. When you swap a
+      game, delete it from your calendar and enter the new one \u2014 the swap board at
+      the club stays the official record.
     </p>
   </div>
 </div>`;
@@ -494,10 +501,14 @@ export async function POST(request: NextRequest) {
               .where(eq(players.id, r.playerId));
           }
 
+          //  Import, not subscribe. A webcal:// subscription is read-only,
+          //  so a player could never remove a game they swapped away — and
+          //  swaps are agreed on the club bulletin board, which this system
+          //  never sees. /calendar/add serves the .ics as a file, so the
+          //  games land in the player's own calendar and stay editable.
+          //  The subscribe route is left in place for anyone already on it.
           const suffix = icsFirstEventOnly ? "?preview=1" : "";
-          // Landing page (https) that redirects to webcal:// — works even in
-          // email clients that strip webcal:// hrefs.
-          const landingUrl = `${origin}/calendar/subscribe/${token}${suffix}`;
+          const landingUrl = `${origin}/calendar/add/${token}${suffix}`;
           perRecipientText = personalisedBody + buildLinkBlockText(landingUrl);
           perRecipientHtml = buildHtmlBody(personalisedBody, landingUrl);
         } else {

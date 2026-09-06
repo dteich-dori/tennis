@@ -35,6 +35,7 @@ export async function middleware(request: NextRequest) {
                                          // screenshot instead of the tile
     pathname.startsWith("/api/ics/") || // public calendar subscriptions — protected by per-player token
     pathname.startsWith("/calendar/subscribe/") || // public landing page that redirects to webcal://
+    pathname.startsWith("/calendar/add/") || // public landing page for a one-time .ics import
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
     pathname.startsWith("/swap-finder") || // public read-only swap suggestions (no writes)
     pathname.startsWith("/api/public/") || // public API endpoints

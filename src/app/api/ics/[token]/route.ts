@@ -139,13 +139,32 @@ export async function GET(
     playerLookup
   );
 
+  //  Two ways to consume the same calendar:
+  //
+  //  SUBSCRIBE (default) — served inline for webcal://. The client keeps
+  //    a live, READ-ONLY feed. Players cannot edit or delete an event, so
+  //    a swap made on the club bulletin board leaves the calendar showing
+  //    a game that is no longer theirs.
+  //
+  //  IMPORT (?download=1) — served as an attachment over https. Opening
+  //    the file COPIES the events into the player's own calendar, where
+  //    they own them: a swapped game can be deleted and the replacement
+  //    entered by hand. The trade is that it never updates again, which
+  //    matches how swaps are actually tracked here.
+  const isDownload = request.nextUrl.searchParams.get("download") === "1";
+
   return new NextResponse(icsBody || "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//TennisScheduler//Brooklake//EN\r\nX-WR-CALNAME:Brooklake Tennis\r\nEND:VCALENDAR\r\n", {
     status: 200,
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Content-Disposition": 'inline; filename="brooklake-tennis.ics"',
-      // Let calendar clients cache for 1 hour, revalidate after that
-      "Cache-Control": "public, max-age=3600, must-revalidate",
+      "Content-Disposition": isDownload
+        ? 'attachment; filename="brooklake-tennis.ics"'
+        : 'inline; filename="brooklake-tennis.ics"',
+      //  A one-time import must never be served stale, or a player who
+      //  re-downloads gets an hour-old schedule.
+      "Cache-Control": isDownload
+        ? "no-store"
+        : "public, max-age=3600, must-revalidate",
     },
   });
 }
