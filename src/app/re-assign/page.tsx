@@ -1047,7 +1047,11 @@ function SwapTab(props: SwapTabProps) {
     )
     .sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  // Games Player A is assigned to, within the radius
+  //  Two radii. The browse list below is centred on the current week —
+  //  that is how you find a game to give up. The candidate SEARCH is
+  //  centred on the game actually chosen, which matters now that a game
+  //  can be entered by number: pick week 30 while sitting in week 2 and
+  //  a today-centred search would find nothing.
   const radiusLow = Math.max(1, currentWeek - swapWeeksBack);
   const radiusHigh = Math.min(season.totalWeeks, currentWeek + swapWeeksAhead);
 
@@ -1110,47 +1114,86 @@ function SwapTab(props: SwapTabProps) {
     return null;
   }
 
-  // Candidate list: every (Player B, Game Y) pair where B has a slot in radius
   interface Candidate {
     playerB: Player;
     gameY: Game;
     weekDistance: number;
   }
-  const candidates: Candidate[] = [];
-  if (playerA && gameA) {
+
+  //  Suggestions are produced on demand rather than as you type, so the
+  //  list only changes when you ask for it.
+  const [suggestions, setSuggestions] = useState<Candidate[] | null>(null);
+  const [gameNumberInput, setGameNumberInput] = useState("");
+  const [gameNumberError, setGameNumberError] = useState("");
+
+  /** At most this many offered games per swap partner. */
+  const MAX_GAMES_PER_PARTNER = 2;
+
+  function computeCandidates(): Candidate[] {
+    if (!playerA || !gameA) return [];
     const skill = playerA.skillLevel || "";
+    //  Search window sits around the game being given up.
+    const lo = Math.max(1, gameA.weekNumber - swapWeeksBack);
+    const hi = Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead);
+
+    const found: Candidate[] = [];
     for (const g of games) {
       if (g.id === gameA.id) continue;
       if (g.status !== "normal") continue;
-      if (g.weekNumber < radiusLow || g.weekNumber > radiusHigh) continue;
+      if (g.weekNumber < lo || g.weekNumber > hi) continue;
       if (g.group !== gameA.group) continue;
-      if (g.date === gameA.date) continue; // would create same-date conflict for whoever comes over
+      if (g.date === gameA.date) continue; // same-date conflict for whoever comes over
       for (const a of g.assignments ?? []) {
         if (a.playerId === playerA.id) continue;
         const pB = playerById.get(a.playerId);
         if (!pB) continue;
         if (!pB.isActive) continue;
+        //  Contract players only: a sub taking the game would be billed
+        //  for it, which is a paid substitution, not a free swap.
+        if (pB.contractedFrequency === "0") continue;
         if ((pB.skillLevel || "") !== skill) continue;
 
-        // A must be able to play gameY (excluding their current slot in gameA)
-        const aBlocker = canPlayerTakeGame(playerA.id, g, gameA.id);
-        if (aBlocker) continue;
-        // B must be able to play gameA (excluding their current slot in gameY)
-        const bBlocker = canPlayerTakeGame(pB.id, gameA, g.id);
-        if (bBlocker) continue;
+        // A must be able to play gameY (ignoring their current slot in gameA)
+        if (canPlayerTakeGame(playerA.id, g, gameA.id)) continue;
+        // B must be able to play gameA (ignoring their current slot in gameY)
+        if (canPlayerTakeGame(pB.id, gameA, g.id)) continue;
 
-        candidates.push({
+        found.push({
           playerB: pB,
           gameY: g,
           weekDistance: Math.abs(g.weekNumber - gameA.weekNumber),
         });
       }
     }
+
+    //  Keep only each partner's next MAX_GAMES_PER_PARTNER games, by
+    //  date — without this one player fills the table with every
+    //  eligible game they hold.
+    const byPlayer = new Map<number, Candidate[]>();
+    for (const c of found) {
+      const arr = byPlayer.get(c.playerB.id) ?? [];
+      arr.push(c);
+      byPlayer.set(c.playerB.id, arr);
+    }
+    const trimmed: Candidate[] = [];
+    for (const arr of byPlayer.values()) {
+      arr.sort((x, y) => x.gameY.date.localeCompare(y.gameY.date));
+      trimmed.push(...arr.slice(0, MAX_GAMES_PER_PARTNER));
+    }
+
+    //  Group each partner's rows together, nearest partner first.
+    trimmed.sort((x, y) => {
+      const nameCmp = x.playerB.lastName.localeCompare(y.playerB.lastName);
+      if (x.playerB.id === y.playerB.id) return x.gameY.date.localeCompare(y.gameY.date);
+      const xBest = Math.min(...trimmed.filter((c) => c.playerB.id === x.playerB.id).map((c) => c.weekDistance));
+      const yBest = Math.min(...trimmed.filter((c) => c.playerB.id === y.playerB.id).map((c) => c.weekDistance));
+      if (xBest !== yBest) return xBest - yBest;
+      return nameCmp;
+    });
+    return trimmed;
   }
-  candidates.sort((a, b) => {
-    if (a.weekDistance !== b.weekDistance) return a.weekDistance - b.weekDistance;
-    return a.playerB.lastName.localeCompare(b.playerB.lastName);
-  });
+
+  const candidates = suggestions ?? [];
 
   const performSwap = async (c: Candidate) => {
     if (!playerA || !gameA) return;
@@ -1270,6 +1313,9 @@ function SwapTab(props: SwapTabProps) {
                     onClick={() => {
                       setSwapPlayerId(selected ? null : p.id);
                       setSwapGameAId(null);
+                      setSuggestions(null);
+                      setGameNumberInput("");
+                      setGameNumberError("");
                       setSwapBanner("");
                       setSwapError("");
                     }}
@@ -1293,9 +1339,64 @@ function SwapTab(props: SwapTabProps) {
       {playerA && (
         <div className="border border-border rounded bg-white">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-            2. Click the game {playerA.lastName}, {playerA.firstName} wants to give up
+            2. Which game can {playerA.lastName}, {playerA.firstName} not play?
           </div>
           <div className="p-3">
+            {/* Type the game number, or click one below */}
+            <div className="flex flex-wrap items-end gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Game #</label>
+                <input
+                  type="number"
+                  value={gameNumberInput}
+                  onChange={(e) => {
+                    setGameNumberInput(e.target.value);
+                    setGameNumberError("");
+                    setSuggestions(null);
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    if (raw === "") { setSwapGameAId(null); return; }
+                    const n = parseInt(raw, 10);
+                    const g = games.find((x) => x.gameNumber === n && x.status === "normal");
+                    if (!g) {
+                      setSwapGameAId(null);
+                      setGameNumberError(`No game #${raw} in this season.`);
+                      return;
+                    }
+                    if (!(g.assignments ?? []).some((a) => a.playerId === playerA.id)) {
+                      setSwapGameAId(null);
+                      setGameNumberError(
+                        `${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`
+                      );
+                      return;
+                    }
+                    setGameNumberError("");
+                    setSwapGameAId(g.id);
+                  }}
+                  placeholder="e.g. 412"
+                  className="border border-border rounded px-3 py-1.5 text-sm w-28"
+                />
+              </div>
+              <button
+                onClick={() => setSuggestions(computeCandidates())}
+                disabled={!gameA}
+                className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 hover:opacity-90"
+                title="Find contract players of the same skill who can take this game"
+              >
+                Suggest
+              </button>
+              {gameA && (
+                <span className="text-xs text-muted">
+                  #{gameA.gameNumber} · {DAYS_SHORT[gameA.dayOfWeek]} {fmtDate(gameA.date)} ·{" "}
+                  {fmtTime(gameA.startTime)} · Court {gameA.courtNumber} · Week {gameA.weekNumber}
+                </span>
+              )}
+              {gameNumberError && (
+                <span className="text-xs text-red-600">{gameNumberError}</span>
+              )}
+            </div>
             {playerAGames.length === 0 ? (
               <p className="text-sm text-muted">
                 No assigned games for this player in weeks {radiusLow}–{radiusHigh}.
@@ -1309,6 +1410,9 @@ function SwapTab(props: SwapTabProps) {
                       key={g.id}
                       onClick={() => {
                         setSwapGameAId(selected ? null : g.id);
+                        setSuggestions(null);
+                        setGameNumberInput(selected ? "" : String(g.gameNumber));
+                        setGameNumberError("");
                         setSwapBanner("");
                         setSwapError("");
                       }}
@@ -1345,15 +1449,27 @@ function SwapTab(props: SwapTabProps) {
         <div className="border border-border rounded bg-white">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
             3. Choose a swap partner —{" "}
-            {candidates.length === 0
-              ? "no valid candidates found"
-              : `${candidates.length} candidate${candidates.length !== 1 ? "s" : ""}`}{" "}
-            (same group, same skill level)
+            {suggestions === null
+              ? "press Suggest"
+              : candidates.length === 0
+                ? "no valid candidates found"
+                : `${new Set(candidates.map((c) => c.playerB.id)).size} player${
+                    new Set(candidates.map((c) => c.playerB.id)).size !== 1 ? "s" : ""
+                  }, ${candidates.length} game${candidates.length !== 1 ? "s" : ""} offered`}{" "}
+            <span className="font-normal text-xs text-muted">
+              (contract players only, same skill, same group — up to{" "}
+              {MAX_GAMES_PER_PARTNER} games each)
+            </span>
           </div>
-          {candidates.length === 0 ? (
+          {suggestions === null ? (
             <p className="p-3 text-sm text-muted">
-              No players with the same skill level and a valid eligible game in this
-              radius. Try extending the radius above, or re-assign manually on the
+              Enter the game number above and press <strong>Suggest</strong>.
+            </p>
+          ) : candidates.length === 0 ? (
+            <p className="p-3 text-sm text-muted">
+              No contract player of the same skill level has an eligible game within{" "}
+              {swapWeeksBack} week(s) before / {swapWeeksAhead} after game #
+              {gameA.gameNumber}. Widen the radius above, or re-assign manually on the
               Schedule page.
             </p>
           ) : (
@@ -1371,16 +1487,27 @@ function SwapTab(props: SwapTabProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {candidates.map((c) => (
+                  {candidates.map((c, i) => {
+                    //  Name printed once per partner; their second offered
+                    //  game sits under it.
+                    const firstOfPartner =
+                      i === 0 || candidates[i - 1].playerB.id !== c.playerB.id;
+                    return (
                     <tr
                       key={`${c.playerB.id}-${c.gameY.id}`}
-                      className="border-t border-border"
+                      className={firstOfPartner ? "border-t-2 border-border" : "border-t border-border/50"}
                     >
                       <td className="p-2">
-                        {c.playerB.lastName}, {c.playerB.firstName}{" "}
-                        <span className="text-xs text-muted">
-                          ({c.playerB.skillLevel})
-                        </span>
+                        {firstOfPartner ? (
+                          <>
+                            {c.playerB.lastName}, {c.playerB.firstName}{" "}
+                            <span className="text-xs text-muted">
+                              ({c.playerB.skillLevel})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted pl-3">↳ also offers</span>
+                        )}
                       </td>
                       <td className="p-2">
                         #{c.gameY.gameNumber}{" "}
@@ -1406,7 +1533,8 @@ function SwapTab(props: SwapTabProps) {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
