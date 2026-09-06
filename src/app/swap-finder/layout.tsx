@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   applicationName: "Swap Finder",
   appleWebApp: {
     capable: true,
-    title: "Swaps",
+    title: "Swap",
     statusBarStyle: "default",
   },
   icons: {
