@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { findSwapSuggestions, whyCannotPlay } from "@/lib/swapSuggestions";
 
 interface Season {
   id: number;
@@ -1067,52 +1068,17 @@ function SwapTab(props: SwapTabProps) {
         .sort((a, b) => a.date.localeCompare(b.date))
     : [];
 
-  // Eligibility check — simplified version used client-side to rank candidates
-  // (server re-validates the final choice before committing)
+  //  Eligibility and candidate search now live in lib/swapSuggestions,
+  //  shared with the public /swap-finder page so the two can never give
+  //  different answers.
   function canPlayerTakeGame(
     pid: number,
     game: Game,
     excludeGameId?: number
   ): string | null {
-    const p = playerById.get(pid);
-    if (!p) return "Unknown player";
-    if (!p.isActive) return "Inactive";
-    // Vacation
-    for (const v of p.vacations ?? []) {
-      if (game.date >= v.startDate && game.date <= v.endDate) {
-        return `Vacation ${v.startDate}—${v.endDate}`;
-      }
-    }
-    // Blocked day
-    if ((p.blockedDays ?? []).includes(game.dayOfWeek)) {
-      return `Blocked on ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][game.dayOfWeek]}`;
-    }
-    // Solo requires soloGames
-    if (game.group === "solo") {
-      // Note: Player interface here doesn't include soloGames; look up on the full players array
-      const full = players.find((pp) => pp.id === pid) as Player & { soloGames?: number | null } | undefined;
-      if (!full?.soloGames || full.soloGames <= 0) {
-        return "Not a Solo player";
-      }
-    }
-    // Same-day conflict
-    for (const g of games) {
-      if (g.id === game.id) continue;
-      if (excludeGameId !== undefined && g.id === excludeGameId) continue;
-      if (g.date !== game.date) continue;
-      if ((g.assignments ?? []).some((a) => a.playerId === pid)) {
-        return `Already in game #${g.gameNumber} on ${g.date}`;
-      }
-    }
-    // DNP vs other players in the target game
-    for (const a of game.assignments ?? []) {
-      if (a.playerId === pid) continue;
-      if ((p.doNotPair ?? []).includes(a.playerId)) return "Do-not-pair conflict";
-      const other = playerById.get(a.playerId);
-      if (other && (other.doNotPair ?? []).includes(pid)) return "Do-not-pair conflict";
-    }
-    return null;
+    return whyCannotPlay(pid, game, players, games, excludeGameId);
   }
+  void canPlayerTakeGame;
 
   interface Candidate {
     playerB: Player;
@@ -1131,66 +1097,16 @@ function SwapTab(props: SwapTabProps) {
 
   function computeCandidates(): Candidate[] {
     if (!playerA || !gameA) return [];
-    const skill = playerA.skillLevel || "";
-    //  Search window sits around the game being given up.
-    const lo = Math.max(1, gameA.weekNumber - swapWeeksBack);
-    const hi = Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead);
-
-    const found: Candidate[] = [];
-    for (const g of games) {
-      if (g.id === gameA.id) continue;
-      if (g.status !== "normal") continue;
-      if (g.weekNumber < lo || g.weekNumber > hi) continue;
-      if (g.group !== gameA.group) continue;
-      if (g.date === gameA.date) continue; // same-date conflict for whoever comes over
-      for (const a of g.assignments ?? []) {
-        if (a.playerId === playerA.id) continue;
-        const pB = playerById.get(a.playerId);
-        if (!pB) continue;
-        if (!pB.isActive) continue;
-        //  Contract players only: a sub taking the game would be billed
-        //  for it, which is a paid substitution, not a free swap.
-        if (pB.contractedFrequency === "0") continue;
-        if ((pB.skillLevel || "") !== skill) continue;
-
-        // A must be able to play gameY (ignoring their current slot in gameA)
-        if (canPlayerTakeGame(playerA.id, g, gameA.id)) continue;
-        // B must be able to play gameA (ignoring their current slot in gameY)
-        if (canPlayerTakeGame(pB.id, gameA, g.id)) continue;
-
-        found.push({
-          playerB: pB,
-          gameY: g,
-          weekDistance: Math.abs(g.weekNumber - gameA.weekNumber),
-        });
-      }
-    }
-
-    //  Keep only each partner's next MAX_GAMES_PER_PARTNER games, by
-    //  date — without this one player fills the table with every
-    //  eligible game they hold.
-    const byPlayer = new Map<number, Candidate[]>();
-    for (const c of found) {
-      const arr = byPlayer.get(c.playerB.id) ?? [];
-      arr.push(c);
-      byPlayer.set(c.playerB.id, arr);
-    }
-    const trimmed: Candidate[] = [];
-    for (const arr of byPlayer.values()) {
-      arr.sort((x, y) => x.gameY.date.localeCompare(y.gameY.date));
-      trimmed.push(...arr.slice(0, MAX_GAMES_PER_PARTNER));
-    }
-
-    //  Group each partner's rows together, nearest partner first.
-    trimmed.sort((x, y) => {
-      const nameCmp = x.playerB.lastName.localeCompare(y.playerB.lastName);
-      if (x.playerB.id === y.playerB.id) return x.gameY.date.localeCompare(y.gameY.date);
-      const xBest = Math.min(...trimmed.filter((c) => c.playerB.id === x.playerB.id).map((c) => c.weekDistance));
-      const yBest = Math.min(...trimmed.filter((c) => c.playerB.id === y.playerB.id).map((c) => c.weekDistance));
-      if (xBest !== yBest) return xBest - yBest;
-      return nameCmp;
+    return findSwapSuggestions({
+      players,
+      games,
+      playerAId: playerA.id,
+      gameAId: gameA.id,
+      totalWeeks: season.totalWeeks,
+      weeksBack: swapWeeksBack,
+      weeksAhead: swapWeeksAhead,
+      maxGamesPerPartner: MAX_GAMES_PER_PARTNER,
     });
-    return trimmed;
   }
 
   const candidates = suggestions ?? [];

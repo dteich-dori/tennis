@@ -29,6 +29,7 @@ export function Nav() {
   if (
     pathname === "/login" ||
     pathname === "/online-schedule" ||
+    pathname === "/swap-finder" ||
     pathname === "/join" ||
     pathname === "/sms-terms" ||
     pathname === "/privacy" ||
