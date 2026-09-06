@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Deliberately blue, not the app's green: on a home screen the two
+       must be told apart at a glance, so colour AND shape differ. -->
+  <rect width="512" height="512" rx="96" fill="#1d4ed8"/>
+  <!-- Top arrow, pointing right -->
+  <path d="M104 176 H352 V138 L444 202 L352 266 V228 H104 Z" fill="#ffffff"/>
+  <!-- Bottom arrow, pointing left -->
+  <path d="M408 284 H160 V246 L68 310 L160 374 V336 H408 Z" fill="#c8e84a"/>
+</svg>

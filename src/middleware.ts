@@ -29,6 +29,9 @@ export async function middleware(request: NextRequest) {
     pathname === "/icon-192.png" ||
     pathname === "/icon-512.png" ||
     pathname === "/apple-touch-icon.png" ||
+    pathname.startsWith("/swap-icon") || // Swap Finder home-screen icons — must be
+                                         // fetchable without a login or iOS shows a
+                                         // screenshot instead of the tile
     pathname.startsWith("/api/ics/") || // public calendar subscriptions — protected by per-player token
     pathname.startsWith("/calendar/subscribe/") || // public landing page that redirects to webcal://
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
