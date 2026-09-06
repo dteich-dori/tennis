@@ -76,9 +76,22 @@ export function generateGamesByDatePdf(
 
   const pageWidth = doc.internal.pageSize.getWidth();   // 612
   const pageHeight = doc.internal.pageSize.getHeight();  // 792
-  const marginLeft = 30;
-  const marginRight = 30;
-  const tableWidth = pageWidth - marginLeft - marginRight;
+  //  Mirrored margins for two-sided printing into a 3-hole binder: the
+  //  binding edge is on the LEFT of odd (front) pages and the RIGHT of
+  //  even (back) pages. A fixed left margin punches holes through the
+  //  text on every second sheet. 1" gutter clears the 1/4" holes with
+  //  room to spare; 0.5" on the open edge.
+  const GUTTER = 72;
+  const OUTER = 36;
+  //  Constant width, so columns don't shift between front and back.
+  const tableWidth = pageWidth - GUTTER - OUTER;
+
+  /** Left edge of the content for a given page number. */
+  function leftFor(pageNo: number): number {
+    return pageNo % 2 === 1 ? GUTTER : OUTER;
+  }
+
+  let marginLeft = leftFor(1);
 
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
@@ -137,6 +150,7 @@ export function generateGamesByDatePdf(
   function startNewPage() {
     if (!isFirstPage) {
       doc.addPage();
+      marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
     }
     isFirstPage = false;
     drawPageHeader();
@@ -343,9 +357,10 @@ export function generateGamesByDatePdf(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(130, 130, 130);
-    doc.text(preparedText, marginLeft, footerY);
+    const left = leftFor(i);
+    doc.text(preparedText, left, footerY);
     doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+    doc.text(`Page ${i} of ${totalPages}`, left + tableWidth, footerY, { align: "right" });
 
     //  Clinic notice, emphasised by weight and colour rather than a
     //  highlight panel: this sits close to the page edge and there is no
@@ -584,9 +599,22 @@ export function generateGamesByDateWorksheetPdf(
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const marginLeft = 30;
-  const marginRight = 30;
-  const tableWidth = pageWidth - marginLeft - marginRight;
+  //  Mirrored margins for two-sided printing into a 3-hole binder: the
+  //  binding edge is on the LEFT of odd (front) pages and the RIGHT of
+  //  even (back) pages. A fixed left margin punches holes through the
+  //  text on every second sheet. 1" gutter clears the 1/4" holes with
+  //  room to spare; 0.5" on the open edge.
+  const GUTTER = 72;
+  const OUTER = 36;
+  //  Constant width, so columns don't shift between front and back.
+  const tableWidth = pageWidth - GUTTER - OUTER;
+
+  /** Left edge of the content for a given page number. */
+  function leftFor(pageNo: number): number {
+    return pageNo % 2 === 1 ? GUTTER : OUTER;
+  }
+
+  let marginLeft = leftFor(1);
 
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
@@ -713,6 +741,7 @@ export function generateGamesByDateWorksheetPdf(
     // Always start each week on a new page
     if (!isFirstPage) {
       doc.addPage();
+      marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
     }
     isFirstPage = false;
     drawPageHeader(weekNum);
@@ -725,6 +754,7 @@ export function generateGamesByDateWorksheetPdf(
       // Check space
       if (currentY + dateHeaderHeight + tableHeaderHeight + totalRowHeight > pageHeight - 40) {
         doc.addPage();
+        marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
         drawPageHeader(weekNum);
         currentY = 76;
       }
@@ -748,6 +778,7 @@ export function generateGamesByDateWorksheetPdf(
         // Page break check
         if (currentY + totalRowHeight > pageHeight - 40) {
           doc.addPage();
+          marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
           drawPageHeader(weekNum);
           currentY = 80;
           drawTableHeaderRow();
@@ -866,9 +897,10 @@ export function generateGamesByDateWorksheetPdf(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(130, 130, 130);
-    doc.text(preparedText, marginLeft, footerY);
+    const left = leftFor(i);
+    doc.text(preparedText, left, footerY);
     doc.text("Player 1 brings new balls", pageWidth / 2, footerY, { align: "center" });
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginRight, footerY, { align: "right" });
+    doc.text(`Page ${i} of ${totalPages}`, left + tableWidth, footerY, { align: "right" });
 
     //  Matches the compact report's footer: emphasised by weight and
     //  colour, not a highlight panel — nothing guarantees a free band
