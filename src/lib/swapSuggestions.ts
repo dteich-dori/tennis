@@ -118,6 +118,11 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
   if (!playerA || !gameA) return [];
 
   const skill = playerA.skillLevel || "";
+  //  Anyone already in the game being given up cannot take it: they hold
+  //  a slot in it themselves, so there is nothing to hand over. The swap
+  //  endpoint rejects this as a same-day clash, but it should never be
+  //  offered in the first place.
+  const alreadyInGameA = new Set((gameA.assignments ?? []).map((a) => a.playerId));
   //  Window sits around the game being given up, not around today: a
   //  game entered by number can be anywhere in the season.
   const lo = Math.max(1, gameA.weekNumber - weeksBack);
@@ -135,6 +140,7 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
       const pB = playerById.get(a.playerId);
       if (!pB || !pB.isActive) continue;
       if (pB.contractedFrequency === "0") continue; // subs are paid, not swapped
+      if (alreadyInGameA.has(pB.id)) continue;      // already in the game being given up
       if ((pB.skillLevel || "") !== skill) continue;
       if (whyCannotPlay(playerA.id, g, players, games, gameA.id)) continue;
       if (whyCannotPlay(pB.id, gameA, players, games, g.id)) continue;
