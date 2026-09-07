@@ -1200,7 +1200,7 @@ export default function CommunicationsPage() {
           <div>
             <label
               className="flex items-center gap-2 text-sm cursor-pointer"
-              title="Append a per-player webcal:// subscription link. The recipient clicks it and their calendar app creates a separate, toggleable 'Brooklake Tennis' calendar that auto-updates."
+              title="Append a per-player link that copies their season's games into their own calendar as editable events. A one-time import, not a subscription — it does not update when the schedule changes."
             >
               <input
                 type="checkbox"
@@ -1248,13 +1248,13 @@ export default function CommunicationsPage() {
                 <p className="text-xs text-blue-700 mt-1">
                   A link to this player&apos;s calendar will be sent to {testEmail || "(test email not set)"}.
                 </p>
-                <label className="mt-2 flex items-center gap-2 text-xs text-blue-900 cursor-pointer" title="Preview mode — subscribing only adds one event instead of the full season">
+                <label className="mt-2 flex items-center gap-2 text-xs text-blue-900 cursor-pointer" title="Preview mode — the import adds only one event instead of the full season, so a test send does not fill your calendar">
                   <input
                     type="checkbox"
                     checked={testFirstEventOnly}
                     onChange={(e) => setTestFirstEventOnly(e.target.checked)}
                   />
-                  Preview mode: subscription shows only the first game
+                  Preview mode: import adds only the first game
                 </label>
               </div>
             )}
