@@ -1188,7 +1188,7 @@ export default function CommunicationsPage() {
               </label>
             </div>
             <p className="text-xs text-muted mt-1">
-              {attachPersonalSchedule && "Calendar attachments require an email client — channel is locked to Email only."}
+              {attachPersonalSchedule && "The calendar link needs an email client — channel is locked to Email only."}
               {!attachPersonalSchedule && channel === "both" && "Players get email AND text if both are configured. Players with only one channel get that one."}
               {!attachPersonalSchedule && channel === "email" && "All players with email receive an email."}
               {!attachPersonalSchedule && channel === "sms" && "Players with phone+carrier get text. Players without get email as fallback."}
@@ -1214,11 +1214,17 @@ export default function CommunicationsPage() {
               Include personal calendar link
             </label>
             <p className="text-xs text-muted mt-1">
-              Appends a <code>webcal://</code> link at the bottom of each email. When clicked, the
-              recipient&apos;s calendar app subscribes and creates a separate <strong>Brooklake
-              Tennis</strong> calendar that can be toggled on/off independently from their personal
-              calendar — and auto-updates if the schedule changes. Games where they bring balls are
-              marked with an asterisk.
+              Appends a personal link at the bottom of each email. The recipient taps it,
+              confirms, and their season&apos;s games are copied into their own calendar as
+              ordinary events — so they can edit or delete any of them. Games where they
+              bring balls are marked with an asterisk.
+            </p>
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-1.5">
+              <strong>This is a one-time copy, not a subscription.</strong> It will not update
+              when the schedule changes, which is deliberate: swaps are agreed on the club
+              board and never reach this system, so a live feed would keep showing games the
+              player has swapped away. The email tells them to delete a swapped game and enter
+              the new one themselves.
             </p>
 
             {/* Test-as-player dropdown: only visible when Test + link */}
