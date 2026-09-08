@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
         reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
         reminderChannel: "sms-fallback",
         reminderTemplateId: null,
+        reminderStartTime: null,
       });
     }
 
@@ -61,6 +62,7 @@ export async function PUT(request: NextRequest) {
       reminderTemplate?: string;
       reminderChannel?: string;
       reminderTemplateId?: number | null;
+      reminderStartTime?: string | null;
     };
     const {
       seasonId,
@@ -75,6 +77,7 @@ export async function PUT(request: NextRequest) {
       reminderTemplate,
       reminderChannel,
       reminderTemplateId,
+      reminderStartTime,
     } = body;
 
     if (!seasonId) {
@@ -92,6 +95,22 @@ export async function PUT(request: NextRequest) {
         );
       }
       safeHour = n;
+    }
+
+    //  "HH:MM" as stored on games.start_time, or empty/null for every game.
+    let safeStartTime: string | null | undefined = undefined;
+    if (reminderStartTime !== undefined) {
+      const raw = (reminderStartTime ?? "").trim();
+      if (raw === "") {
+        safeStartTime = null;
+      } else if (/^\d{2}:\d{2}$/.test(raw)) {
+        safeStartTime = raw;
+      } else {
+        return NextResponse.json(
+          { error: 'reminderStartTime must be "HH:MM" (e.g. 09:00) or empty for all games' },
+          { status: 400 }
+        );
+      }
     }
 
     const database = await db();
@@ -122,6 +141,7 @@ export async function PUT(request: NextRequest) {
         }
         updates.reminderChannel = reminderChannel;
       }
+      if (safeStartTime !== undefined) updates.reminderStartTime = safeStartTime;
       if (reminderTemplateId !== undefined) {
         // null = clear / use inline template; integer = use that template id
         updates.reminderTemplateId = reminderTemplateId;

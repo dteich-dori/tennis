@@ -149,6 +149,8 @@ export default function CommunicationsPage() {
   );
   const [reminderTemplateId, setReminderTemplateId] = useState<number | null>(null);
   const [reminderChannel, setReminderChannel] = useState<Channel>("sms-fallback");
+  //  "" means every game tomorrow; "HH:MM" restricts to that start time.
+  const [reminderStartTime, setReminderStartTime] = useState<string>("");
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
@@ -227,6 +229,7 @@ export default function CommunicationsPage() {
       reminderHour?: number;
       reminderTemplate?: string;
       reminderChannel?: Channel;
+      reminderStartTime?: string | null;
       reminderTemplateId?: number | null;
     };
     setFromName(data.fromName || "Tennis Club");
@@ -237,6 +240,7 @@ export default function CommunicationsPage() {
     if (typeof data.reminderTemplate === "string" && data.reminderTemplate)
       setReminderTemplate(data.reminderTemplate);
     if (data.reminderChannel) setReminderChannel(data.reminderChannel);
+    setReminderStartTime(data.reminderStartTime ?? "");
     if (data.reminderTemplateId !== undefined)
       setReminderTemplateId(data.reminderTemplateId);
     setTestPhone(data.testPhone || "");
@@ -371,6 +375,7 @@ export default function CommunicationsPage() {
         reminderHour,
         reminderTemplate,
         reminderChannel,
+        reminderStartTime,
         reminderTemplateId,
       }),
     });
@@ -1665,15 +1670,46 @@ export default function CommunicationsPage() {
               </label>
             </div>
             <p className="text-xs text-muted mb-2">
-              Once a day around <strong>6 PM Eastern</strong>, every player
-              who has a normal game tomorrow gets an automatic email + SMS
-              reminder. Uses the template below with {"{firstName}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"} variables.
+              Once a day around <strong>6 PM Eastern</strong>, every player with a
+              game tomorrow gets an automatic reminder — restricted to one start
+              time if you set one below. Variables: {"{firstName}"}, {"{lastName}"},{" "}
+              {"{name}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"}, {"{group}"}{" "}
+              (Don&rsquo;s / Solo).
               <br />
               <span className="text-[11px] text-muted/70">
                 (Send time is fixed by the Vercel Hobby plan&apos;s daily-cron
                 limit. Edit <code>vercel.json</code> to change it.)
               </span>
             </p>
+            <div className="mt-2">
+              <label className="block text-xs font-medium mb-1">
+                Only remind about games starting at
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={reminderStartTime}
+                  onChange={(e) => setReminderStartTime(e.target.value)}
+                  placeholder="09:00"
+                  className="border border-border rounded px-3 py-1.5 text-sm w-28"
+                />
+                {reminderStartTime.trim() !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => setReminderStartTime("")}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    all games
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted mt-1">
+                24-hour <code>HH:MM</code>, matching the schedule exactly (e.g.{" "}
+                <code>09:00</code>). Leave blank to remind about every game
+                tomorrow.
+              </p>
+            </div>
+
             <div className="mt-2">
               <label className="block text-xs font-medium mb-1">Send via</label>
               <div className="flex flex-wrap gap-x-4 gap-y-1">

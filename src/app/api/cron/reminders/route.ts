@@ -18,7 +18,8 @@ import { sendEmail, sendBulkSms, validateEmailConfig, hasSmsCapability } from "@
  * Hourly Vercel cron. For every season whose email_settings has
  * `reminders_enabled = 1` AND `reminder_hour` matches the current ET hour,
  * send a per-player reminder for tomorrow's NORMAL games (status='normal',
- * any group). Each player gets one personalised message via email and/or
+ * any group). If `reminder_start_time` is set, only games starting at that
+ * time are included — e.g. "09:00" reminds the early slot only. Each player gets one personalised message via email and/or
  * SMS according to what their profile has.
  *
  * Auth: requires `Authorization: Bearer ${CRON_SECRET}`. Vercel cron sends
@@ -158,14 +159,20 @@ export async function GET(request: NextRequest) {
         and(
           eq(games.seasonId, settings.seasonId),
           eq(games.date, tomorrow),
-          eq(games.status, "normal")
+          eq(games.status, "normal"),
+          //  Optional start-time filter. Unset means every game tomorrow.
+          ...(settings.reminderStartTime
+            ? [eq(games.startTime, settings.reminderStartTime)]
+            : [])
         )
       );
 
     if (tomorrowGames.length === 0) {
       seasonResults.push({
         seasonId: settings.seasonId,
-        skipped: `no games on ${tomorrow}`,
+        skipped: settings.reminderStartTime
+          ? `no games at ${settings.reminderStartTime} on ${tomorrow}`
+          : `no games on ${tomorrow}`,
       });
       continue;
     }

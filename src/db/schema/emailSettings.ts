@@ -29,4 +29,10 @@ export const emailSettings = sqliteTable("email_settings", {
   // subject + body (with full variable substitution) instead of the
   // inline reminder_template text above. Nullable for backward compat.
   reminderTemplateId: integer("reminder_template_id"),
+  // Restrict reminders to games starting at this time, "HH:MM" as stored
+  // on games.start_time (e.g. "09:00"). NULL = every game tomorrow, which
+  // is the original behaviour. Kept configurable rather than hardcoded
+  // because start times change between seasons, and a stale hardcoded
+  // value would silently remind nobody.
+  reminderStartTime: text("reminder_start_time"),
 });
