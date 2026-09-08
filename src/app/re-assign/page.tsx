@@ -142,8 +142,14 @@ export default function ReAssignPage() {
   const [swapPlayerId, setSwapPlayerId] = useState<number | null>(null);
   const [swapPlayerSearch, setSwapPlayerSearch] = useState("");
   const [swapGameAId, setSwapGameAId] = useState<number | null>(null);
-  const [swapWeeksAhead, setSwapWeeksAhead] = useState(1); // 0 = current only, 1 = +1 week, etc.
-  const [swapWeeksBack, setSwapWeeksBack] = useState(0); // 0 = none, 1 = include previous week
+  //  Search window either side of the game being given up. These used to
+  //  be 1 ahead / 0 back, which is far too tight: measured over the live
+  //  season, Suggest came back empty 21% of the time for Solo games (only
+  //  11 solo players, all one skill level) against 3% at the wider span.
+  //  The public /swap-finder always used 4/6 and found partners for the
+  //  same games, so the two screens disagreed on identical input.
+  const [swapWeeksAhead, setSwapWeeksAhead] = useState(6);
+  const [swapWeeksBack, setSwapWeeksBack] = useState(4);
   const [swapping, setSwapping] = useState(false);
   const [swapBanner, setSwapBanner] = useState<string>("");
   const [swapError, setSwapError] = useState<string>("");
@@ -1387,10 +1393,12 @@ function SwapTab(props: SwapTabProps) {
             </p>
           ) : candidates.length === 0 ? (
             <p className="p-3 text-sm text-muted">
-              No contract player of the same skill level has an eligible game within{" "}
-              {swapWeeksBack} week(s) before / {swapWeeksAhead} after game #
-              {gameA.gameNumber}. Widen the radius above, or re-assign manually on the
-              Schedule page.
+              No contract player of the same skill level has an eligible game
+              within <strong>{swapWeeksBack} week(s) before</strong> /{" "}
+              <strong>{swapWeeksAhead} after</strong> game #{gameA.gameNumber}.
+              Widen the search window at the top of this tab and press Suggest
+              again — Solo games in particular often need a wider span, since
+              there are far fewer solo players to swap with.
             </p>
           ) : (
             <div className="overflow-x-auto">
