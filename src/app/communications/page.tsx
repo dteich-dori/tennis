@@ -128,6 +128,17 @@ function PhoneIcon() {
   );
 }
 
+/** "09:00" -> "9:00 AM", for prose. */
+function fmtClock(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return hhmm;
+  let h = parseInt(m[1], 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m[2]} ${ampm}`;
+}
+
 export default function CommunicationsPage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [activeTab, setActiveTab] = useState<TabView>("compose");
@@ -1671,8 +1682,13 @@ export default function CommunicationsPage() {
             </div>
             <p className="text-xs text-muted mb-2">
               Once a day around <strong>6 PM Eastern</strong>, every player with a
-              game tomorrow gets an automatic reminder — restricted to one start
-              time if you set one below. Variables: {"{firstName}"}, {"{lastName}"},{" "}
+              game next day
+              {reminderStartTime.trim() !== "" ? (
+                <> at <strong>{fmtClock(reminderStartTime)}</strong></>
+              ) : (
+                <> (any start time)</>
+              )}{" "}
+              gets an automatic reminder. Variables: {"{firstName}"}, {"{lastName}"},{" "}
               {"{name}"}, {"{date}"}, {"{time}"}, {"{court}"}, {"{partners}"}, {"{group}"}{" "}
               (Don&rsquo;s / Solo).
               <br />
