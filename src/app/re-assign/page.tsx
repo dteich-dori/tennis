@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findSwapSuggestions, whyCannotPlay } from "@/lib/swapSuggestions";
+import { formatPhone } from "@/lib/formatPhone";
 
 interface Season {
   id: number;
@@ -25,6 +26,9 @@ interface Player {
   skillLevel: string;
   contractedFrequency: string;
   soloGames: number | null;
+  //  Shown beside a suggested swap partner so they can be rung straight
+  //  from this screen. /api/players already returns it.
+  cellNumber: string | null;
   blockedDays: number[];
   vacations: Vacation[];
   doNotPair: number[];
@@ -1420,6 +1424,17 @@ function SwapTab(props: SwapTabProps) {
                             <span className="text-xs text-muted">
                               ({c.playerB.skillLevel})
                             </span>
+                            {c.playerB.cellNumber ? (
+                              <a
+                                href={`tel:${c.playerB.cellNumber.replace(/\D/g, "")}`}
+                                className="block text-xs text-primary hover:underline"
+                                title="Call to arrange the swap"
+                              >
+                                {formatPhone(c.playerB.cellNumber)}
+                              </a>
+                            ) : (
+                              <span className="block text-xs text-muted">no cell number</span>
+                            )}
                           </>
                         ) : (
                           <span className="text-xs text-muted pl-3">↳ also offers</span>
