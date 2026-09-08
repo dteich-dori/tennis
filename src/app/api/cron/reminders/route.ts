@@ -245,7 +245,8 @@ export async function GET(request: NextRequest) {
           time: formatTime(gameMeta.startTime),
           court: String(gameMeta.courtNumber),
           partners: partners || "(no other players yet)",
-          group: gameMeta.group,
+          //  Readable in a text message: the column stores "dons"/"solo".
+          group: gameMeta.group === "solo" ? "Solo" : "Don's",
         };
 
         const body = substitute(templateBody, ctx);
