@@ -15,10 +15,15 @@ import { findSwapSuggestions, type SwapPlayer, type SwapGame } from "@/lib/swapS
 /**
  * Read-only swap suggestions for the public /swap-finder page.
  *
- * Deliberately narrow: it returns names, skill-matched partners and game
- * details, and NOTHING else. The admin /api/players endpoint carries
- * emails, phone numbers and account balances, which is why this page
- * does not use it.
+ * Deliberately narrow: names, skill-matched partners, game details, and
+ * — for suggested partners only — a cell number, because a swap is
+ * arranged by ringing the other player. Everything else the admin
+ * /api/players endpoint carries (email, home number, carrier, balances,
+ * credits, skill level, contract) stays out of this response, which is
+ * why this page does not use that endpoint.
+ *
+ * The cell numbers of suggested partners are therefore readable by
+ * anyone who has this page's URL.
  *
  * Nothing here writes. Executing a swap stays behind the login.
  *
@@ -78,6 +83,10 @@ async function loadSeasonData() {
     assignBy.set(a.gameId, arr);
   }
 
+  //  Keyed separately rather than widening SwapPlayer: the matching
+  //  library has no business knowing contact details.
+  const cellById = new Map<number, string | null>(pRows.map((p) => [p.id, p.cellNumber]));
+
   const swapPlayers: SwapPlayer[] = pRows.map((p) => ({
     id: p.id,
     firstName: p.firstName,
@@ -104,14 +113,14 @@ async function loadSeasonData() {
     assignments: assignBy.get(g.id) ?? [],
   }));
 
-  return { season, swapPlayers, swapGames };
+  return { season, swapPlayers, swapGames, cellById };
 }
 
 export async function GET(request: NextRequest) {
   try {
     const data = await loadSeasonData();
     if (!data) return NextResponse.json({ error: "No season found" }, { status: 404 });
-    const { season, swapPlayers, swapGames } = data;
+    const { season, swapPlayers, swapGames, cellById } = data;
 
     const playerIdRaw = request.nextUrl.searchParams.get("playerId");
     const gameNumberRaw = request.nextUrl.searchParams.get("gameNumber");
@@ -198,14 +207,19 @@ export async function GET(request: NextRequest) {
 
     // Group by partner so the phone can render one card per person.
     const grouped: {
-      player: { id: number; firstName: string; lastName: string };
+      player: { id: number; firstName: string; lastName: string; cellNumber: string | null };
       games: { gameNumber: number; date: string; dayOfWeek: number; startTime: string; courtNumber: number; weekNumber: number }[];
     }[] = [];
     for (const c of candidates) {
       let entry = grouped.find((x) => x.player.id === c.playerB.id);
       if (!entry) {
         entry = {
-          player: { id: c.playerB.id, firstName: c.playerB.firstName, lastName: c.playerB.lastName },
+          player: {
+            id: c.playerB.id,
+            firstName: c.playerB.firstName,
+            lastName: c.playerB.lastName,
+            cellNumber: cellById.get(c.playerB.id) ?? null,
+          },
           games: [],
         };
         grouped.push(entry);

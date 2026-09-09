@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatPhone } from "@/lib/formatPhone";
 
 /**
  * Swap Finder — public, read-only, phone-first.
@@ -37,6 +38,8 @@ interface PlayerLite {
   id: number;
   firstName: string;
   lastName: string;
+  /** Only sent for suggested partners — the picker list has no numbers. */
+  cellNumber?: string | null;
 }
 
 interface GameLite {
@@ -301,8 +304,22 @@ export default function SwapFinderPage() {
                   key={s.player.id}
                   className="border-2 border-gray-200 rounded-xl overflow-hidden"
                 >
-                  <div className="px-4 py-3 bg-gray-50 text-lg font-semibold border-b-2 border-gray-200">
-                    {s.player.lastName}, {s.player.firstName}
+                  <div className="px-4 py-3 bg-gray-50 border-b-2 border-gray-200">
+                    <div className="text-lg font-semibold">
+                      {s.player.lastName}, {s.player.firstName}
+                    </div>
+                    {/*  Tapping the number dials it — the whole point of
+                        this page is to end in a phone call. */}
+                    {s.player.cellNumber ? (
+                      <a
+                        href={`tel:${s.player.cellNumber.replace(/\D/g, "")}`}
+                        className="text-lg font-bold text-blue-700 underline"
+                      >
+                        {formatPhone(s.player.cellNumber)}
+                      </a>
+                    ) : (
+                      <span className="text-base text-gray-500">no cell number</span>
+                    )}
                   </div>
                   <div className="px-4 py-2">
                     <div className="text-sm text-gray-500 mb-1">
