@@ -60,7 +60,7 @@ export default function SwapFinderPage() {
   const [playerId, setPlayerId] = useState<number | null>(null);
   const [myGames, setMyGames] = useState<GameLite[] | null>(null);
   const [loadingGames, setLoadingGames] = useState(false);
-  const [gameNumber, setGameNumber] = useState("");
+  const [chosen, setChosen] = useState<GameLite | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{
@@ -110,15 +110,21 @@ export default function SwapFinderPage() {
       )
     : players;
 
-  const suggest = async (num: number) => {
+  const suggest = async (g: GameLite) => {
     if (!playerId) return;
-    setGameNumber(String(num));
+    //  Collapsing the date list to a one-line summary is what makes the
+    //  answer visible: a full-season player has ~100 games, so results
+    //  rendered underneath the list would be off the bottom of a phone.
+    setChosen(g);
     setLoading(true);
     setError("");
     setResult(null);
+    //  The list shrinks under the finger that tapped it; put the top of
+    //  the page back in view so the answer is where the eye already is.
+    window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       const res = await fetch(
-        `/api/public/swap-suggest?playerId=${playerId}&gameNumber=${num}`
+        `/api/public/swap-suggest?playerId=${playerId}&gameNumber=${g.gameNumber}`
       );
       const data = await res.json();
       if (!res.ok) {
@@ -137,7 +143,7 @@ export default function SwapFinderPage() {
     setPlayerId(null);
     setSearch("");
     setMyGames(null);
-    setGameNumber("");
+    setChosen(null);
     setResult(null);
     setError("");
   };
@@ -188,6 +194,7 @@ export default function SwapFinderPage() {
                     key={p.id}
                     onClick={() => {
                       setPlayerId(p.id);
+                      setChosen(null);
                       setResult(null);
                       setError("");
                     }}
@@ -202,14 +209,38 @@ export default function SwapFinderPage() {
         )}
       </div>
 
-      {/* Step 2 — which game. Tapping a date runs the search: one tap,
-          no number to remember. */}
+      {/* Step 2 — which game. Tapping a date runs the search and folds
+          the list away, so the answer replaces the question. */}
       {selected && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">
             2. Which date can&rsquo;t they play?
           </div>
-          {loadingGames ? (
+
+          {chosen ? (
+            <button
+              onClick={() => {
+                setChosen(null);
+                setResult(null);
+                setError("");
+              }}
+              className="w-full flex items-center justify-between border-2 border-blue-600 bg-blue-50 rounded-xl px-4 py-4 text-left"
+            >
+              <span>
+                <span className="block text-lg font-semibold">
+                  {DAYS[chosen.dayOfWeek]} {fmtDate(chosen.date)}
+                </span>
+                <span className="block text-base text-gray-600">
+                  {fmtTime(chosen.startTime)} · Court {chosen.courtNumber} ·{" "}
+                  {chosen.group === "solo" ? "SOLO" : "Don's"} · Game #
+                  {chosen.gameNumber}
+                </span>
+              </span>
+              <span className="text-sm text-blue-700 underline shrink-0 ml-3">
+                change
+              </span>
+            </button>
+          ) : loadingGames ? (
             <p className="text-gray-500 px-1 py-2">Loading games…</p>
           ) : !myGames || myGames.length === 0 ? (
             <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
@@ -217,32 +248,29 @@ export default function SwapFinderPage() {
             </p>
           ) : (
             <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
-              {myGames.map((g) => {
-                const picked = gameNumber === String(g.gameNumber);
-                return (
-                  <button
-                    key={g.gameNumber}
-                    onClick={() => suggest(g.gameNumber)}
-                    disabled={loading}
-                    className={`w-full text-left px-4 py-4 border-b border-gray-100 last:border-b-0 ${
-                      picked ? "bg-blue-50 border-l-4 border-l-blue-600" : "active:bg-blue-50"
-                    }`}
-                  >
-                    <div className="text-lg font-semibold">
-                      {DAYS[g.dayOfWeek]} {fmtDate(g.date)}
-                    </div>
-                    <div className="text-base text-gray-600">
-                      {fmtTime(g.startTime)} · Court {g.courtNumber} ·{" "}
-                      {g.group === "solo" ? "SOLO" : "Don's"} · Game #{g.gameNumber}
-                    </div>
-                  </button>
-                );
-              })}
+              {myGames.map((g) => (
+                <button
+                  key={g.gameNumber}
+                  onClick={() => suggest(g)}
+                  className="w-full text-left px-4 py-4 border-b border-gray-100 last:border-b-0 active:bg-blue-50"
+                >
+                  <div className="text-lg font-semibold">
+                    {DAYS[g.dayOfWeek]} {fmtDate(g.date)}
+                  </div>
+                  <div className="text-base text-gray-600">
+                    {fmtTime(g.startTime)} · Court {g.courtNumber} ·{" "}
+                    {g.group === "solo" ? "SOLO" : "Don's"} · Game #{g.gameNumber}
+                  </div>
+                </button>
+              ))}
             </div>
           )}
-          {loading && (
-            <p className="text-base text-blue-700 mt-3 px-1">Looking…</p>
-          )}
+        </div>
+      )}
+
+      {loading && (
+        <div className="border-2 border-blue-200 bg-blue-50 text-blue-800 rounded-xl px-4 py-4 text-lg mb-5">
+          Looking for swaps…
         </div>
       )}
 
@@ -255,17 +283,6 @@ export default function SwapFinderPage() {
       {/* Results */}
       {result && (
         <div>
-          <div className="border-2 border-gray-200 rounded-xl px-4 py-3 mb-4 bg-gray-50">
-            <div className="text-sm text-gray-500">Giving up</div>
-            <div className="text-lg font-semibold">
-              Game #{result.gameA.gameNumber}
-            </div>
-            <div className="text-base">
-              {DAYS[result.gameA.dayOfWeek]} {fmtDate(result.gameA.date)} ·{" "}
-              {fmtTime(result.gameA.startTime)} · Court {result.gameA.courtNumber}
-            </div>
-          </div>
-
           <div className="text-base font-semibold mb-2">
             {result.suggestions.length === 0
               ? "No one can take this game"
