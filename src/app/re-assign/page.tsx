@@ -1347,7 +1347,9 @@ function SwapTab(props: SwapTabProps) {
               <button
                 onClick={() => setSuggestions(computeCandidates())}
                 disabled={!gameA}
-                className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 hover:opacity-90"
+                //  Grey, not a faded blue: at 50% opacity the disabled
+                //  state still read as "blue button, press me".
+                className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 disabled:bg-gray-200 disabled:text-gray-500 disabled:hover:opacity-100 disabled:cursor-not-allowed"
                 title={
                   gameA
                     ? "Find contract players of the same skill who can take this game"

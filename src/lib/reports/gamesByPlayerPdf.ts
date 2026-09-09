@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
 import { stampScheduleMark } from "./scheduleMark";
+import { drawNameWithSwap } from "./swapMark";
 
 interface Assignment {
   id: number;
@@ -273,17 +274,7 @@ export function generateGamesByPlayerPdf(
       for (let slot = 1; slot <= 4; slot++) {
         const assignment = game.assignments.find((a) => a.slotPosition === slot);
         const name = assignment ? getPlayerName(assignment.playerId, allPlayers) : "\u2014";
-        //  Swap serial in the smallest legible size — the same number
-        //  appears on the other half of the swap, on the other player's
-        //  sheet and on the Games By Date schedule.
-        doc.text(name, x + 4, textY);
-        if (assignment?.swapSerial != null) {
-          const size = doc.getFontSize();
-          const w = doc.getTextWidth(name);
-          doc.setFontSize(5);
-          doc.text(`(${assignment.swapSerial})`, x + 4 + w + 0.5, textY);
-          doc.setFontSize(size);
-        }
+        drawNameWithSwap(doc, name, assignment?.swapSerial, x + 4, textY);
         x += colWidths[3 + slot];
       }
 

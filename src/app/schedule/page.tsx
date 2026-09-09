@@ -1781,7 +1781,7 @@ export default function SchedulePage() {
                                       })()}
                                       {assignment.swapSerial != null && (
                                         <span
-                                          className="text-muted text-[9px] align-super ml-0.5"
+                                          className="text-muted text-[10px] align-super ml-0.5"
                                           title={`Swap #${assignment.swapSerial} — the other half of this swap carries the same number`}
                                         >
                                           ({assignment.swapSerial})

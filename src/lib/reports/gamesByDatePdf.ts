@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { openPdfWithName } from "./openPdfWithName";
 import { stampScheduleMark } from "./scheduleMark";
+import { drawNameWithSwap } from "./swapMark";
 
 interface Assignment {
   id: number;
@@ -51,30 +52,6 @@ function getPlayerName(playerId: number, players: Player[]): string {
   return player.lastName;
 }
 
-
-/**
- * Draw a player name, followed by its swap serial in the smallest
- * legible size — e.g. "Teich(1)". Both halves of a swap carry the same
- * number, so a printed sheet can be read as a pair.
- *
- * The suffix is drawn separately at 5pt rather than baked into the
- * string, so it stays small regardless of the row's font size.
- */
-function drawNameWithSwap(
-  doc: jsPDF,
-  name: string,
-  swapSerial: number | null | undefined,
-  x: number,
-  y: number
-): void {
-  doc.text(name, x, y);
-  if (swapSerial == null) return;
-  const size = doc.getFontSize();
-  const w = doc.getTextWidth(name);
-  doc.setFontSize(5);
-  doc.text(`(${swapSerial})`, x + w + 0.5, y);
-  doc.setFontSize(size);
-}
 
 function formatDisplayDate(dateStr: string): string {
   const [year, month, day] = dateStr.split("-");
