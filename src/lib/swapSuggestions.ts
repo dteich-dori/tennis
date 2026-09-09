@@ -48,13 +48,20 @@ export interface SwapCandidate {
  *
  * `excludeGameId` is the slot the player is giving up in the swap — it
  * must be ignored, or their own current game reads as a clash.
+ *
+ * `leavingPlayerId` is the player vacating `game` in the same swap. They
+ * are still listed in its assignments but will not be on the court, so
+ * they cannot be a do-not-pair conflict. Without this the two halves of
+ * every swap block each other whenever the pair happens to be a
+ * do-not-pair — a valid swap, silently dropped.
  */
 export function whyCannotPlay(
   pid: number,
   game: SwapGame,
   players: SwapPlayer[],
   games: SwapGame[],
-  excludeGameId?: number
+  excludeGameId?: number,
+  leavingPlayerId?: number
 ): string | null {
   const playerById = new Map(players.map((p) => [p.id, p]));
   const p = playerById.get(pid);
@@ -82,6 +89,7 @@ export function whyCannotPlay(
   }
   for (const a of game.assignments ?? []) {
     if (a.playerId === pid) continue;
+    if (leavingPlayerId !== undefined && a.playerId === leavingPlayerId) continue;
     if ((p.doNotPair ?? []).includes(a.playerId)) return "Do-not-pair conflict";
     const other = playerById.get(a.playerId);
     if (other && (other.doNotPair ?? []).includes(pid)) return "Do-not-pair conflict";
@@ -145,8 +153,10 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
       if (pB.contractedFrequency === "0") continue; // subs are paid, not swapped
       if (alreadyInGameA.has(pB.id)) continue;      // already in the game being given up
       if ((pB.skillLevel || "") !== skill) continue;
-      if (whyCannotPlay(playerA.id, g, players, games, gameA.id)) continue;
-      if (whyCannotPlay(pB.id, gameA, players, games, g.id)) continue;
+      //  Each side is judged against the game as it will be AFTER the
+      //  swap: B is leaving g, A is leaving gameA.
+      if (whyCannotPlay(playerA.id, g, players, games, gameA.id, pB.id)) continue;
+      if (whyCannotPlay(pB.id, gameA, players, games, g.id, playerA.id)) continue;
       found.push({
         playerB: pB,
         gameY: g,
