@@ -135,6 +135,9 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
     if (g.weekNumber < lo || g.weekNumber > hi) continue;
     if (g.group !== gameA.group) continue;
     if (g.date === gameA.date) continue; // same-date clash for whoever moves
+    //  Mirror of the alreadyInGameA guard below: a game player A already
+    //  plays in is nothing for them to receive, so it is not a swap.
+    if ((g.assignments ?? []).some((a) => a.playerId === playerA.id)) continue;
     for (const a of g.assignments ?? []) {
       if (a.playerId === playerA.id) continue;
       const pB = playerById.get(a.playerId);

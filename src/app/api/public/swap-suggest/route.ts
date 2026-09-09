@@ -26,6 +26,10 @@ import { findSwapSuggestions, type SwapPlayer, type SwapGame } from "@/lib/swapS
  *       -> { players: [{ id, firstName, lastName }] }  (contract players
  *          who actually hold a game, for the picker)
  *
+ *   GET /api/public/swap-suggest?playerId=N
+ *       -> { playerA, games: [...] }  (that player's own games, so the
+ *          phone can offer dates to tap instead of a number to type)
+ *
  *   GET /api/public/swap-suggest?playerId=N&gameNumber=M
  *       -> { gameA, suggestions: [{ player, games: [...] }] }
  */
@@ -133,8 +137,34 @@ export async function GET(request: NextRequest) {
     const gameNumber = gameNumberRaw ? parseInt(gameNumberRaw, 10) : NaN;
     const playerA = swapPlayers.find((p) => p.id === playerId);
     if (!playerA) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+
+    //  No game number: hand back this player's own games so the phone can
+    //  show dates to tap. Typing a number meant reading it off a printed
+    //  schedule first, which is exactly what this page is meant to avoid.
     if (!Number.isFinite(gameNumber)) {
-      return NextResponse.json({ error: "Enter a game number" }, { status: 400 });
+      const mine = swapGames
+        .filter(
+          (g) =>
+            g.status === "normal" && g.assignments.some((a) => a.playerId === playerId)
+        )
+        .sort((a, b) => a.date.localeCompare(b.date) || a.gameNumber - b.gameNumber)
+        .map((g) => ({
+          gameNumber: g.gameNumber,
+          date: g.date,
+          dayOfWeek: g.dayOfWeek,
+          startTime: g.startTime,
+          courtNumber: g.courtNumber,
+          weekNumber: g.weekNumber,
+          group: g.group,
+        }));
+      //  Past games cannot be swapped, but if the whole season is behind us
+      //  an empty screen looks broken — fall back to the full list then.
+      const today = new Date().toISOString().slice(0, 10);
+      const upcoming = mine.filter((g) => g.date >= today);
+      return NextResponse.json({
+        playerA: { firstName: playerA.firstName, lastName: playerA.lastName },
+        games: upcoming.length > 0 ? upcoming : mine,
+      });
     }
 
     const gameA = swapGames.find((g) => g.gameNumber === gameNumber && g.status === "normal");

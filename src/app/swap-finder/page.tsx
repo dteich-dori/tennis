@@ -10,7 +10,9 @@ import { useState, useEffect } from "react";
  * committed by an admin on the Re-assign screen.
  *
  * Built for a large-touch-target phone screen: one thing per step, no
- * nav, no tables, and a numeric keypad for the game number.
+ * nav, no tables, and nothing to type beyond a name — the player's own
+ * games are listed by date to tap, because reading a game number off a
+ * printed schedule is the step this page exists to remove.
  */
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -44,6 +46,7 @@ interface GameLite {
   startTime: string;
   courtNumber: number;
   weekNumber: number;
+  group?: string;
 }
 
 interface Suggestion {
@@ -55,6 +58,8 @@ export default function SwapFinderPage() {
   const [players, setPlayers] = useState<PlayerLite[]>([]);
   const [search, setSearch] = useState("");
   const [playerId, setPlayerId] = useState<number | null>(null);
+  const [myGames, setMyGames] = useState<GameLite[] | null>(null);
+  const [loadingGames, setLoadingGames] = useState(false);
   const [gameNumber, setGameNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -71,6 +76,32 @@ export default function SwapFinderPage() {
       .catch(() => setError("Could not load the player list."));
   }, []);
 
+  //  A player's games are fetched as soon as they are chosen, so step 2
+  //  is a list of dates rather than a number to look up and type.
+  useEffect(() => {
+    if (!playerId) {
+      setMyGames(null);
+      return;
+    }
+    let stale = false;
+    setLoadingGames(true);
+    fetch(`/api/public/swap-suggest?playerId=${playerId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (stale) return;
+        setMyGames(d.games ?? []);
+      })
+      .catch(() => {
+        if (!stale) setError("Could not load this player's games.");
+      })
+      .finally(() => {
+        if (!stale) setLoadingGames(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [playerId]);
+
   const selected = players.find((p) => p.id === playerId) ?? null;
 
   const shown = search.trim()
@@ -79,14 +110,15 @@ export default function SwapFinderPage() {
       )
     : players;
 
-  const suggest = async () => {
-    if (!playerId || !gameNumber.trim()) return;
+  const suggest = async (num: number) => {
+    if (!playerId) return;
+    setGameNumber(String(num));
     setLoading(true);
     setError("");
     setResult(null);
     try {
       const res = await fetch(
-        `/api/public/swap-suggest?playerId=${playerId}&gameNumber=${encodeURIComponent(gameNumber.trim())}`
+        `/api/public/swap-suggest?playerId=${playerId}&gameNumber=${num}`
       );
       const data = await res.json();
       if (!res.ok) {
@@ -104,6 +136,7 @@ export default function SwapFinderPage() {
   const startOver = () => {
     setPlayerId(null);
     setSearch("");
+    setMyGames(null);
     setGameNumber("");
     setResult(null);
     setError("");
@@ -169,32 +202,47 @@ export default function SwapFinderPage() {
         )}
       </div>
 
-      {/* Step 2 — which game */}
+      {/* Step 2 — which game. Tapping a date runs the search: one tap,
+          no number to remember. */}
       {selected && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">
-            2. Which game number can&rsquo;t they play?
+            2. Which date can&rsquo;t they play?
           </div>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={gameNumber}
-            onChange={(e) => {
-              setGameNumber(e.target.value.replace(/[^0-9]/g, ""));
-              setResult(null);
-              setError("");
-            }}
-            placeholder="Game number"
-            className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-2xl tracking-wide mb-3"
-          />
-          <button
-            onClick={suggest}
-            disabled={!gameNumber.trim() || loading}
-            className="w-full bg-blue-600 text-white rounded-xl px-4 py-4 text-xl font-semibold disabled:opacity-40 active:bg-blue-700"
-          >
-            {loading ? "Looking…" : "Suggest"}
-          </button>
+          {loadingGames ? (
+            <p className="text-gray-500 px-1 py-2">Loading games…</p>
+          ) : !myGames || myGames.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              {selected.firstName} has no games left to swap.
+            </p>
+          ) : (
+            <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+              {myGames.map((g) => {
+                const picked = gameNumber === String(g.gameNumber);
+                return (
+                  <button
+                    key={g.gameNumber}
+                    onClick={() => suggest(g.gameNumber)}
+                    disabled={loading}
+                    className={`w-full text-left px-4 py-4 border-b border-gray-100 last:border-b-0 ${
+                      picked ? "bg-blue-50 border-l-4 border-l-blue-600" : "active:bg-blue-50"
+                    }`}
+                  >
+                    <div className="text-lg font-semibold">
+                      {DAYS[g.dayOfWeek]} {fmtDate(g.date)}
+                    </div>
+                    <div className="text-base text-gray-600">
+                      {fmtTime(g.startTime)} · Court {g.courtNumber} ·{" "}
+                      {g.group === "solo" ? "SOLO" : "Don's"} · Game #{g.gameNumber}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {loading && (
+            <p className="text-base text-blue-700 mt-3 px-1">Looking…</p>
+          )}
         </div>
       )}
 
