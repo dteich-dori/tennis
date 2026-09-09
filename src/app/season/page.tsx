@@ -17,6 +17,7 @@ interface Season {
   daysPerWeek?: number;
   allowCapOverrideAtSeasonEnd?: boolean;
   allowedCompositions?: string | null;
+  deleteProtection?: boolean;
 }
 
 interface Holiday {
@@ -60,6 +61,10 @@ export default function SeasonPage() {
   const [maxACGamesPerSeason, setMaxACGamesPerSeason] = useState<string>("1");
   const [daysPerWeek, setDaysPerWeek] = useState<number>(5);
   const [allowCapOverrideAtSeasonEnd, setAllowCapOverrideAtSeasonEnd] = useState<boolean>(false);
+  //  Delete protection: the schedule is out with the players, so nothing
+  //  season-wide may run. The server enforces it (lib/scheduleProtection);
+  //  this state only greys the buttons and says why.
+  const [deleteProtection, setDeleteProtection] = useState<boolean>(false);
   // Which A/B/C compositions the auto-assign may produce (v1.204+).
   // Initialised from the code-shipped defaults; overridden by the
   // saved value when the season loads.
@@ -150,6 +155,7 @@ export default function SeasonPage() {
       setMaxACGamesPerSeason(latest.maxACGamesPerSeason != null ? String(latest.maxACGamesPerSeason) : "none");
       setDaysPerWeek(latest.daysPerWeek === 7 ? 7 : latest.daysPerWeek === 6 ? 6 : 5);
       setAllowCapOverrideAtSeasonEnd(!!latest.allowCapOverrideAtSeasonEnd);
+      setDeleteProtection(!!latest.deleteProtection);
       // Parse allowed compositions (JSON array), fall back to defaults if
       // NULL or malformed.
       try {
@@ -333,6 +339,39 @@ export default function SeasonPage() {
       }),
     });
   }, [allowCapOverrideAtSeasonEnd, activeSeason]);
+
+  // Auto-save the delete-protection toggle.
+  const deleteProtectionInitialized = useRef(false);
+  const [deleteProtectionMessage, setDeleteProtectionMessage] = useState("");
+  useEffect(() => {
+    if (!activeSeason) return;
+    if (!deleteProtectionInitialized.current) {
+      deleteProtectionInitialized.current = true;
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch("/api/seasons", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: activeSeason.id,
+            startDate: activeSeason.startDate,
+            deleteProtection,
+          }),
+        });
+        setDeleteProtectionMessage(
+          res.ok
+            ? deleteProtection
+              ? "Protected. Bulk deletes and auto-assign are blocked."
+              : "Protection off. Bulk deletes and auto-assign are available again."
+            : "Could not save — the setting may not have taken effect."
+        );
+      } catch {
+        setDeleteProtectionMessage("Could not save — the setting may not have taken effect.");
+      }
+    })();
+  }, [deleteProtection, activeSeason]);
 
   // Auto-save allowedCompositions grid. If the save succeeds we clear
   // the "Saved." tick after 1.5s; if it fails we KEEP the red banner
@@ -1254,6 +1293,59 @@ export default function SeasonPage() {
       </div>
 
       {activeTab === "current" && (<>
+
+      {/*  Delete protection — first thing on the page, because it governs
+          every destructive control below it. */}
+      <div
+        className={`border-2 rounded-lg p-4 mb-6 ${
+          deleteProtection
+            ? "border-green-600 bg-green-50"
+            : "border-amber-300 bg-amber-50"
+        }`}
+      >
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={deleteProtection}
+            onChange={(e) => {
+              if (
+                e.target.checked ||
+                confirm(
+                  "Turn OFF delete protection?\n\nBulk deletes and auto-assign will work again, " +
+                    "and they rewrite the schedule the players are already holding."
+                )
+              ) {
+                setDeleteProtection(e.target.checked);
+              }
+            }}
+            className="accent-green-600 mt-0.5 w-5 h-5"
+          />
+          <span>
+            <span className="block font-semibold">
+              Delete protection {deleteProtection ? "— ON" : "— off"}
+            </span>
+            <span className="block text-sm text-muted mt-1">
+              Turn this on once the schedule has been released to the players. It blocks
+              every season-wide rewrite: <strong>Generate / Rebuild Games</strong>,{" "}
+              <strong>Delete all games</strong>, <strong>Clear assignments</strong> (Don&rsquo;s
+              and Solo), <strong>all auto-assign</strong> (week, season, solo, re-assign,
+              end-of-season sweep), <strong>Balance balls / pairings</strong>, and{" "}
+              <strong>deleting the season</strong>.
+            </span>
+            <span className="block text-sm text-muted mt-1">
+              Still allowed: assigning or unassigning a single player, and swaps — the
+              one-at-a-time corrections a released schedule still needs.
+            </span>
+            <span className="block text-xs text-muted mt-1">
+              Enforced on the server, so a stale tab or a second device cannot get round it.
+            </span>
+            {deleteProtectionMessage && (
+              <span className="block text-sm font-medium mt-2">{deleteProtectionMessage}</span>
+            )}
+          </span>
+        </label>
+      </div>
+
       {/* Season Dates + Reset + Clear All */}
       <div className="border border-border rounded-lg p-6 mb-6">
         <h2 className="font-semibold mb-4">Season {activeSeason?.id}</h2>
@@ -1661,7 +1753,7 @@ export default function SeasonPage() {
                         />
                         <button
                           onClick={handleRebuildGames}
-                          disabled={rebuildConfirmText !== "REBUILD"}
+                          disabled={rebuildConfirmText !== "REBUILD" || deleteProtection}
                           className="bg-danger text-white px-4 py-2 rounded text-sm disabled:opacity-40 transition-colors"
                         >
                           Rebuild Games
@@ -1945,7 +2037,7 @@ export default function SeasonPage() {
               </p>
               <button
                 onClick={handleGenerate}
-                disabled={generating}
+                disabled={generating || deleteProtection}
                 title={`Creates a game slot for every court schedule entry for each of the ${totalWeeks} weeks. Holiday dates are automatically marked.`}
                 className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
               >
@@ -1986,7 +2078,7 @@ export default function SeasonPage() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={handleDonsAssignAll}
-              disabled={donsAssigning}
+              disabled={donsAssigning || deleteProtection}
               title="Auto-assign all Don's games for every unassigned week. Solo games must be assigned first."
               className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
             >
@@ -2065,7 +2157,7 @@ export default function SeasonPage() {
             </label>
             <button
               onClick={handleBalanceDonsBalls}
-              disabled={donsBallsBalancing || donsAssigning}
+              disabled={donsBallsBalancing || donsAssigning || deleteProtection}
               title="Redistributes ball-bringing duty across all Don's games for the entire season so each player brings balls for about 1/4 of their games."
               className="bg-indigo-500 text-white px-4 py-2 rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
             >
@@ -2073,7 +2165,7 @@ export default function SeasonPage() {
             </button>
             <button
               onClick={handleClearDonsAssignAll}
-              disabled={donsAssigning}
+              disabled={donsAssigning || deleteProtection}
               title="Removes all Don's player assignments for the entire season. Solo assignments are not affected."
               className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
             >
@@ -2141,7 +2233,7 @@ export default function SeasonPage() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={handleSoloAssign}
-              disabled={soloAssigning}
+              disabled={soloAssigning || deleteProtection}
               title="Assigns players to all solo game slots for all weeks based on solo share levels and pair settings. Best used on a fresh season."
               className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
             >
@@ -2149,7 +2241,7 @@ export default function SeasonPage() {
             </button>
             <button
               onClick={handleBalanceSoloBalls}
-              disabled={soloBallsBalancing}
+              disabled={soloBallsBalancing || deleteProtection}
               title="Redistributes ball-bringing duty across all solo games for the entire season so each player brings balls for about 1/4 of their games."
               className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600 transition-colors disabled:opacity-50"
             >
@@ -2157,7 +2249,7 @@ export default function SeasonPage() {
             </button>
             <button
               onClick={handleClearSoloAssign}
-              disabled={soloAssigning}
+              disabled={soloAssigning || deleteProtection}
               title="Removes all solo player assignments for the entire season. Don's assignments are not affected."
               className="border border-danger text-danger px-4 py-2 rounded text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
             >

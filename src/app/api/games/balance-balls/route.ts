@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 /**
  * POST /api/games/balance-balls
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const blocked = await blockIfProtected(seasonId, "Balance balls");
+    if (blocked) return blocked;
 
     if (!allWeeks && !weekNumber) {
       return NextResponse.json(

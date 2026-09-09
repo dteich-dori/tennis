@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { seasons, holidays, games } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import {
+  protectedSeasonIds,
+  blockIfProtected,
+  ensureDeleteProtectionColumn,
+  PROTECTION_MESSAGE,
+} from "@/lib/scheduleProtection";
 
 export async function GET() {
   try {
@@ -60,8 +66,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number; allowCapOverrideAtSeasonEnd?: boolean; allowedCompositions?: string[] | null };
-    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek, allowCapOverrideAtSeasonEnd, allowedCompositions } = body;
+    const body = (await request.json()) as { id: number; startDate: string; maxCGamesPerWeek?: number | null; maxCGamesPerWeek1x?: number | null; maxACGamesPerSeason?: number | null; daysPerWeek?: number; allowCapOverrideAtSeasonEnd?: boolean; allowedCompositions?: string[] | null; deleteProtection?: boolean };
+    const { id, startDate, maxCGamesPerWeek, maxCGamesPerWeek1x, maxACGamesPerSeason, daysPerWeek, allowCapOverrideAtSeasonEnd, allowedCompositions, deleteProtection } = body;
 
     const date = new Date(startDate + "T00:00:00");
     if (date.getDay() !== 1) {
@@ -97,6 +103,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    if (deleteProtection !== undefined) {
+      await ensureDeleteProtectionColumn();
+    }
+
     const result = await database
       .update(seasons)
       .set({
@@ -111,6 +121,8 @@ export async function PUT(request: NextRequest) {
             : undefined,
         allowCapOverrideAtSeasonEnd:
           allowCapOverrideAtSeasonEnd !== undefined ? allowCapOverrideAtSeasonEnd : undefined,
+        deleteProtection:
+          deleteProtection !== undefined ? deleteProtection : undefined,
         allowedCompositions:
           allowedCompositions === undefined
             ? undefined
@@ -140,6 +152,14 @@ export async function DELETE(request: NextRequest) {
     const database = await db();
 
     if (all === "true") {
+      //  Names no season, but would take the protected one with it.
+      const guarded = await protectedSeasonIds();
+      if (guarded.length > 0) {
+        return NextResponse.json(
+          { error: PROTECTION_MESSAGE, deleteProtection: true, operation: "Delete all seasons" },
+          { status: 423 }
+        );
+      }
       await database.delete(games);
       await database.delete(holidays);
       await database.delete(seasons);
@@ -151,6 +171,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const seasonId = parseInt(id);
+    const blocked = await blockIfProtected(seasonId, "Delete season");
+    if (blocked) return blocked;
     await database.delete(games).where(eq(games.seasonId, seasonId));
     await database.delete(holidays).where(eq(holidays.seasonId, seasonId));
     await database.delete(seasons).where(eq(seasons.id, seasonId));

@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 /**
  * DELETE /api/games/clear-assignments
@@ -19,6 +20,9 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const blocked = await blockIfProtected(seasonId, "Clear all assignments");
+    if (blocked) return blocked;
 
     const database = await db();
 

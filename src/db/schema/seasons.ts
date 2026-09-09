@@ -35,6 +35,12 @@ export const seasons = sqliteTable("seasons", {
   // weekly contract cap. When false (default), cap-empty markers stay
   // visible on the Schedule grid but the slots are left unassigned.
   allowCapOverrideAtSeasonEnd: integer("allow_cap_override_at_season_end", { mode: "boolean" }).notNull().default(false),
+  // When true, the schedule is considered RELEASED: every season-wide
+  // delete and every auto-assign path is refused server-side (HTTP 423).
+  // Individual edits — assign, unassign, swap — stay available, because
+  // those are the deliberate one-at-a-time corrections a released
+  // schedule still needs. See lib/scheduleProtection.ts.
+  deleteProtection: integer("delete_protection", { mode: "boolean" }).notNull().default(false),
   // JSON-encoded array of composition keys (e.g. ["AAAA","AABB",...])
   // the auto-assign may produce. NULL = use lib/compositions.ts
   // DEFAULT_ALLOWED_KEYS (mirrors the pre-v1.204 hard-coded rule).

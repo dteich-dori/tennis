@@ -8,6 +8,7 @@ import {
   type PlayerData,
   type DnpPair,
 } from "@/lib/balancePairings";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 /**
  * POST /api/games/balance-pairings
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const blocked = await blockIfProtected(seasonId, "Balance pairings");
+    if (blocked) return blocked;
 
     // Load season for maxDeratedPerWeek
     const seasonRows = await database

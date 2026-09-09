@@ -24,6 +24,7 @@ interface Season {
   lastAutoAssignAt: string | null;
   lastPlayerChangeAt: string | null;
   scheduleVersion?: number;
+  deleteProtection?: boolean;
 }
 
 interface Assignment {
@@ -1160,7 +1161,12 @@ export default function SchedulePage() {
             {games.filter((g) => g.group === "dons" && g.status === "normal").some((g) => g.assignments.length > 0) && (
               <button
                 onClick={handleClearDonsAssignments}
-                disabled={autoAssignLoading || runAllLoading}
+                disabled={autoAssignLoading || runAllLoading || !!season?.deleteProtection}
+                title={
+                  season?.deleteProtection
+                    ? "Delete protection is on — turn it off in Season Setup"
+                    : undefined
+                }
                 className="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-sm hover:bg-red-600 active:bg-red-700 disabled:opacity-40 transition-colors text-sm"
               >
                 {autoAssignLoading ? "Clearing..." : "Clear Don's"}
@@ -1169,8 +1175,15 @@ export default function SchedulePage() {
             <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
               <button
                 onClick={handleAutoAssign}
-                disabled={autoAssignLoading || runAllLoading || games.length === 0}
-                title="Auto-assign open Don's game slots for this week"
+                disabled={
+                  autoAssignLoading || runAllLoading || games.length === 0 ||
+                  !!season?.deleteProtection
+                }
+                title={
+                  season?.deleteProtection
+                    ? "Delete protection is on — turn it off in Season Setup"
+                    : "Auto-assign open Don's game slots for this week"
+                }
                 className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-40 transition-colors text-sm"
               >
                 {autoAssignLoading ? "Assigning..." : "Assign Week"}

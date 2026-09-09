@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, seasons, holidays, courtSchedules } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 /**
  * POST /api/games/generate
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as { seasonId: number };
     const { seasonId } = body;
+
+    const blocked = await blockIfProtected(seasonId, "Generate games");
+    if (blocked) return blocked;
 
     const database = await db();
 

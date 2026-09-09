@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments } from "@/db/schema";
 import { eq, and, inArray, count } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 /**
  * GET /api/games?seasonId=1
@@ -141,6 +142,9 @@ export async function DELETE(request: NextRequest) {
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
+
+    const blocked = await blockIfProtected(seasonId, "Delete all games");
+    if (blocked) return blocked;
 
     const database = await db();
     await database.delete(games).where(eq(games.seasonId, parseInt(seasonId)));

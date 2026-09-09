@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { POST as autoAssignPOST } from "../auto-assign/route";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 interface Target {
   gameId: number;
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
       assignExtra = false,
       assignSubs = false,
     } = body;
+
+    const blocked = await blockIfProtected(seasonId, "Re-assign");
+    if (blocked) return blocked;
 
     if (!seasonId || !effectiveDate) {
       return NextResponse.json(

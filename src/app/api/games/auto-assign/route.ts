@@ -4,6 +4,7 @@ import { games, gameAssignments, gameCappedSlots, players, playerBlockedDays, pl
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { weeklyContractedGames, isSubEligible } from "@/lib/contractFrequency";
 import { parseAllowedCompositions, canReachAllowed } from "@/lib/compositions";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 // Types
 interface PlayerData {
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
     if (!seasonId || !weekNumber) {
       return NextResponse.json({ error: "seasonId and weekNumber required" }, { status: 400 });
     }
+
+    const blocked = await blockIfProtected(seasonId, "Auto-assign (week)");
+    if (blocked) return blocked;
 
     const database = await db();
     const log: LogEntry[] = [];
@@ -2315,6 +2319,9 @@ export async function DELETE(request: NextRequest) {
     if (!seasonId || !weekNumber) {
       return NextResponse.json({ error: "seasonId and weekNumber required" }, { status: 400 });
     }
+
+    const blocked = await blockIfProtected(seasonId, "Clear week assignments");
+    if (blocked) return blocked;
 
     const database = await db();
 

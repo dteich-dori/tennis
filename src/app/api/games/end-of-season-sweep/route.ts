@@ -13,6 +13,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { weeklyContractedGames } from "@/lib/contractFrequency";
 import { bumpScheduleVersion } from "@/lib/bumpScheduleVersion";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 interface LogEntry {
   type: "info" | "warning" | "error";
@@ -41,6 +42,9 @@ export async function POST(request: NextRequest) {
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
+
+    const blocked = await blockIfProtected(seasonId, "End-of-season sweep");
+    if (blocked) return blocked;
     const database = await db();
     const log: LogEntry[] = [];
 

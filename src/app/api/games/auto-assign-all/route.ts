@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { games, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 interface LogEntry {
   type: "info" | "warning" | "error";
@@ -25,6 +26,13 @@ export async function POST(request: NextRequest) {
     };
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
+    }
+
+    //  infoOnly is a read-only probe the Season page uses to preview
+    //  what a run would do, so it stays available while protected.
+    if (!infoOnly) {
+      const blocked = await blockIfProtected(seasonId, "Auto-assign (whole season)");
+      if (blocked) return blocked;
     }
 
     const database = await db();
@@ -283,6 +291,9 @@ export async function DELETE(request: NextRequest) {
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
     }
+
+    const blocked = await blockIfProtected(seasonId, "Clear all Don's assignments");
+    if (blocked) return blocked;
 
     const database = await db();
 

@@ -9,6 +9,7 @@ import {
   playerDoNotPair,
 } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 // Types
 interface SoloPlayerData {
@@ -59,6 +60,9 @@ const DAYS = [
 export async function POST(request: NextRequest) {
   try {
     const { seasonId } = (await request.json()) as { seasonId: number };
+
+    const blocked = await blockIfProtected(seasonId, "Auto-assign (solo)");
+    if (blocked) return blocked;
 
     if (!seasonId) {
       return NextResponse.json(
@@ -786,6 +790,9 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const blocked = await blockIfProtected(seasonId, "Clear all solo assignments");
+    if (blocked) return blocked;
 
     const database = await db();
 
