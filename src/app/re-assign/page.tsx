@@ -1122,33 +1122,35 @@ function SwapTab(props: SwapTabProps) {
   const candidates = suggestions ?? [];
 
   /**
-   * The game named by the Game # box, or null with an error set.
+   * The game named by the Game # box, or null.
    *
-   * Suggest resolves the number itself rather than relying on the input
-   * having been blurred first: clicking a DISABLED button fires no
-   * pointer event, so the box never blurred, swapGameAId stayed null,
-   * and the button stayed disabled — type a number, click Suggest, and
-   * nothing at all happened.
+   * `quiet` runs it on every keystroke to decide whether Suggest is
+   * enabled, without shouting "No game #4" at someone halfway through
+   * typing 412. The loud form runs on blur and on Enter.
+   *
+   * Resolving as you type is what lets Suggest be disabled safely:
+   * clicking a DISABLED button fires no pointer event, so a button that
+   * waits for the box to blur can never be clicked into life — type a
+   * number, click Suggest, and nothing at all happens.
    */
-  function resolveGameA(): Game | null {
+  function resolveGameA(quiet = false): Game | null {
+    const fail = (msg: string) => {
+      if (!quiet) setGameNumberError(msg);
+      return null;
+    };
     if (!playerA) return null;
     const raw = gameNumberInput.trim();
     if (raw === "") {
       if (gameA) return gameA; // picked from the grid below
-      setGameNumberError("Enter a game number.");
-      return null;
+      return fail("Enter a game number.");
     }
     const n = parseInt(raw, 10);
     const g = games.find((x) => x.gameNumber === n && x.status === "normal");
-    if (!g) {
-      setGameNumberError(`No game #${raw} in this season.`);
-      return null;
-    }
+    if (!g) return fail(`No game #${raw} in this season.`);
     if (!(g.assignments ?? []).some((a) => a.playerId === playerA.id)) {
-      setGameNumberError(`${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`);
-      return null;
+      return fail(`${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`);
     }
-    setGameNumberError("");
+    if (!quiet) setGameNumberError("");
     return g;
   }
 
@@ -1307,9 +1309,19 @@ function SwapTab(props: SwapTabProps) {
                   type="number"
                   value={gameNumberInput}
                   onChange={(e) => {
-                    setGameNumberInput(e.target.value);
+                    const raw = e.target.value;
+                    setGameNumberInput(raw);
                     setGameNumberError("");
                     setSuggestions(null);
+                    //  Resolve against the value being typed: state has
+                    //  not updated yet in this tick.
+                    const n = parseInt(raw.trim(), 10);
+                    const g = games.find(
+                      (x) => x.gameNumber === n && x.status === "normal"
+                    );
+                    const mine =
+                      g && (g.assignments ?? []).some((a) => a.playerId === playerA.id);
+                    setSwapGameAId(mine ? g!.id : null);
                   }}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
@@ -1333,19 +1345,14 @@ function SwapTab(props: SwapTabProps) {
                 />
               </div>
               <button
-                onClick={() => {
-                  const g = resolveGameA();
-                  if (!g) {
-                    setSwapGameAId(null);
-                    setSuggestions(null);
-                    return;
-                  }
-                  setSwapGameAId(g.id);
-                  setSuggestions(computeCandidates(g));
-                }}
-                disabled={!playerA}
+                onClick={() => setSuggestions(computeCandidates())}
+                disabled={!gameA}
                 className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 hover:opacity-90"
-                title="Find contract players of the same skill who can take this game"
+                title={
+                  gameA
+                    ? "Find contract players of the same skill who can take this game"
+                    : "Enter a game number this player is in"
+                }
               >
                 Suggest
               </button>
