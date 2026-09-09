@@ -1053,8 +1053,8 @@ export default function ReportsPage() {
         <div className="border border-border rounded-lg p-5 hover:shadow-sm transition-shadow">
           <h2 className="font-semibold mb-2">Player Availability</h2>
           <p className="text-sm text-muted mb-4">
-            Active players with the days of the week they can play, vacation date ranges, and
-            (for subs) any Available Dates restriction.
+            Every active player — contract players and subs alike — with the days of the week
+            they can play, vacation date ranges, and (for subs) any Available Dates restriction.
           </p>
           <button
             onClick={handlePlayerAvailabilityReport}

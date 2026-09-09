@@ -15,7 +15,6 @@ interface Player {
   // date, the default for both contracted players and unrestricted
   // subs). See player_available_dates schema comment.
   availableDates?: { startDate: string; endDate: string }[];
-  excludedFromAutoAssign?: boolean;
 }
 
 interface Season {
@@ -128,9 +127,14 @@ export function generatePlayerAvailabilityPdf(
     return `${freq}x`;
   }
 
-  // Filter + sort: active, not-excluded players, alphabetical by lastName
+  //  Every active player, alphabetical by lastName — subs included.
+  //  excludedFromAutoAssign is deliberately NOT a filter here: it means
+  //  "the algorithm must not place this player", which is the normal
+  //  state for a sub who is only ever slotted in by hand. They are still
+  //  people you ring to fill a game, so their availability belongs in
+  //  the report that exists to answer "who can play that day?".
   const active = players
-    .filter((p) => p.isActive && !p.excludedFromAutoAssign)
+    .filter((p) => p.isActive)
     .sort((a, b) => {
       const c = a.lastName.localeCompare(b.lastName);
       return c !== 0 ? c : a.firstName.localeCompare(b.firstName);
