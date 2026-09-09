@@ -1105,13 +1105,13 @@ function SwapTab(props: SwapTabProps) {
   /** At most this many offered games per swap partner. */
   const MAX_GAMES_PER_PARTNER = 2;
 
-  function computeCandidates(): Candidate[] {
-    if (!playerA || !gameA) return [];
+  function computeCandidates(forGame: Game | null = gameA): Candidate[] {
+    if (!playerA || !forGame) return [];
     return findSwapSuggestions({
       players,
       games,
       playerAId: playerA.id,
-      gameAId: gameA.id,
+      gameAId: forGame.id,
       totalWeeks: season.totalWeeks,
       weeksBack: swapWeeksBack,
       weeksAhead: swapWeeksAhead,
@@ -1120,6 +1120,37 @@ function SwapTab(props: SwapTabProps) {
   }
 
   const candidates = suggestions ?? [];
+
+  /**
+   * The game named by the Game # box, or null with an error set.
+   *
+   * Suggest resolves the number itself rather than relying on the input
+   * having been blurred first: clicking a DISABLED button fires no
+   * pointer event, so the box never blurred, swapGameAId stayed null,
+   * and the button stayed disabled — type a number, click Suggest, and
+   * nothing at all happened.
+   */
+  function resolveGameA(): Game | null {
+    if (!playerA) return null;
+    const raw = gameNumberInput.trim();
+    if (raw === "") {
+      if (gameA) return gameA; // picked from the grid below
+      setGameNumberError("Enter a game number.");
+      return null;
+    }
+    const n = parseInt(raw, 10);
+    const g = games.find((x) => x.gameNumber === n && x.status === "normal");
+    if (!g) {
+      setGameNumberError(`No game #${raw} in this season.`);
+      return null;
+    }
+    if (!(g.assignments ?? []).some((a) => a.playerId === playerA.id)) {
+      setGameNumberError(`${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`);
+      return null;
+    }
+    setGameNumberError("");
+    return g;
+  }
 
   const performSwap = async (c: Candidate) => {
     if (!playerA || !gameA) return;
@@ -1280,34 +1311,39 @@ function SwapTab(props: SwapTabProps) {
                     setGameNumberError("");
                     setSuggestions(null);
                   }}
-                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                    const g = resolveGameA();
+                    setSwapGameAId(g ? g.id : null);
+                    setSuggestions(g ? computeCandidates(g) : null);
+                  }}
                   onBlur={(e) => {
-                    const raw = e.target.value.trim();
-                    if (raw === "") { setSwapGameAId(null); return; }
-                    const n = parseInt(raw, 10);
-                    const g = games.find((x) => x.gameNumber === n && x.status === "normal");
-                    if (!g) {
+                    if (e.target.value.trim() === "") {
                       setSwapGameAId(null);
-                      setGameNumberError(`No game #${raw} in this season.`);
+                      setGameNumberError("");
                       return;
                     }
-                    if (!(g.assignments ?? []).some((a) => a.playerId === playerA.id)) {
-                      setSwapGameAId(null);
-                      setGameNumberError(
-                        `${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`
-                      );
-                      return;
-                    }
-                    setGameNumberError("");
-                    setSwapGameAId(g.id);
+                    const g = resolveGameA();
+                    setSwapGameAId(g ? g.id : null);
                   }}
                   placeholder="e.g. 412"
                   className="border border-border rounded px-3 py-1.5 text-sm w-28"
                 />
               </div>
               <button
-                onClick={() => setSuggestions(computeCandidates())}
-                disabled={!gameA}
+                onClick={() => {
+                  const g = resolveGameA();
+                  if (!g) {
+                    setSwapGameAId(null);
+                    setSuggestions(null);
+                    return;
+                  }
+                  setSwapGameAId(g.id);
+                  setSuggestions(computeCandidates(g));
+                }}
+                disabled={!playerA}
                 className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 hover:opacity-90"
                 title="Find contract players of the same skill who can take this game"
               >
