@@ -658,7 +658,15 @@ export function generateGamesByDateWorksheetPdf(
   // with room to spare, the write-in space is stretched to fill the
   // rest of the page (see writeInHeightForWeek below) instead of leaving
   // blank margin at the bottom.
-  const assignedRowHeight = 13;
+  //  Names are drawn at 14pt so they can be read from across a table,
+  //  which needs a 17pt name row (13 was sized for 6.5pt). 17 is also
+  //  the ceiling: every week is 17 games over 5 days, and at 18pt the
+  //  busiest week no longer fits on one page (684pt needed, 676 free).
+  //  Column widths are untouched — the widest name in the roster is
+  //  78pt at 14pt, inside the 82pt usable width with room for a swap
+  //  serial; 15pt would already overflow.
+  const NAME_FONT_SIZE = 14;
+  const assignedRowHeight = 17;
   const minWriteInHeight = 14;
   const dateHeaderHeight = 13;
   const tableHeaderHeight = 13;
@@ -778,8 +786,19 @@ export function generateGamesByDateWorksheetPdf(
       for (let rowIdx = 0; rowIdx < dateGames.length; rowIdx++) {
         const game = dateGames[rowIdx];
 
-        // Page break check
-        if (currentY + totalRowHeight > pageHeight - 40) {
+        const isEarlyGame = game.startTime < "10:00";
+        const isHoliday = game.status === "holiday";
+        const isBlanked = game.status === "blanked";
+
+        const effectiveRowHeight = (isHoliday || isBlanked) ? assignedRowHeight : totalRowHeight;
+
+        //  Page break check — against the height THIS row will take.
+        //  Testing the full stretched height for a holiday row asked for
+        //  twice the space it needs, and since the stretch fills the page
+        //  exactly, a week ending in a holiday spilled its last row onto
+        //  an otherwise empty second page (weeks 15 and 16, Christmas and
+        //  New Year's).
+        if (currentY + effectiveRowHeight > pageHeight - 40) {
           doc.addPage();
           marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
           drawPageHeader(weekNum);
@@ -788,12 +807,9 @@ export function generateGamesByDateWorksheetPdf(
           doc.setFont("helvetica", "normal");
           doc.setFontSize(6.5);
         }
-
-        const isEarlyGame = game.startTime < "10:00";
-        const isHoliday = game.status === "holiday";
-        const isBlanked = game.status === "blanked";
-
-        const effectiveRowHeight = (isHoliday || isBlanked) ? assignedRowHeight : totalRowHeight;
+        //  Baseline for every text run in the name row — the small game
+        //  columns share it so they sit on the same line as the names.
+        const textY = currentY + 13;
 
         // Row background
         if (isHoliday) {
@@ -842,39 +858,41 @@ export function generateGamesByDateWorksheetPdf(
 
         // Game # (sequential based on display order)
         gameCounter++;
-        doc.text(String(gameCounter), x + 2, currentY + 9);
+        doc.text(String(gameCounter), x + 2, textY);
         x += colWidths[0];
 
         // Time
-        doc.text(game.startTime, x + 2, currentY + 9);
+        doc.text(game.startTime, x + 2, textY);
         x += colWidths[1];
 
         // Court
-        doc.text(String(game.courtNumber), x + 2, currentY + 9);
+        doc.text(String(game.courtNumber), x + 2, textY);
         x += colWidths[2];
 
         // Group
-        doc.text(game.group === "solo" ? "SOLO" : "Don's", x + 2, currentY + 9);
+        doc.text(game.group === "solo" ? "SOLO" : "Don's", x + 2, textY);
         x += colWidths[3];
 
         if (isHoliday) {
           doc.setTextColor(180, 130, 0);
           doc.setFont("helvetica", "bold");
-          doc.text(game.holidayName || "Holiday", x + 2, currentY + 9);
+          doc.text(game.holidayName || "Holiday", x + 2, textY);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(0, 0, 0);
         } else if (isBlanked) {
           doc.setTextColor(150, 150, 150);
-          doc.text("Blanked", x + 2, currentY + 9);
+          doc.text("Blanked", x + 2, textY);
           doc.setTextColor(0, 0, 0);
         } else {
-          // Player slots 1-4
+          // Player slots 1-4, at the large size
+          doc.setFontSize(NAME_FONT_SIZE);
           for (let slot = 1; slot <= 4; slot++) {
             const assignment = game.assignments.find((a) => a.slotPosition === slot);
             const name = assignment ? getPlayerName(assignment.playerId, players) : "";
-            drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, currentY + 9);
+            drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, textY);
             x += colWidths[3 + slot];
           }
+          doc.setFontSize(6.5);
         }
 
         doc.setTextColor(0, 0, 0);
