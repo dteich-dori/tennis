@@ -148,7 +148,6 @@ export function generateGamesByDatePdf(
   let currentY = 0;
   let weeksOnPage = 0;
   let isFirstPage = true;
-  let gameCounter = 0;
 
   function startNewPage() {
     if (!isFirstPage) {
@@ -296,9 +295,11 @@ export function generateGamesByDatePdf(
         let x = marginLeft;
         const textY = currentY + 11;
 
-        // Game # (sequential based on display order)
-        gameCounter++;
-        doc.text(String(gameCounter), x + 2, textY);
+        //  The season-wide game number — the one the Swap screen and a
+        //  phone call refer to. A counter restarting at 1 was right only
+        //  when printing from week 1; a reprint of a single week showed
+        //  1–17 for games that are really 239–255.
+        doc.text(String(game.gameNumber), x + 2, textY);
         x += colWidths[0];
 
         // Time
@@ -621,6 +622,12 @@ export function generateGamesByDateWorksheetPdf(
 
   const title = `Games By Date \u2014 Brooklake Don's Group ${startYear} - ${endYear}`;
 
+  //  Sized to be read from a bulletin board, not a desk. The vertical
+  //  budget is the constraint: every week is 17 games on 5 dates and
+  //  must stay on one page, so the two phone lines became one to pay
+  //  for the larger Week heading.
+  const CONTENT_TOP = 70;
+
   function drawPageHeader(weekNum: number) {
     stampScheduleMark(doc, scheduleMark);
     doc.setFontSize(14);
@@ -628,24 +635,28 @@ export function generateGamesByDateWorksheetPdf(
     doc.setTextColor(0, 0, 0);
     doc.text(title, pageWidth / 2, 36, { align: "center" });
 
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("Brooklake phone (973) 377-2235 x137   brooklaketennis.com", pageWidth / 2, 48, { align: "center" });
     doc.setFontSize(8);
-    doc.text("Lisa: (862) 485-5582    Thu: (201) 563-7718", pageWidth / 2, 58, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "Brooklake (973) 377-2235 x137  \u00b7  brooklaketennis.com  \u00b7  Lisa: (862) 485-5582  \u00b7  Thu: (201) 563-7718",
+      pageWidth / 2, 48, { align: "center" }
+    );
 
-    doc.setFontSize(10);
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text(`Week ${weekNum}`, marginLeft, 72);
+    doc.text(`Week ${weekNum}`, marginLeft, 64);
   }
 
   // Column layout — wider rows for write-in space
+  //  Game and Ct hold at most three and one digits; the spare went to
+  //  Group so "SOLO" at 11pt no longer runs into the first name. The
+  //  player columns are exactly what the widest name needs at 14pt.
   const colWidths = [
-    tableWidth * 0.06,  // #
+    tableWidth * 0.055, // #
     tableWidth * 0.07,  // Time
-    tableWidth * 0.04,  // Ct
-    tableWidth * 0.07,  // Group
+    tableWidth * 0.035, // Ct
+    tableWidth * 0.08,  // Group
     tableWidth * 0.19,  // Player 1 (*)
     tableWidth * 0.19,  // Player 2
     tableWidth * 0.19,  // Player 3
@@ -666,13 +677,19 @@ export function generateGamesByDateWorksheetPdf(
   //  78pt at 14pt, inside the 82pt usable width with room for a swap
   //  serial; 15pt would already overflow.
   const NAME_FONT_SIZE = 14;
+  //  The game columns (#, time, court, group) at 11pt: the largest size
+  //  at which "SOLO" (30.6pt) still clears the 35pt Group column; 12pt
+  //  does not. Date lines 11pt bold, column headers 9pt bold.
+  const INFO_FONT_SIZE = 11;
+  const DATE_FONT_SIZE = 11;
+  const COLHEAD_FONT_SIZE = 9;
   const assignedRowHeight = 17;
   const minWriteInHeight = 14;
-  const dateHeaderHeight = 13;
+  const dateHeaderHeight = 15;
   const tableHeaderHeight = 13;
 
   function drawTableHeaderRow() {
-    doc.setFontSize(6.5);
+    doc.setFontSize(COLHEAD_FONT_SIZE);
     doc.setFont("helvetica", "bold");
     doc.setFillColor(240, 240, 240);
     doc.rect(marginLeft, currentY, tableWidth, tableHeaderHeight, "F");
@@ -682,7 +699,7 @@ export function generateGamesByDateWorksheetPdf(
 
     let x = marginLeft;
     for (let i = 0; i < colHeaders.length; i++) {
-      doc.text(colHeaders[i], x + 2, currentY + 9);
+      doc.text(colHeaders[i], x + 2, currentY + 9.5);
       x += colWidths[i];
     }
     currentY += tableHeaderHeight;
@@ -706,7 +723,6 @@ export function generateGamesByDateWorksheetPdf(
 
   let currentY = 0;
   let isFirstPage = true;
-  let gameCounter = 0;
 
   const weeks = Array.from(gamesByWeek.keys()).sort((a, b) => a - b)
     .filter((w) => w >= weekStart && w <= weekEnd);
@@ -743,7 +759,7 @@ export function generateGamesByDateWorksheetPdf(
       }
       minContentHeight += 2; // post-date-group gap
     }
-    const availableHeight = pageHeight - 76 - 40;
+    const availableHeight = pageHeight - CONTENT_TOP - 40;
     const leftover = availableHeight - minContentHeight;
     const writeInHeightForWeek =
       leftover > 0 && normalRowCount > 0 ? minWriteInHeight + leftover / normalRowCount : minWriteInHeight;
@@ -756,7 +772,7 @@ export function generateGamesByDateWorksheetPdf(
     }
     isFirstPage = false;
     drawPageHeader(weekNum);
-    currentY = 76;
+    currentY = CONTENT_TOP;
 
     for (const date of dates) {
       const dateGames = byDate.get(date)!;
@@ -767,21 +783,21 @@ export function generateGamesByDateWorksheetPdf(
         doc.addPage();
         marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
         drawPageHeader(weekNum);
-        currentY = 76;
+        currentY = CONTENT_TOP;
       }
 
       // Date subheader
-      doc.setFontSize(7);
+      doc.setFontSize(DATE_FONT_SIZE);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(80, 80, 80);
-      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 9);
+      doc.text(`${DAYS[dow]} \u2014 ${formatDisplayDate(date)}`, marginLeft + 2, currentY + 11);
       doc.setTextColor(0, 0, 0);
       currentY += dateHeaderHeight;
 
       drawTableHeaderRow();
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.5);
+      doc.setFontSize(INFO_FONT_SIZE);
 
       for (let rowIdx = 0; rowIdx < dateGames.length; rowIdx++) {
         const game = dateGames[rowIdx];
@@ -802,10 +818,10 @@ export function generateGamesByDateWorksheetPdf(
           doc.addPage();
           marginLeft = leftFor(doc.getCurrentPageInfo().pageNumber);
           drawPageHeader(weekNum);
-          currentY = 80;
+          currentY = CONTENT_TOP;
           drawTableHeaderRow();
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(6.5);
+          doc.setFontSize(INFO_FONT_SIZE);
         }
         //  Baseline for every text run in the name row — the small game
         //  columns share it so they sit on the same line as the names.
@@ -856,9 +872,11 @@ export function generateGamesByDateWorksheetPdf(
 
         let x = marginLeft;
 
-        // Game # (sequential based on display order)
-        gameCounter++;
-        doc.text(String(gameCounter), x + 2, textY);
+        //  The season-wide game number — the one the Swap screen and a
+        //  phone call refer to. A counter restarting at 1 was right only
+        //  when printing from week 1; a reprint of a single week showed
+        //  1–17 for games that are really 239–255.
+        doc.text(String(game.gameNumber), x + 2, textY);
         x += colWidths[0];
 
         // Time
@@ -892,7 +910,7 @@ export function generateGamesByDateWorksheetPdf(
             drawNameWithSwap(doc, name, assignment?.swapSerial, x + 2, textY);
             x += colWidths[3 + slot];
           }
-          doc.setFontSize(6.5);
+          doc.setFontSize(INFO_FONT_SIZE);
         }
 
         doc.setTextColor(0, 0, 0);
