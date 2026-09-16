@@ -39,6 +39,12 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
     pathname.startsWith("/swap-finder") || // public read-only swap suggestions (no writes)
     pathname.startsWith("/api/public/") || // public API endpoints
+    pathname === "/api/cron/reminders" || // Vercel cron. It carries `Authorization: Bearer
+                                          // CRON_SECRET` and no login cookie, so this wall bounced
+                                          // it to /login every night and the reminder never ran
+                                          // (v2.331). The route enforces the bearer secret itself.
+                                          // Exact match on purpose: /api/cron/reminders/test sends
+                                          // a real message and has no auth of its own.
     pathname.startsWith("/api/migrate/") || // one-shot DB migration endpoints
     pathname === "/join" || // public sign-up + SMS opt-in landing (A2P 10DLC CTA)
     pathname === "/sms-terms" || // public combined SMS terms (legacy, kept for bookmarks)

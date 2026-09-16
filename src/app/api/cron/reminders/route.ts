@@ -334,6 +334,22 @@ export async function GET(request: NextRequest) {
         replyTo: settings.replyTo || "",
       });
     }
+    //  A night that failed used to leave no trace at all: Vercel keeps
+    //  runtime logs for an hour and the row above is only written on
+    //  success. Record failures where the admin will actually look —
+    //  the Communications history.
+    if (errors.length > 0) {
+      await database.insert(emailLog).values({
+        seasonId: settings.seasonId,
+        subject: `Daily reminders for ${tomorrow} — ${errors.length} FAILED`,
+        body: errors.join("\n"),
+        recipientGroup: `Daily Reminder (auto) — errors`,
+        recipientCount: recipients.length,
+        recipientList: recipients.join(", "),
+        fromName: settings.fromName,
+        replyTo: settings.replyTo || "",
+      });
+    }
 
     seasonResults.push({
       seasonId: settings.seasonId,
@@ -343,6 +359,9 @@ export async function GET(request: NextRequest) {
       recipients,
     });
   }
+
+  //  One line per run in the Vercel log, whatever happened.
+  console.info(`[cron/reminders] tomorrow=${tomorrow} ${JSON.stringify(seasonResults)}`);
 
   return NextResponse.json({
     success: true,
