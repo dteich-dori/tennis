@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { courtSchedules, games } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { blockIfProtected } from "@/lib/scheduleProtection";
 
 export async function GET(request: NextRequest) {
   try {
@@ -161,6 +162,21 @@ export async function DELETE(request: NextRequest) {
     }
 
     const database = await db();
+
+    //  The row carries the season, so read it before deleting: delete
+    //  protection has to know which season this belongs to, and the
+    //  404 below is more useful than silently deleting nothing.
+    const [slot] = await database
+      .select()
+      .from(courtSchedules)
+      .where(eq(courtSchedules.id, parseInt(id)));
+    if (!slot) {
+      return NextResponse.json({ error: "Court slot not found" }, { status: 404 });
+    }
+
+    const blocked = await blockIfProtected(slot.seasonId, "Delete court slot");
+    if (blocked) return blocked;
+
     await database.delete(courtSchedules).where(eq(courtSchedules.id, parseInt(id)));
 
     return NextResponse.json({ success: true });

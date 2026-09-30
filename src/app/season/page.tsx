@@ -699,8 +699,24 @@ export default function SeasonPage() {
     setCourtForm({ dayOfWeek: "1", courtNumber: "3", startTime: "10:30", isSolo: false });
   };
 
-  const handleDeleteCourtSlot = async (id: number) => {
-    await fetch(`/api/courts?id=${id}`, { method: "DELETE" });
+  //  Named confirmation — see the same guard on the Court Schedule page.
+  const handleDeleteCourtSlot = async (slot: CourtSlot) => {
+    const label = `${DAY_NAMES[slot.dayOfWeek]}, Court ${slot.courtNumber}, ${slot.startTime}`;
+    if (
+      !confirm(
+        `Delete this court slot?\n\n${label}${slot.isSolo ? " (Solo)" : ""}\n\n` +
+          `Games already on the schedule are not affected — this removes the weekly ` +
+          `slot from the season's court setup.`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/courts?id=${slot.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      alert(data.error ?? "Could not delete the court slot.");
+      return;
+    }
     await loadCourtSlots();
   };
 
@@ -1329,8 +1345,8 @@ export default function SeasonPage() {
               every season-wide rewrite: <strong>Generate / Rebuild Games</strong>,{" "}
               <strong>Delete all games</strong>, <strong>Clear assignments</strong> (Don&rsquo;s
               and Solo), <strong>all auto-assign</strong> (week, season, solo, re-assign,
-              end-of-season sweep), <strong>Balance balls / pairings</strong>, and{" "}
-              <strong>deleting the season</strong>.
+              end-of-season sweep), <strong>Balance balls / pairings</strong>,{" "}
+              <strong>deleting a court slot</strong>, and <strong>deleting the season</strong>.
             </span>
             <span className="block text-sm text-muted mt-1">
               Still allowed: assigning or unassigning a single player, and swaps — the
@@ -1695,8 +1711,14 @@ export default function SeasonPage() {
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteCourtSlot(slot.id)}
-                                    className="text-danger text-xs hover:underline"
+                                    onClick={() => handleDeleteCourtSlot(slot)}
+                                    disabled={deleteProtection}
+                                    title={
+                                      deleteProtection
+                                        ? "Delete protection is on — turn it off above"
+                                        : undefined
+                                    }
+                                    className="text-danger text-xs hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
                                   >
                                     Delete
                                   </button>

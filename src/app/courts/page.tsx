@@ -17,6 +17,7 @@ interface Season {
   id: number;
   startDate: string;
   endDate: string;
+  deleteProtection?: boolean;
 }
 
 export default function CourtsPage() {
@@ -106,8 +107,27 @@ export default function CourtsPage() {
     setIsSolo(slot.isSolo);
   };
 
-  const handleDelete = async (id: number) => {
-    await fetch(`/api/courts?id=${id}`, { method: "DELETE" });
+  //  Named confirmation. This button used to delete on the first tap,
+  //  with no undo — and on a phone it sits a thumb's width from Edit.
+  //  Deleting a slot does NOT remove the games already generated from
+  //  it, which is worth saying here: it is alarming, not fatal.
+  const handleDelete = async (slot: CourtSlot) => {
+    const label = `${DAYS[slot.dayOfWeek]}, Court ${slot.courtNumber}, ${slot.startTime}`;
+    if (
+      !confirm(
+        `Delete this court slot?\n\n${label}${slot.isSolo ? " (Solo)" : ""}\n\n` +
+          `Games already on the schedule are not affected — this removes the weekly ` +
+          `slot from the season's court setup.`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/courts?id=${slot.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      alert(data.error ?? "Could not delete the court slot.");
+      return;
+    }
     if (season) await loadCourts(season.id);
   };
 
@@ -358,8 +378,14 @@ export default function CourtsPage() {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDelete(slot.id)}
-                    className="text-danger hover:underline"
+                    onClick={() => handleDelete(slot)}
+                    disabled={!!season?.deleteProtection}
+                    title={
+                      season?.deleteProtection
+                        ? "Delete protection is on — turn it off in Season Setup"
+                        : undefined
+                    }
+                    className="text-danger hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
                   >
                     Delete
                   </button>
