@@ -235,24 +235,37 @@ export default function CourtsPage() {
   const handleImportConfirm = async () => {
     if (!season || !importPreview) return;
 
-    // Delete all existing court slots
-    for (const slot of courts) {
-      await fetch(`/api/courts?id=${slot.id}`, { method: "DELETE" });
+    //  One atomic call. This used to be a loop of deletes followed by a
+    //  loop of inserts from the browser: a failure partway through left
+    //  the season with half a court schedule, and nothing said so.
+    if (
+      !confirm(
+        `Replace the whole court schedule?\n\n` +
+          `${courts.length} existing slot${courts.length === 1 ? "" : "s"} will be removed and ` +
+          `${importPreview.length} imported slot${importPreview.length === 1 ? "" : "s"} put in ` +
+          `their place.\n\nGames already on the schedule are not affected.`
+      )
+    ) {
+      return;
     }
 
-    // Add each imported slot
-    for (const slot of importPreview) {
-      await fetch("/api/courts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          seasonId: season.id,
+    const res = await fetch("/api/courts/replace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seasonId: season.id,
+        slots: importPreview.map((slot) => ({
           dayOfWeek: slot.dayOfWeek,
           courtNumber: slot.courtNumber,
           startTime: slot.startTime,
           isSolo: slot.isSolo,
-        }),
-      });
+        })),
+      }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setImportError(data.error ?? "Could not replace the court schedule.");
+      return;
     }
 
     setImportPreview(null);
@@ -399,19 +412,36 @@ export default function CourtsPage() {
       <div className="flex items-center gap-3 mt-4">
         <button
           onClick={handleImportClick}
-          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+          disabled={!!season?.deleteProtection}
+          title={
+            season?.deleteProtection
+              ? "Delete protection is on — turn it off in Season Setup"
+              : "Replaces every court slot with the contents of a CSV file"
+          }
+          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:bg-gray-200 disabled:text-gray-500 disabled:hover:bg-gray-200 disabled:cursor-not-allowed"
         >
           Import CSV
         </button>
         <button
           onClick={handleImportFromBackup}
-          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors"
+          disabled={!!season?.deleteProtection}
+          title={
+            season?.deleteProtection
+              ? "Delete protection is on — turn it off in Season Setup"
+              : "Replaces every court slot with court-schedule.csv from the Backup folder"
+          }
+          className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary-hover transition-colors disabled:bg-gray-200 disabled:text-gray-500 disabled:hover:bg-gray-200 disabled:cursor-not-allowed"
         >
           Import from Backup
         </button>
         <span className="text-xs text-muted ml-2">
           {courts.length} court slot{courts.length !== 1 ? "s" : ""} configured
         </span>
+        {season?.deleteProtection && (
+          <span className="text-xs text-green-700 ml-2">
+            Delete protection is on — importing and deleting are blocked.
+          </span>
+        )}
       </div>
       <input
         ref={fileInputRef}

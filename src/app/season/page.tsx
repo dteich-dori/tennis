@@ -1346,7 +1346,8 @@ export default function SeasonPage() {
               <strong>Delete all games</strong>, <strong>Clear assignments</strong> (Don&rsquo;s
               and Solo), <strong>all auto-assign</strong> (week, season, solo, re-assign,
               end-of-season sweep), <strong>Balance balls / pairings</strong>,{" "}
-              <strong>deleting a court slot</strong>, and <strong>deleting the season</strong>.
+              <strong>deleting a court slot</strong>, <strong>importing a court schedule</strong>,
+              and <strong>deleting the season</strong>.
             </span>
             <span className="block text-sm text-muted mt-1">
               Still allowed: assigning or unassigning a single player, and swaps — the
