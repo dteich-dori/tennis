@@ -1101,6 +1101,7 @@ function SwapTab(props: SwapTabProps) {
   const [suggestions, setSuggestions] = useState<Candidate[] | null>(null);
   const [gameNumberInput, setGameNumberInput] = useState("");
   const [gameNumberError, setGameNumberError] = useState("");
+  const [gameDateInput, setGameDateInput] = useState("");
 
   /** At most this many offered games per swap partner. */
   const MAX_GAMES_PER_PARTNER = 2;
@@ -1133,6 +1134,19 @@ function SwapTab(props: SwapTabProps) {
    * waits for the box to blur can never be clicked into life — type a
    * number, click Suggest, and nothing at all happens.
    */
+  /** The selected player's game on a date (they can only hold one a day). */
+  function gameOnDate(date: string): Game | null {
+    if (!playerA) return null;
+    return (
+      games.find(
+        (x) =>
+          x.date === date &&
+          x.status === "normal" &&
+          (x.assignments ?? []).some((a) => a.playerId === playerA.id)
+      ) ?? null
+    );
+  }
+
   function resolveGameA(quiet = false): Game | null {
     const fail = (msg: string) => {
       if (!quiet) setGameNumberError(msg);
@@ -1140,6 +1154,12 @@ function SwapTab(props: SwapTabProps) {
     };
     if (!playerA) return null;
     const raw = gameNumberInput.trim();
+    if (raw === "" && gameDateInput) {
+      const d = gameOnDate(gameDateInput);
+      if (!d) return fail(`${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(gameDateInput)}.`);
+      if (!quiet) setGameNumberError("");
+      return d;
+    }
     if (raw === "") {
       if (gameA) return gameA; // picked from the grid below
       return fail("Enter a game number.");
@@ -1284,6 +1304,7 @@ function SwapTab(props: SwapTabProps) {
                       setSwapGameAId(null);
                       setSuggestions(null);
                       setGameNumberInput("");
+                      setGameDateInput("");
                       setGameNumberError("");
                       setSwapBanner("");
                       setSwapError("");
@@ -1321,6 +1342,7 @@ function SwapTab(props: SwapTabProps) {
                   onChange={(e) => {
                     const raw = e.target.value;
                     setGameNumberInput(raw);
+                    if (raw.trim() !== "") setGameDateInput("");
                     setGameNumberError("");
                     setSuggestions(null);
                     //  Resolve against the value being typed: state has
@@ -1343,6 +1365,7 @@ function SwapTab(props: SwapTabProps) {
                   }}
                   onBlur={(e) => {
                     if (e.target.value.trim() === "") {
+                      if (gameDateInput) return; // the date box owns the pick
                       setSwapGameAId(null);
                       setGameNumberError("");
                       return;
@@ -1354,6 +1377,36 @@ function SwapTab(props: SwapTabProps) {
                   className="border border-border rounded px-3 py-1.5 text-sm w-28"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">or Date</label>
+                <input
+                  type="date"
+                  value={gameDateInput}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    setGameDateInput(d);
+                    setGameNumberInput("");
+                    setSuggestions(null);
+                    if (!d) {
+                      setSwapGameAId(null);
+                      setGameNumberError("");
+                      return;
+                    }
+                    const g = gameOnDate(d);
+                    setSwapGameAId(g ? g.id : null);
+                    setGameNumberError(
+                      g ? "" : `${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(d)}.`
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const g = gameOnDate(gameDateInput);
+                    if (g) setSuggestions(computeCandidates(g));
+                  }}
+                  className="border border-border rounded px-3 py-1.5 text-sm"
+                />
+              </div>
               <button
                 onClick={() => setSuggestions(computeCandidates())}
                 disabled={!gameA}
@@ -1363,7 +1416,7 @@ function SwapTab(props: SwapTabProps) {
                 title={
                   gameA
                     ? "Find contract players of the same skill who can take this game"
-                    : "Enter a game number this player is in"
+                    : "Enter a game number or date this player is in"
                 }
               >
                 Suggest
