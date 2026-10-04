@@ -1048,6 +1048,8 @@ function SwapTab(props: SwapTabProps) {
 
   const playerA = swapPlayerId != null ? playerById.get(swapPlayerId) ?? null : null;
   const gameA = swapGameAId != null ? games.find((g) => g.id === swapGameAId) ?? null : null;
+  const [gameNumberInput, setGameNumberInput] = useState("");
+  const [gameDateInput, setGameDateInput] = useState("");
 
   // Player dropdown filtered by search
   const filteredPlayers = activePlayers
@@ -1063,8 +1065,14 @@ function SwapTab(props: SwapTabProps) {
   //  centred on the game actually chosen, which matters now that a game
   //  can be entered by number: pick week 30 while sitting in week 2 and
   //  a today-centred search would find nothing.
-  const radiusLow = Math.max(1, currentWeek - swapWeeksBack);
-  const radiusHigh = Math.min(season.totalWeeks, currentWeek + swapWeeksAhead);
+  //  Once a game is entered by number or date, the grid below re-centres
+  //  on it too, so it lists the same weeks the search will cover.
+  const anchorWeek =
+    gameA && (gameNumberInput.trim() !== "" || gameDateInput)
+      ? gameA.weekNumber
+      : currentWeek;
+  const radiusLow = Math.max(1, anchorWeek - swapWeeksBack);
+  const radiusHigh = Math.min(season.totalWeeks, anchorWeek + swapWeeksAhead);
 
   const playerAGames = playerA
     ? games
@@ -1099,9 +1107,7 @@ function SwapTab(props: SwapTabProps) {
   //  Suggestions are produced on demand rather than as you type, so the
   //  list only changes when you ask for it.
   const [suggestions, setSuggestions] = useState<Candidate[] | null>(null);
-  const [gameNumberInput, setGameNumberInput] = useState("");
   const [gameNumberError, setGameNumberError] = useState("");
-  const [gameDateInput, setGameDateInput] = useState("");
 
   /** At most this many offered games per swap partner. */
   const MAX_GAMES_PER_PARTNER = 2;
