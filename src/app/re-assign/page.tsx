@@ -1201,7 +1201,7 @@ function SwapTab(props: SwapTabProps) {
       <div className="border border-border rounded p-4 bg-white">
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <label className="block text-xs text-muted mb-1">Weeks before current</label>
+            <label className="block text-xs text-muted mb-1">Weeks before swapped game</label>
             <input
               type="number"
               min={0}
@@ -1215,7 +1215,7 @@ function SwapTab(props: SwapTabProps) {
             />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">Weeks after current</label>
+            <label className="block text-xs text-muted mb-1">Weeks after swapped game</label>
             <input
               type="number"
               min={0}
@@ -1229,8 +1229,18 @@ function SwapTab(props: SwapTabProps) {
             />
           </div>
           <div className="text-xs text-muted ml-auto">
-            Current week: <strong>{currentWeek}</strong>. Searching weeks{" "}
-            <strong>{radiusLow}</strong>–<strong>{radiusHigh}</strong>.
+            {gameA ? (
+              <>
+                Swapped game: week <strong>{gameA.weekNumber}</strong>. Searching weeks{" "}
+                <strong>{Math.max(1, gameA.weekNumber - swapWeeksBack)}</strong>–
+                <strong>{Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead)}</strong>.
+              </>
+            ) : (
+              <>
+                Current week: <strong>{currentWeek}</strong>. Pick a game to give up; the
+                search window is then set around that game&apos;s week.
+              </>
+            )}
           </div>
         </div>
       </div>
