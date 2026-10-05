@@ -1452,6 +1452,9 @@ function SwapTab(props: SwapTabProps) {
                         setSwapGameAId(selected ? null : g.id);
                         setSuggestions(null);
                         setGameNumberInput(selected ? "" : String(g.gameNumber));
+                        //  Keep the date box honest: it must show the game
+                        //  actually selected, not whatever was typed before.
+                        setGameDateInput(selected ? "" : g.date);
                         setGameNumberError("");
                         setSwapBanner("");
                         setSwapError("");
@@ -1497,7 +1500,9 @@ function SwapTab(props: SwapTabProps) {
                     new Set(candidates.map((c) => c.playerB.id)).size !== 1 ? "s" : ""
                   }, ${candidates.length} game${candidates.length !== 1 ? "s" : ""} offered`}{" "}
             <span className="font-normal text-xs text-muted">
-              (contract players only, same skill, same group — up to{" "}
+              (weeks {Math.max(1, gameA.weekNumber - swapWeeksBack)}–
+              {Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead)} around
+              game #{gameA.gameNumber}, {fmtDate(gameA.date)} · contract players only, same skill, same group — up to{" "}
               {MAX_GAMES_PER_PARTNER} games each)
             </span>
           </div>
