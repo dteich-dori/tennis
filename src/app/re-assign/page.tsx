@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findSwapSuggestions, whyCannotPlay } from "@/lib/swapSuggestions";
@@ -1180,6 +1180,31 @@ function SwapTab(props: SwapTabProps) {
     return g;
   }
 
+  const candidatesRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Suggest, from whatever the boxes say right now. It re-resolves the game
+   * from the date or number box instead of trusting earlier state, then
+   * scrolls the partner list into view: it sits below the player's own
+   * games, and a result you cannot see reads as "nothing happened".
+   */
+  function runSuggest(forGame: Game | null = null) {
+    const g =
+      forGame ??
+      (gameDateInput && gameNumberInput.trim() === "" ? gameOnDate(gameDateInput) : null) ??
+      resolveGameA() ??
+      gameA;
+    if (!g) return;
+    setSwapGameAId(g.id);
+    setSwapBanner("");
+    setSwapError("");
+    setSuggestions(computeCandidates(g));
+    setTimeout(
+      () => candidatesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      50
+    );
+  }
+
   const performSwap = async (c: Candidate) => {
     if (!playerA || !gameA) return;
     const confirmMsg =
@@ -1407,14 +1432,13 @@ function SwapTab(props: SwapTabProps) {
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
-                    const g = gameOnDate(gameDateInput);
-                    if (g) setSuggestions(computeCandidates(g));
+                    runSuggest(gameOnDate(gameDateInput));
                   }}
                   className="border border-border rounded px-3 py-1.5 text-sm"
                 />
               </div>
               <button
-                onClick={() => setSuggestions(computeCandidates())}
+                onClick={() => runSuggest()}
                 disabled={!gameA}
                 //  Grey, not a faded blue: at 50% opacity the disabled
                 //  state still read as "blue button, press me".
@@ -1489,7 +1513,7 @@ function SwapTab(props: SwapTabProps) {
 
       {/* Candidates */}
       {playerA && gameA && (
-        <div className="border border-border rounded bg-white">
+        <div ref={candidatesRef} className="border border-border rounded bg-white scroll-mt-4">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
             3. Choose a swap partner —{" "}
             {suggestions === null
