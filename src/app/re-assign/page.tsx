@@ -1181,6 +1181,44 @@ function SwapTab(props: SwapTabProps) {
     return g;
   }
 
+  //  The swap just made, kept so "Notify players" can email exactly it.
+  const [lastSwap, setLastSwap] = useState<{
+    gameAId: number; playerAId: number; gameBId: number; playerBId: number;
+  } | null>(null);
+  const [notifying, setNotifying] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState("");
+
+  async function notifyPlayers() {
+    if (!lastSwap) return;
+    setNotifying(true);
+    setNotifyMsg("");
+    try {
+      const res = await fetch("/api/games/swap-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lastSwap),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        results?: { name: string; sent: boolean; error?: string }[];
+      };
+      if (!res.ok || !data.results) {
+        setNotifyMsg(data.error || "Could not send the notices.");
+      } else {
+        setNotifyMsg(
+          data.results
+            .map((r) => (r.sent ? `✓ Emailed ${r.name}` : `✗ ${r.name}: ${r.error ?? "not sent"}`))
+            .join("   ")
+        );
+        if (data.results.every((r) => r.sent)) setLastSwap(null);
+      }
+    } catch (err) {
+      setNotifyMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setNotifying(false);
+    }
+  }
+
   const candidatesRef = useRef<HTMLDivElement | null>(null);
 
   /**
@@ -1215,6 +1253,8 @@ function SwapTab(props: SwapTabProps) {
 
     setSwapping(true);
     setSwapBanner("");
+    setLastSwap(null);
+    setNotifyMsg("");
     setSwapError("");
     try {
       const res = await fetch("/api/games/swap", {
@@ -1235,6 +1275,12 @@ function SwapTab(props: SwapTabProps) {
           `✓ Swapped: ${playerA.lastName}, ${playerA.firstName} → Game #${c.gameY.gameNumber} (${fmtDate(c.gameY.date)}) ` +
           `and ${c.playerB.lastName}, ${c.playerB.firstName} → Game #${gameA.gameNumber} (${fmtDate(gameA.date)})`
         );
+        setLastSwap({
+          gameAId: gameA.id,
+          playerAId: playerA.id,
+          gameBId: c.gameY.id,
+          playerBId: c.playerB.id,
+        });
         // Reload games so the lists reflect new state
         await loadBase();
         // Clear selections so user starts fresh for next swap
@@ -1301,6 +1347,21 @@ function SwapTab(props: SwapTabProps) {
       {swapBanner && (
         <div className="border border-green-200 bg-green-50 text-green-900 rounded p-3 text-sm">
           {swapBanner}
+          {(lastSwap || notifyMsg) && (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              {lastSwap && (
+                <button
+                  onClick={notifyPlayers}
+                  disabled={notifying}
+                  className="bg-primary text-white px-3 py-1 rounded text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                  title="Email both players what changed, with calendar files to remove the old game and add the new one"
+                >
+                  {notifying ? "Sending..." : "Notify players"}
+                </button>
+              )}
+              {notifyMsg && <span className="text-xs">{notifyMsg}</span>}
+            </div>
+          )}
         </div>
       )}
       {swapError && (

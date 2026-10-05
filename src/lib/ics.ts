@@ -72,6 +72,48 @@ function playerDisplayName(
   return `${p.firstName} ${p.lastName}`;
 }
 
+function buildGameEvent(
+  player: Player,
+  game: Game,
+  allPlayers: Map<number, Player>
+): EventAttributes {
+  const [y, mo, d] = parseDateParts(game.date);
+  const [h, mi] = parseTimeParts(game.startTime);
+
+  // Determine ball responsibility from slotPosition
+  const myAssignment = game.assignments.find((a) => a.playerId === player.id);
+  const isBallProvider = myAssignment?.slotPosition === 1;
+
+  // Build list of co-players sorted by slotPosition, excluding self
+  const coPlayers = game.assignments
+    .filter((a) => a.playerId !== player.id)
+    .sort((a, b) => a.slotPosition - b.slotPosition)
+    .map((a) => playerDisplayName(a.playerId, allPlayers));
+
+  const descriptionLines: string[] = [];
+  descriptionLines.push(`Week ${game.weekNumber} — Game ${game.gameNumber}`);
+  descriptionLines.push(`Court ${game.courtNumber}`);
+  if (coPlayers.length > 0) {
+    descriptionLines.push(`With: ${coPlayers.join(", ")}`);
+  }
+  if (isBallProvider) {
+    descriptionLines.push("You are bringing the balls for this game.");
+  }
+
+  return {
+    uid: `game-${game.id}@tennis-scheduler.local`,
+    start: [y, mo, d, h, mi],
+    startInputType: "local",
+    startOutputType: "local", // emit floating local time — no Z suffix, no TZ conversion
+    duration: { hours: Math.floor(GAME_DURATION_MINUTES / 60), minutes: GAME_DURATION_MINUTES % 60 },
+    title: isBallProvider ? "Brooklake*" : "Brooklake",
+    location: `Brooklake — Court ${game.courtNumber}`,
+    description: descriptionLines.join("\n"),
+    productId: PRODUCT_ID,
+    calName: CALENDAR_NAME,
+  };
+}
+
 /**
  * Generate a .ics calendar string for a single player containing all their
  * normal games for the given list. Caller is responsible for passing the
@@ -93,43 +135,9 @@ export function generatePlayerIcs(
   const normalGames = games.filter((g) => g.status === "normal");
   if (normalGames.length === 0) return "";
 
-  const events: EventAttributes[] = normalGames.map((game) => {
-    const [y, mo, d] = parseDateParts(game.date);
-    const [h, mi] = parseTimeParts(game.startTime);
-
-    // Determine ball responsibility from slotPosition
-    const myAssignment = game.assignments.find((a) => a.playerId === player.id);
-    const isBallProvider = myAssignment?.slotPosition === 1;
-
-    // Build list of co-players sorted by slotPosition, excluding self
-    const coPlayers = game.assignments
-      .filter((a) => a.playerId !== player.id)
-      .sort((a, b) => a.slotPosition - b.slotPosition)
-      .map((a) => playerDisplayName(a.playerId, allPlayers));
-
-    const descriptionLines: string[] = [];
-    descriptionLines.push(`Week ${game.weekNumber} — Game ${game.gameNumber}`);
-    descriptionLines.push(`Court ${game.courtNumber}`);
-    if (coPlayers.length > 0) {
-      descriptionLines.push(`With: ${coPlayers.join(", ")}`);
-    }
-    if (isBallProvider) {
-      descriptionLines.push("You are bringing the balls for this game.");
-    }
-
-    return {
-      uid: `game-${game.id}@tennis-scheduler.local`,
-      start: [y, mo, d, h, mi],
-      startInputType: "local",
-      startOutputType: "local", // emit floating local time — no Z suffix, no TZ conversion
-      duration: { hours: Math.floor(GAME_DURATION_MINUTES / 60), minutes: GAME_DURATION_MINUTES % 60 },
-      title: isBallProvider ? "Brooklake*" : "Brooklake",
-      location: `Brooklake — Court ${game.courtNumber}`,
-      description: descriptionLines.join("\n"),
-      productId: PRODUCT_ID,
-      calName: CALENDAR_NAME,
-    };
-  });
+  const events: EventAttributes[] = normalGames.map((game) =>
+    buildGameEvent(player, game, allPlayers)
+  );
 
   const { error, value } = createEvents(events);
   if (error) {
@@ -155,4 +163,43 @@ export function generatePlayerIcs(
   }
 
   return ics;
+}
+
+/**
+ * The two calendar files that go out after a swap: one adds the game the
+ * player took, one cancels the game they gave up. They are separate files
+ * because an .ics carries a single METHOD for the whole file.
+ *
+ * The cancel reuses the original event's UID (game-<id>) with a higher
+ * SEQUENCE, which is how Apple Calendar and Outlook match it to the event
+ * the player imported earlier. Google Calendar generally ignores a cancel
+ * that arrives as a file, so the email also tells players how to delete the
+ * old game by hand.
+ *
+ * `addGame` must hold the post-swap assignments (deduped); `removeGame`
+ * needs only its date, time and court.
+ */
+export function generateSwapIcs(
+  player: Player,
+  addGame: Game,
+  removeGame: Game,
+  allPlayers: Map<number, Player>
+): { add: string; remove: string } {
+  const addEvent = buildGameEvent(player, addGame, allPlayers);
+  const removeEvent: EventAttributes = {
+    ...buildGameEvent(player, removeGame, allPlayers),
+    method: "CANCEL",
+    status: "CANCELLED",
+    sequence: 1,
+  };
+  const add = createEvents([addEvent]);
+  const remove = createEvents([removeEvent]);
+  if (add.error || remove.error || !add.value || !remove.value) {
+    throw new Error(
+      `Failed to generate swap ICS for ${player.firstName} ${player.lastName}: ${
+        (add.error || remove.error)?.message ?? "empty"
+      }`
+    );
+  }
+  return { add: add.value, remove: remove.value };
 }
