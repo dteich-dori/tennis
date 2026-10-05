@@ -19,6 +19,8 @@ export interface SwapPlayer {
   skillLevel: string;
   contractedFrequency: string;
   soloGames: number | null;
+  /** No games starting before 10:00 — same cut-off auto-assign uses. */
+  noEarlyGames?: boolean;
   blockedDays: number[];
   vacations: { startDate: string; endDate: string }[];
   doNotPair: number[];
@@ -75,6 +77,9 @@ export function whyCannotPlay(
   }
   if ((p.blockedDays ?? []).includes(game.dayOfWeek)) {
     return `Blocked on ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][game.dayOfWeek]}`;
+  }
+  if (p.noEarlyGames && game.startTime < "10:00") {
+    return "No early games";
   }
   if (game.group === "solo" && (!p.soloGames || p.soloGames <= 0)) {
     return "Not a Solo player";

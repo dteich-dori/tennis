@@ -26,6 +26,7 @@ interface Player {
   skillLevel: string;
   contractedFrequency: string;
   soloGames: number | null;
+  noEarlyGames?: boolean;
   //  Shown beside a suggested swap partner so they can be rung straight
   //  from this screen. /api/players already returns it.
   cellNumber: string | null;

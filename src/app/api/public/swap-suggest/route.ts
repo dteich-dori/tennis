@@ -95,6 +95,7 @@ async function loadSeasonData() {
     skillLevel: p.skillLevel,
     contractedFrequency: p.contractedFrequency,
     soloGames: p.soloGames,
+    noEarlyGames: p.noEarlyGames,
     blockedDays: blockedBy.get(p.id) ?? [],
     vacations: vacsBy.get(p.id) ?? [],
     doNotPair: dnpBy.get(p.id) ?? [],
