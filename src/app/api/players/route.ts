@@ -81,6 +81,10 @@ function validatePlayerFields(body: PlayerBody): string | null {
   if (body.skillLevel && !VALID_SKILL_LEVELS.includes(body.skillLevel)) {
     return `skillLevel must be one of: ${VALID_SKILL_LEVELS.join(", ")}`;
   }
+  if (body.decimalRating !== undefined && body.decimalRating !== null && String(body.decimalRating) !== "") {
+    const r = Number(body.decimalRating);
+    if (!Number.isFinite(r) || r < 2 || r > 5) return "decimalRating must be a number between 2.00 and 5.00";
+  }
   if (body.soloGames !== undefined && body.soloGames !== null) {
     const n = Number(body.soloGames);
     if (!Number.isInteger(n) || n < 1 || n > 36) return "soloGames must be an integer between 1 and 36";
@@ -220,6 +224,7 @@ export async function POST(request: NextRequest) {
       isActive,
       contractedFrequency,
       skillLevel,
+      decimalRating,
       noConsecutiveDays,
       noEarlyGames,
       noVacationMakeup,
@@ -316,6 +321,7 @@ export async function POST(request: NextRequest) {
         isActive: isActive ?? true,
         contractedFrequency: effectiveFreq,
         skillLevel: skillLevel ?? "C",
+        decimalRating: decimalRating != null && String(decimalRating) !== "" ? Math.round(Number(decimalRating) * 100) / 100 : null,
         noConsecutiveDays: noConsecutiveDays ?? false,
         noEarlyGames: noEarlyGames ?? false,
         noVacationMakeup: noVacationMakeup ?? false,
@@ -446,6 +452,7 @@ export async function PUT(request: NextRequest) {
       isActive,
       contractedFrequency,
       skillLevel,
+      decimalRating,
       noConsecutiveDays,
       noEarlyGames,
       noVacationMakeup,
@@ -496,6 +503,10 @@ export async function PUT(request: NextRequest) {
       isActive: isActive !== undefined ? isActive : currentPlayer.isActive,
       contractedFrequency: contractedFrequency ?? currentPlayer.contractedFrequency,
       skillLevel: skillLevel ?? currentPlayer.skillLevel,
+      decimalRating:
+        decimalRating !== undefined
+          ? (decimalRating === null || decimalRating === "" ? null : Math.round(Number(decimalRating) * 100) / 100)
+          : currentPlayer.decimalRating,
       noConsecutiveDays: noConsecutiveDays !== undefined ? noConsecutiveDays : currentPlayer.noConsecutiveDays,
       noEarlyGames: noEarlyGames !== undefined ? noEarlyGames : currentPlayer.noEarlyGames,
       noVacationMakeup: noVacationMakeup !== undefined ? noVacationMakeup : currentPlayer.noVacationMakeup,

@@ -16,6 +16,10 @@ export const players = sqliteTable("players", {
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   contractedFrequency: text("contracted_frequency").notNull().default("1"), // "1", "2", or "2+"
   skillLevel: text("skill_level").notNull().default("C"), // "A", "B", "C", "D"
+  // Decimal (USTA-style) rating, 2.00–5.00, entered by hand. Intended to
+  // replace the A–D skillLevel from the 2026-27 season; until then it is
+  // stored and shown only. null = not rated yet.
+  decimalRating: real("decimal_rating"),
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
   // When true, auto-assign's Pass 2.5 front-loading (boosting a player's

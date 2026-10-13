@@ -38,6 +38,7 @@ interface Player {
   isActive: boolean;
   contractedFrequency: string;
   skillLevel: string;
+  decimalRating: number | null;
   noConsecutiveDays: boolean;
   isDerated: boolean;
   noEarlyGames: boolean;
@@ -82,6 +83,7 @@ const emptyPlayer = {
   isActive: true,
   contractedFrequency: "1",
   skillLevel: "C",
+  decimalRating: null as number | null,
   noConsecutiveDays: false,
   isDerated: false,
   noEarlyGames: false,
@@ -218,6 +220,7 @@ export default function PlayersPage() {
       isActive: player.isActive,
       contractedFrequency: player.contractedFrequency,
       skillLevel: player.skillLevel,
+      decimalRating: player.decimalRating ?? null,
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
@@ -299,6 +302,7 @@ export default function PlayersPage() {
       email: form.email || null,
       carrier: form.carrier || null,
       soloGames: form.soloGames || null,
+      decimalRating: form.decimalRating ?? null,
       preassignedGamesWanted: form.preassignedGamesWanted || null,
       vacations: form.vacations.filter((v) => v.startDate && v.endDate),
       availableDates: form.availableDates.filter((v) => v.startDate && v.endDate),
@@ -881,6 +885,22 @@ export default function PlayersPage() {
                 <option value="C">C</option>
                 <option value="D">D</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm text-muted mb-1">Decimal Rating</label>
+              <input
+                type="number"
+                min={2}
+                max={5}
+                step={0.01}
+                value={form.decimalRating ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm({ ...form, decimalRating: v === "" ? null : parseFloat(v) });
+                }}
+                placeholder="2.00 – 5.00"
+                className="border border-border rounded px-3 py-2 text-sm w-full"
+              />
             </div>
             <div>
               <label className="block text-sm text-muted mb-1">Solo Games</label>
@@ -1537,6 +1557,7 @@ export default function PlayersPage() {
               <th className="text-left px-2 py-1 border-b border-border">Home</th>
               <th className="text-left px-2 py-1 border-b border-border">Email</th>
               <SortHeader field="skillLevel" label="Skill" />
+              <th className="text-left px-2 py-1 border-b border-border">Rating</th>
               <SortHeader field="contractedFrequency" label="Freq" />
               <th className="text-left px-2 py-1 border-b border-border">Solo</th>
               <th className="text-left px-2 py-1 border-b border-border">Active</th>
@@ -1593,6 +1614,7 @@ export default function PlayersPage() {
                 <td className="px-2 py-1">{formatPhone(player.homeNumber)}</td>
                 <td className="px-2 py-1">{player.email}</td>
                 <td className="px-2 py-1">{player.skillLevel}</td>
+                <td className="px-2 py-1">{player.decimalRating != null ? player.decimalRating.toFixed(2) : ""}</td>
                 <td className="px-2 py-1">{player.contractedFrequency === "0" ? "Sub" : player.contractedFrequency}</td>
                 <td className="px-2 py-1">
                   {player.soloGames
