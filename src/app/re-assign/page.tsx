@@ -1233,6 +1233,10 @@ function SwapTab(props: SwapTabProps) {
     setHandoffList(null);
   }, [swapGameAId]);
 
+  //  First decision on entry: trade games, or give one away. The rest of
+  //  the tab follows from it, as on the phone page.
+  const [swapMode, setSwapMode] = useState<"swap" | "handoff" | null>(null);
+
   //  Changes made through delegates' private links, newest first.
   const [delegateLog, setDelegateLog] = useState<
     { id: number; summary: string; createdAt: string }[] | null
@@ -1364,7 +1368,38 @@ function SwapTab(props: SwapTabProps) {
 
   return (
     <div className="space-y-4">
+      {/* What do you want to do? */}
+      <div className="border border-border rounded p-4 bg-white">
+        <div className="text-sm font-medium mb-2">What do you want to do?</div>
+        <div className="flex flex-wrap gap-3">
+          {(
+            [
+              ["swap", "Swap", "Trade games with another player"],
+              ["handoff", "Give away", "Hand a game to a player or a sub — nothing comes back"],
+            ] as const
+          ).map(([m, label, hint]) => (
+            <button
+              key={m}
+              onClick={() => {
+                setSwapMode(m);
+                setSuggestions(null);
+                setHandoffList(null);
+              }}
+              className={`text-left rounded border px-4 py-2 text-sm ${
+                swapMode === m
+                  ? "border-primary bg-primary/10 ring-2 ring-primary"
+                  : "border-border hover:bg-muted-bg"
+              }`}
+            >
+              <div className="font-semibold">{label}</div>
+              <div className="text-xs text-muted">{hint}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Radius controls */}
+      {swapMode === "swap" && (
       <div className="border border-border rounded p-4 bg-white">
         <div className="flex flex-wrap items-end gap-4">
           <div>
@@ -1411,6 +1446,7 @@ function SwapTab(props: SwapTabProps) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Banners */}
       {swapBanner && (
@@ -1440,6 +1476,7 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Player picker */}
+      {swapMode && (
       <div className="border border-border rounded bg-white">
         <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
           1. Choose the player who needs to swap out of a game
@@ -1487,8 +1524,10 @@ function SwapTab(props: SwapTabProps) {
         </div>
       </div>
 
+      )}
+
       {/* Player A's games */}
-      {playerA && (
+      {swapMode && playerA && (
         <div className="border border-border rounded bg-white">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
             2. Which game can {playerA.lastName}, {playerA.firstName} not play?
@@ -1568,6 +1607,7 @@ function SwapTab(props: SwapTabProps) {
                   className="border border-border rounded px-3 py-1.5 text-sm"
                 />
               </div>
+              {swapMode === "swap" && (
               <button
                 onClick={() => runSuggest()}
                 disabled={!gameA}
@@ -1582,6 +1622,7 @@ function SwapTab(props: SwapTabProps) {
               >
                 Suggest
               </button>
+              )}
               {gameA && (
                 <span className="text-xs text-muted">
                   #{gameA.gameNumber} · {DAYS_SHORT[gameA.dayOfWeek]} {fmtDate(gameA.date)} ·{" "}
@@ -1643,10 +1684,10 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Give the game away outright */}
-      {playerA && gameA && (
+      {swapMode === "handoff" && playerA && gameA && (
         <div className="border border-border rounded bg-white">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-            Or give Game #{gameA.gameNumber} away — nothing comes back
+            Give Game #{gameA.gameNumber} away — nothing comes back
           </div>
           <div className="p-3">
             <p className="text-xs text-muted mb-2">
@@ -1712,7 +1753,7 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Candidates */}
-      {playerA && gameA && (
+      {swapMode === "swap" && playerA && gameA && (
         <div ref={candidatesRef} className="border border-border rounded bg-white scroll-mt-4">
           <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
             3. Choose a swap partner —{" "}
