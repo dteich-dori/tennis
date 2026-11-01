@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatPhone } from "@/lib/formatPhone";
+import { APP_VERSION } from "@/lib/version";
 
 /**
  * Swap Finder — public, read-only, phone-first.
@@ -345,6 +346,7 @@ export default function SwapFinderPage() {
           </p>
         </div>
       )}
+      <p className="text-xs text-gray-400 mt-8 text-center">Swap Finder v{APP_VERSION}</p>
     </div>
     </div>
   );

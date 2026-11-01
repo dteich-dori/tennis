@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import { APP_VERSION } from "@/lib/version";
 
 /**
  * Delegated swap admin, for a phone. No login: the token in the URL is the
@@ -144,7 +145,12 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   };
 
   if (fatal) {
-    return <main className="p-6 max-w-md mx-auto text-center text-red-700">{fatal}</main>;
+    return (
+      <main className="p-6 max-w-md mx-auto text-center text-red-700">
+        {fatal}
+        <p className="text-xs text-gray-400 mt-8">Swap Admin v{APP_VERSION}</p>
+      </main>
+    );
   }
 
   const shown = search.trim()
@@ -296,6 +302,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
           )}
         </div>
       )}
+      <p className="text-xs text-gray-400 mt-8 text-center">Swap Admin v{APP_VERSION}</p>
     </main>
   );
 }
