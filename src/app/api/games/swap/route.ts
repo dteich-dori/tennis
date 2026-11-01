@@ -195,8 +195,8 @@ export async function POST(request: NextRequest) {
       label: string
     ): string | null {
       // No early games: same 10:00 cut-off auto-assign uses
-      const who = pid === playerAId ? playerA : playerB;
-      if (who.noEarlyGames && game.startTime < "10:00") {
+      const who = pls.find((p) => p.id === pid);
+      if (who?.noEarlyGames && game.startTime < "10:00") {
         return `${label} does not play early games (before 10:00)`;
       }
       // Blocked day
