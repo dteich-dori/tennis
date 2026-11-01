@@ -203,3 +203,25 @@ export function generateSwapIcs(
   }
   return { add: add.value, remove: remove.value };
 }
+
+/**
+ * One calendar file for one game — either adding it or cancelling it. Used
+ * when a game is handed off outright: the giver gets only the cancel, the
+ * receiver only the add. The cancel reuses the game's event UID with a
+ * higher SEQUENCE, as in generateSwapIcs.
+ */
+export function generateSingleGameIcs(
+  player: Player,
+  game: Game,
+  allPlayers: Map<number, Player>,
+  kind: "add" | "cancel"
+): string {
+  const base = buildGameEvent(player, game, allPlayers);
+  const event: EventAttributes =
+    kind === "cancel" ? { ...base, method: "CANCEL", status: "CANCELLED", sequence: 1 } : base;
+  const { error, value } = createEvents([event]);
+  if (error || !value) {
+    throw new Error(`Failed to generate ICS for ${player.firstName} ${player.lastName}: ${error?.message ?? "empty"}`);
+  }
+  return value;
+}

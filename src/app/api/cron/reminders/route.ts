@@ -10,6 +10,7 @@ import {
   emailLog,
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { runHandoffReminders } from "@/lib/handoffReminders";
 import { sendEmail, sendBulkSms, validateEmailConfig, hasSmsCapability } from "@/lib/email";
 
 /**
@@ -363,11 +364,22 @@ export async function GET(request: NextRequest) {
   //  One line per run in the Vercel log, whatever happened.
   console.info(`[cron/reminders] tomorrow=${tomorrow} ${JSON.stringify(seasonResults)}`);
 
+  //  The extra notice for games that changed hands. Its own failure must
+  //  never undo the general reminders that were just sent.
+  let handoffs: unknown = null;
+  try {
+    handoffs = await runHandoffReminders();
+  } catch (err) {
+    console.error("[cron/reminders] handoff reminders failed:", err);
+    handoffs = { error: String(err) };
+  }
+
   return NextResponse.json({
     success: true,
     currentHourEt: currentHour,
     tomorrow,
     force,
     seasons: seasonResults,
+    handoffs,
   });
 }

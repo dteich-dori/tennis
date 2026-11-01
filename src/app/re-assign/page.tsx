@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { findSwapSuggestions, whyCannotPlay } from "@/lib/swapSuggestions";
+import { findSwapSuggestions, findHandoffCandidates, whyCannotPlay } from "@/lib/swapSuggestions";
 import { formatPhone } from "@/lib/formatPhone";
 
 interface Season {
@@ -1185,18 +1185,24 @@ function SwapTab(props: SwapTabProps) {
   const [lastSwap, setLastSwap] = useState<{
     gameAId: number; playerAId: number; gameBId: number; playerBId: number;
   } | null>(null);
+  //  A game given away outright (no game back); notified the same way.
+  const [lastHandoff, setLastHandoff] = useState<{
+    gameId: number; fromPlayerId: number; toPlayerId: number;
+  } | null>(null);
+  const [handoffList, setHandoffList] = useState<ReturnType<typeof findHandoffCandidates<Player, Game>> | null>(null);
   const [notifying, setNotifying] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState("");
 
   async function notifyPlayers() {
-    if (!lastSwap) return;
+    const payload = lastSwap ?? lastHandoff;
+    if (!payload) return;
     setNotifying(true);
     setNotifyMsg("");
     try {
-      const res = await fetch("/api/games/swap-notify", {
+      const res = await fetch(lastSwap ? "/api/games/swap-notify" : "/api/games/handoff-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lastSwap),
+        body: JSON.stringify(payload),
       });
       const data = (await res.json()) as {
         error?: string;
@@ -1210,7 +1216,10 @@ function SwapTab(props: SwapTabProps) {
             .map((r) => (r.sent ? `✓ Emailed ${r.name}` : `✗ ${r.name}: ${r.error ?? "not sent"}`))
             .join("   ")
         );
-        if (data.results.every((r) => r.sent)) setLastSwap(null);
+        if (data.results.every((r) => r.sent)) {
+          setLastSwap(null);
+          setLastHandoff(null);
+        }
       }
     } catch (err) {
       setNotifyMsg(err instanceof Error ? err.message : String(err));
@@ -1218,6 +1227,11 @@ function SwapTab(props: SwapTabProps) {
       setNotifying(false);
     }
   }
+
+  //  The who-can-take-it list belongs to one game; drop it when that changes.
+  useEffect(() => {
+    setHandoffList(null);
+  }, [swapGameAId]);
 
   const candidatesRef = useRef<HTMLDivElement | null>(null);
 
@@ -1244,6 +1258,49 @@ function SwapTab(props: SwapTabProps) {
     );
   }
 
+  /** Give gameA away outright to `to`; nothing comes back. */
+  const performHandoff = async (to: Player, isSub: boolean) => {
+    if (!playerA || !gameA) return;
+    const msg =
+      `Give Game #${gameA.gameNumber} (${fmtDate(gameA.date)}, ${fmtTime(gameA.startTime)}) ` +
+      `from ${playerA.lastName}, ${playerA.firstName} to ${to.lastName}, ${to.firstName}` +
+      `${isSub ? " (a sub)" : ""}? Nothing comes back to ${playerA.firstName}.`;
+    if (!window.confirm(msg)) return;
+    setSwapping(true);
+    setSwapBanner("");
+    setSwapError("");
+    setLastSwap(null);
+    setLastHandoff(null);
+    setNotifyMsg("");
+    try {
+      const res = await fetch("/api/games/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        setSwapError(data.error || "Hand-off failed.");
+      } else {
+        setSwapBanner(
+          `✓ ${to.lastName}, ${to.firstName} now has Game #${gameA.gameNumber} (${fmtDate(gameA.date)}); ` +
+          `${playerA.lastName}, ${playerA.firstName} is out of it.`
+        );
+        setLastHandoff({ gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id });
+        setHandoffList(null);
+        await loadBase();
+        setSwapGameAId(null);
+        setGameNumberInput("");
+        setGameDateInput("");
+        setSuggestions(null);
+      }
+    } catch (err) {
+      setSwapError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSwapping(false);
+    }
+  };
+
   const performSwap = async (c: Candidate) => {
     if (!playerA || !gameA) return;
     const confirmMsg =
@@ -1254,6 +1311,7 @@ function SwapTab(props: SwapTabProps) {
     setSwapping(true);
     setSwapBanner("");
     setLastSwap(null);
+    setLastHandoff(null);
     setNotifyMsg("");
     setSwapError("");
     try {
@@ -1347,9 +1405,9 @@ function SwapTab(props: SwapTabProps) {
       {swapBanner && (
         <div className="border border-green-200 bg-green-50 text-green-900 rounded p-3 text-sm">
           {swapBanner}
-          {(lastSwap || notifyMsg) && (
+          {(lastSwap || lastHandoff || notifyMsg) && (
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              {lastSwap && (
+              {(lastSwap || lastHandoff) && (
                 <button
                   onClick={notifyPlayers}
                   disabled={notifying}
@@ -1568,6 +1626,75 @@ function SwapTab(props: SwapTabProps) {
                   );
                 })}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Give the game away outright */}
+      {playerA && gameA && (
+        <div className="border border-border rounded bg-white">
+          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+            Or give Game #{gameA.gameNumber} away — nothing comes back
+          </div>
+          <div className="p-3">
+            <p className="text-xs text-muted mb-2">
+              Same skill level ({playerA.skillLevel || "—"}). Contract players are listed first, then subs
+              (a sub taking a game is a paid substitution). Everyone shown is free that day and breaks no rule.
+              The four players are reminded the evening before.
+            </p>
+            <button
+              onClick={() =>
+                setHandoffList(
+                  findHandoffCandidates({
+                    players, games, playerAId: playerA.id, gameAId: gameA.id,
+                  })
+                )
+              }
+              className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90"
+            >
+              Who can take it?
+            </button>
+            {handoffList !== null && (
+              handoffList.length === 0 ? (
+                <p className="text-sm text-muted mt-3">
+                  Nobody of skill {playerA.skillLevel || "—"} is free for this game.
+                </p>
+              ) : (
+                <table className="w-full text-sm mt-3">
+                  <tbody>
+                    {handoffList.map(({ player: p, isSub }) => (
+                      <tr key={p.id} className="border-t border-border">
+                        <td className="p-2">
+                          {p.lastName}, {p.firstName}
+                          {isSub && (
+                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">Sub</span>
+                          )}
+                          {p.cellNumber ? (
+                            <a
+                              href={`tel:${p.cellNumber.replace(/\D/g, "")}`}
+                              className="block text-xs text-primary hover:underline"
+                            >
+                              {formatPhone(p.cellNumber)}
+                            </a>
+                          ) : (
+                            <span className="block text-xs text-muted">no cell number</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-right">
+                          <button
+                            onClick={() => performHandoff(p, isSub)}
+                            disabled={swapping}
+                            className="px-3 py-1 bg-primary text-white rounded text-xs font-medium disabled:opacity-50 hover:opacity-90"
+                          >
+                            Give game
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
             )}
           </div>
         </div>

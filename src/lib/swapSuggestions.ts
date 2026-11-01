@@ -194,3 +194,48 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
   });
   return trimmed;
 }
+
+export interface HandoffCandidate<P extends SwapPlayer> {
+  player: P;
+  /** Substitute (contracted frequency "0") — a paid substitution. */
+  isSub: boolean;
+}
+
+/**
+ * Who can simply TAKE a game that `playerAId` is giving away — nothing
+ * comes back, so only the receiving side is judged. Same skill level as
+ * the giver (the rule swaps use), contract players and subs alike, and
+ * the receiver is held to every rule a swap partner is: vacation, blocked
+ * day, no early games, solo group, a game already that day, do-not-pair.
+ *
+ * Contract players are listed before subs, then by name, so the free
+ * options come first and the paid ones are clearly labelled.
+ */
+export function findHandoffCandidates<P extends SwapPlayer, G extends SwapGame>(opts: {
+  players: P[];
+  games: G[];
+  playerAId: number;
+  gameAId: number;
+}): HandoffCandidate<P>[] {
+  const { players, games, playerAId, gameAId } = opts;
+  const playerA = players.find((p) => p.id === playerAId);
+  const gameA = games.find((g) => g.id === gameAId);
+  if (!playerA || !gameA || gameA.status !== "normal") return [];
+
+  const inGame = new Set((gameA.assignments ?? []).map((a) => a.playerId));
+  const skill = playerA.skillLevel || "";
+  const out: HandoffCandidate<P>[] = [];
+  for (const p of players) {
+    if (p.id === playerA.id || inGame.has(p.id)) continue;
+    if (!p.isActive) continue;
+    if ((p.skillLevel || "") !== skill) continue;
+    if (whyCannotPlay(p.id, gameA, players, games, undefined, playerA.id)) continue;
+    out.push({ player: p, isSub: p.contractedFrequency === "0" });
+  }
+  return out.sort(
+    (x, y) =>
+      Number(x.isSub) - Number(y.isSub) ||
+      x.player.lastName.localeCompare(y.player.lastName) ||
+      x.player.firstName.localeCompare(y.player.firstName)
+  );
+}

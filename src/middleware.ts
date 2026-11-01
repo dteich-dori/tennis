@@ -39,6 +39,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
     pathname.startsWith("/swap-finder") || // public read-only swap suggestions (no writes)
     pathname.startsWith("/api/public/") || // public API endpoints
+    pathname === "/api/cron/handoff-reminders" || // same reason as /api/cron/reminders below:
+                                          // Vercel cron has no login cookie; the route checks the bearer secret.
     pathname === "/api/cron/reminders" || // Vercel cron. It carries `Authorization: Bearer
                                           // CRON_SECRET` and no login cookie, so this wall bounced
                                           // it to /login every night and the reminder never ran

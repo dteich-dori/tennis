@@ -225,6 +225,13 @@
       "when": 1784700000000,
       "tag": "0031_decimal_rating",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1784800000000,
+      "tag": "0032_game_handoffs",
+      "breakpoints": true
     }
   ]
 }
