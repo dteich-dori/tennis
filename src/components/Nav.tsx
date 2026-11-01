@@ -30,6 +30,7 @@ export function Nav() {
     pathname === "/login" ||
     pathname === "/online-schedule" ||
     pathname === "/swap-finder" ||
+    pathname.startsWith("/swap-admin/") ||
     pathname === "/join" ||
     pathname === "/sms-terms" ||
     pathname === "/privacy" ||

@@ -20,6 +20,10 @@ export const players = sqliteTable("players", {
   // replace the A–D skillLevel from the 2026-27 season; until then it is
   // stored and shown only. null = not rated yet.
   decimalRating: real("decimal_rating"),
+  // Delegated swap admin: when set, the player may open /swap-admin/<token>
+  // and swap / give away ANY game without logging in. The token is the only
+  // credential. null = no access; clearing it revokes the link at once.
+  swapAdminToken: text("swap_admin_token"),
   noConsecutiveDays: integer("no_consecutive_days", { mode: "boolean" }).notNull().default(false),
   noEarlyGames: integer("no_early_games", { mode: "boolean" }).notNull().default(false),
   // When true, auto-assign's Pass 2.5 front-loading (boosting a player's

@@ -39,6 +39,7 @@ interface Player {
   contractedFrequency: string;
   skillLevel: string;
   decimalRating: number | null;
+  swapAdminToken?: string | null;
   noConsecutiveDays: boolean;
   isDerated: boolean;
   noEarlyGames: boolean;
@@ -84,6 +85,9 @@ const emptyPlayer = {
   contractedFrequency: "1",
   skillLevel: "C",
   decimalRating: null as number | null,
+  swapAdminAccess: false,
+  swapAdminToken: null as string | null,
+  swapAdminRegenerate: false,
   noConsecutiveDays: false,
   isDerated: false,
   noEarlyGames: false,
@@ -221,6 +225,9 @@ export default function PlayersPage() {
       contractedFrequency: player.contractedFrequency,
       skillLevel: player.skillLevel,
       decimalRating: player.decimalRating ?? null,
+      swapAdminAccess: !!player.swapAdminToken,
+      swapAdminToken: player.swapAdminToken ?? null,
+      swapAdminRegenerate: false,
       noConsecutiveDays: player.noConsecutiveDays,
       isDerated: player.isDerated,
       noEarlyGames: player.noEarlyGames,
@@ -1015,6 +1022,51 @@ export default function PlayersPage() {
                 />
                 Always available
               </label>
+              {editingId !== null && (
+                <div className="text-sm">
+                  <label
+                    className="flex items-center gap-2"
+                    title="Lets this player swap or give away ANY game, with no login, from a private link. Unchecking and saving revokes the link at once."
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.swapAdminAccess}
+                      onChange={(e) => setForm({ ...form, swapAdminAccess: e.target.checked })}
+                    />
+                    Swap admin (can swap or give away any game via a private link)
+                  </label>
+                  {form.swapAdminAccess && form.swapAdminToken && !form.swapAdminRegenerate && (
+                    <div className="mt-1 ml-6 text-xs">
+                      <code className="break-all">
+                        {typeof window !== "undefined" ? window.location.origin : ""}/swap-admin/{form.swapAdminToken}
+                      </code>{" "}
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() =>
+                          navigator.clipboard?.writeText(`${window.location.origin}/swap-admin/${form.swapAdminToken}`)
+                        }
+                      >
+                        Copy
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() => setForm({ ...form, swapAdminRegenerate: true })}
+                        title="Issue a new link on save; the old one stops working"
+                      >
+                        New link
+                      </button>
+                    </div>
+                  )}
+                  {form.swapAdminAccess && !form.swapAdminToken && (
+                    <p className="mt-1 ml-6 text-xs text-muted">The link appears after you save.</p>
+                  )}
+                  {form.swapAdminRegenerate && (
+                    <p className="mt-1 ml-6 text-xs text-muted">A new link will be issued when you save.</p>
+                  )}
+                </div>
+              )}
               <label
                 className="flex items-center gap-2 text-sm"
                 title="When checked, this player is never billed — no season/contract fee and no per-game fee. Their Accounts row shows the games they played at $0, they are skipped by the standard-deposit macro, and they are left out of the Budget page's projected income. Intended for comped subs."

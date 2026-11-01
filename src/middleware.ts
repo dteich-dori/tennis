@@ -37,6 +37,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/calendar/subscribe/") || // public landing page that redirects to webcal://
     pathname.startsWith("/calendar/add/") || // public landing page for a one-time .ics import
     pathname.startsWith("/online-schedule") || // public player-facing schedule view
+    pathname.startsWith("/swap-admin/") || // delegated swap admin: the token in the URL is the credential
+    pathname.startsWith("/api/swap-admin/") || // its API; every call re-checks the token
     pathname.startsWith("/swap-finder") || // public read-only swap suggestions (no writes)
     pathname.startsWith("/api/public/") || // public API endpoints
     pathname === "/api/cron/handoff-reminders" || // same reason as /api/cron/reminders below:

@@ -1233,6 +1233,17 @@ function SwapTab(props: SwapTabProps) {
     setHandoffList(null);
   }, [swapGameAId]);
 
+  //  Changes made through delegates' private links, newest first.
+  const [delegateLog, setDelegateLog] = useState<
+    { id: number; summary: string; createdAt: string }[] | null
+  >(null);
+  useEffect(() => {
+    fetch("/api/games/swap-log")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setDelegateLog(Array.isArray(rows) ? rows : []))
+      .catch(() => setDelegateLog([]));
+  }, [swapBanner]);
+
   const candidatesRef = useRef<HTMLDivElement | null>(null);
 
   /**
@@ -1810,6 +1821,21 @@ function SwapTab(props: SwapTabProps) {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {delegateLog && delegateLog.length > 0 && (
+        <div className="border border-border rounded bg-white">
+          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+            Changes made through swap-admin links (latest 50)
+          </div>
+          <ul className="p-3 text-xs space-y-1 max-h-60 overflow-y-auto">
+            {delegateLog.map((r) => (
+              <li key={r.id}>
+                <span className="text-muted">{new Date(r.createdAt).toLocaleString()}</span> — {r.summary}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

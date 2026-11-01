@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import { players, playerBlockedDays, playerVacations, playerAvailableDates, playerDoNotPair, playerGroupMembers, gameAssignments, seasons } from "@/db/schema";
 import { eq, and, ne, inArray } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { formatPhone } from "@/lib/formatPhone";
 import { downgradeContractIfNeeded, clampDaysPerWeek } from "@/lib/playerAvailability";
 
@@ -453,6 +454,8 @@ export async function PUT(request: NextRequest) {
       contractedFrequency,
       skillLevel,
       decimalRating,
+      swapAdminAccess,
+      swapAdminRegenerate,
       noConsecutiveDays,
       noEarlyGames,
       noVacationMakeup,
@@ -503,6 +506,16 @@ export async function PUT(request: NextRequest) {
       isActive: isActive !== undefined ? isActive : currentPlayer.isActive,
       contractedFrequency: contractedFrequency ?? currentPlayer.contractedFrequency,
       skillLevel: skillLevel ?? currentPlayer.skillLevel,
+      //  Delegated swap admin: true issues a link (kept if one exists),
+      //  false revokes it, regenerate swaps in a fresh one.
+      swapAdminToken:
+        swapAdminAccess === false
+          ? null
+          : swapAdminAccess === true || swapAdminRegenerate
+            ? (swapAdminRegenerate || !currentPlayer.swapAdminToken
+                ? randomBytes(16).toString("hex")
+                : currentPlayer.swapAdminToken)
+            : currentPlayer.swapAdminToken,
       decimalRating:
         decimalRating !== undefined
           ? (decimalRating === null || decimalRating === "" ? null : Math.round(Number(decimalRating) * 100) / 100)

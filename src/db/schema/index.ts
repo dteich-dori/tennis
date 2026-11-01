@@ -12,3 +12,4 @@ export { playerPayments } from "./playerPayments";
 export { signupRequests } from "./signupRequests";
 export { pageTemplates } from "./pageTemplates";
 export { gameHandoffs } from "./gameHandoffs";
+export { swapAdminLog } from "./swapAdminLog";
