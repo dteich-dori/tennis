@@ -1036,14 +1036,6 @@ function SwapTab(props: SwapTabProps) {
     loadBase,
   } = props;
 
-  // Compute the current week number from season start
-  const currentWeek = (() => {
-    const start = new Date(season.startDate + "T00:00:00");
-    const today = new Date();
-    const diffDays = Math.floor((today.getTime() - start.getTime()) / 86400000);
-    return Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, season.totalWeeks));
-  })();
-
   const activePlayers = players.filter((p) => p.isActive);
   const playerById = new Map(players.map((p) => [p.id, p]));
 
@@ -1061,31 +1053,21 @@ function SwapTab(props: SwapTabProps) {
     )
     .sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  //  Two radii. The browse list below is centred on the current week —
-  //  that is how you find a game to give up. The candidate SEARCH is
-  //  centred on the game actually chosen, which matters now that a game
-  //  can be entered by number: pick week 30 while sitting in week 2 and
-  //  a today-centred search would find nothing.
-  //  Once a game is entered by number or date, the grid below re-centres
-  //  on it too, so it lists the same weeks the search will cover.
-  const anchorWeek =
-    gameA && (gameNumberInput.trim() !== "" || gameDateInput)
-      ? gameA.weekNumber
-      : currentWeek;
-  const radiusLow = Math.max(1, anchorWeek - swapWeeksBack);
-  const radiusHigh = Math.min(season.totalWeeks, anchorWeek + swapWeeksAhead);
-
-  const playerAGames = playerA
+  //  The player's own upcoming games, listed by date to tap, as on the
+  //  phone page. If the whole season is behind us, fall back to all of them
+  //  so the list is not empty.
+  const todayStr = new Date().toLocaleDateString("en-CA");
+  const playerAAllGames = playerA
     ? games
         .filter(
           (g) =>
             g.status === "normal" &&
-            g.weekNumber >= radiusLow &&
-            g.weekNumber <= radiusHigh &&
             (g.assignments ?? []).some((a) => a.playerId === playerA.id)
         )
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .sort((a, b) => a.date.localeCompare(b.date) || a.gameNumber - b.gameNumber)
     : [];
+  const playerAUpcoming = playerAAllGames.filter((g) => g.date >= todayStr);
+  const playerAGames = playerAUpcoming.length > 0 ? playerAUpcoming : playerAAllGames;
 
   //  Eligibility and candidate search now live in lib/swapSuggestions,
   //  shared with the public /swap-finder page so the two can never give
@@ -1129,18 +1111,6 @@ function SwapTab(props: SwapTabProps) {
 
   const candidates = suggestions ?? [];
 
-  /**
-   * The game named by the Game # box, or null.
-   *
-   * `quiet` runs it on every keystroke to decide whether Suggest is
-   * enabled, without shouting "No game #4" at someone halfway through
-   * typing 412. The loud form runs on blur and on Enter.
-   *
-   * Resolving as you type is what lets Suggest be disabled safely:
-   * clicking a DISABLED button fires no pointer event, so a button that
-   * waits for the box to blur can never be clicked into life — type a
-   * number, click Suggest, and nothing at all happens.
-   */
   /** The selected player's game on a date (they can only hold one a day). */
   function gameOnDate(date: string): Game | null {
     if (!playerA) return null;
@@ -1152,33 +1122,6 @@ function SwapTab(props: SwapTabProps) {
           (x.assignments ?? []).some((a) => a.playerId === playerA.id)
       ) ?? null
     );
-  }
-
-  function resolveGameA(quiet = false): Game | null {
-    const fail = (msg: string) => {
-      if (!quiet) setGameNumberError(msg);
-      return null;
-    };
-    if (!playerA) return null;
-    const raw = gameNumberInput.trim();
-    if (raw === "" && gameDateInput) {
-      const d = gameOnDate(gameDateInput);
-      if (!d) return fail(`${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(gameDateInput)}.`);
-      if (!quiet) setGameNumberError("");
-      return d;
-    }
-    if (raw === "") {
-      if (gameA) return gameA; // picked from the grid below
-      return fail("Enter a game number.");
-    }
-    const n = parseInt(raw, 10);
-    const g = games.find((x) => x.gameNumber === n && x.status === "normal");
-    if (!g) return fail(`No game #${raw} in this season.`);
-    if (!(g.assignments ?? []).some((a) => a.playerId === playerA.id)) {
-      return fail(`${playerA.lastName}, ${playerA.firstName} is not in game #${n}.`);
-    }
-    if (!quiet) setGameNumberError("");
-    return g;
   }
 
   //  The swap just made, kept so "Notify players" can email exactly it.
@@ -1257,11 +1200,7 @@ function SwapTab(props: SwapTabProps) {
    * games, and a result you cannot see reads as "nothing happened".
    */
   function runSuggest(forGame: Game | null = null) {
-    const g =
-      forGame ??
-      (gameDateInput && gameNumberInput.trim() === "" ? gameOnDate(gameDateInput) : null) ??
-      resolveGameA() ??
-      gameA;
+    const g = forGame ?? gameA;
     if (!g) return;
     setSwapGameAId(g.id);
     setSwapBanner("");
@@ -1271,6 +1210,33 @@ function SwapTab(props: SwapTabProps) {
       () => candidatesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
       50
     );
+  }
+
+  /** Choose a game: fills the quick-entry boxes and runs the search for it. */
+  function pickGameA(g: Game) {
+    if (!playerA) return;
+    setSwapGameAId(g.id);
+    setGameNumberInput(String(g.gameNumber));
+    setGameDateInput(g.date);
+    setGameNumberError("");
+    setSwapBanner("");
+    setSwapError("");
+    setNotifyMsg("");
+    if (swapMode === "swap") {
+      runSuggest(g);
+    } else {
+      setSuggestions(null);
+      setHandoffList(findHandoffCandidates({ players, games, playerAId: playerA.id, gameAId: g.id }));
+    }
+  }
+
+  /** Jump straight to a game typed by number or chosen by date. */
+  function jumpToGame(game: Game | null, err: string) {
+    if (!game) {
+      setGameNumberError(err);
+      return;
+    }
+    pickGameA(game);
   }
 
   /** Give gameA away outright to `to`; nothing comes back. */
@@ -1366,500 +1332,403 @@ function SwapTab(props: SwapTabProps) {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      {/* What do you want to do? */}
-      <div className="border border-border rounded p-4 bg-white">
-        <div className="text-sm font-medium mb-2">What do you want to do?</div>
-        <div className="flex flex-wrap gap-3">
-          {(
-            [
-              ["swap", "Swap", "Trade games with another player"],
-              ["handoff", "Give away", "Hand a game to a player or a sub — nothing comes back"],
-            ] as const
-          ).map(([m, label, hint]) => (
-            <button
-              key={m}
-              onClick={() => {
-                setSwapMode(m);
-                setSuggestions(null);
-                setHandoffList(null);
-              }}
-              className={`text-left rounded border px-4 py-2 text-sm ${
-                swapMode === m
-                  ? "border-primary bg-primary/10 ring-2 ring-primary"
-                  : "border-border hover:bg-muted-bg"
-              }`}
-            >
-              <div className="font-semibold">{label}</div>
-              <div className="text-xs text-muted">{hint}</div>
-            </button>
-          ))}
-        </div>
-      </div>
+  const bar = "w-full flex items-center justify-between border-2 border-blue-600 bg-blue-50 rounded-xl px-4 py-4 text-left";
+  const bigBtn = "rounded-xl px-5 py-3 text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50";
 
-      {/* Radius controls */}
-      {swapMode === "swap" && (
-      <div className="border border-border rounded p-4 bg-white">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs text-muted mb-1">Weeks before swapped game</label>
-            <input
-              type="number"
-              min={0}
-              max={season.totalWeeks}
-              value={swapWeeksBack}
-              onChange={(e) => {
-                const n = parseInt(e.target.value);
-                if (!isNaN(n) && n >= 0) setSwapWeeksBack(n);
-              }}
-              className="border border-border rounded px-3 py-1.5 text-sm w-24"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Weeks after swapped game</label>
-            <input
-              type="number"
-              min={0}
-              max={season.totalWeeks}
-              value={swapWeeksAhead}
-              onChange={(e) => {
-                const n = parseInt(e.target.value);
-                if (!isNaN(n) && n >= 0) setSwapWeeksAhead(n);
-              }}
-              className="border border-border rounded px-3 py-1.5 text-sm w-24"
-            />
-          </div>
-          <div className="text-xs text-muted ml-auto">
-            {gameA ? (
-              <>
-                Swapped game: week <strong>{gameA.weekNumber}</strong>. Searching weeks{" "}
-                <strong>{Math.max(1, gameA.weekNumber - swapWeeksBack)}</strong>–
-                <strong>{Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead)}</strong>.
-              </>
-            ) : (
-              <>
-                Current week: <strong>{currentWeek}</strong>. Pick a game to give up; the
-                search window is then set around that game&apos;s week.
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      )}
+  const phoneLink = (cell: string | null) =>
+    cell ? (
+      <a href={`tel:${cell.replace(/\D/g, "")}`} className="text-lg font-bold text-blue-700 underline">
+        {formatPhone(cell)}
+      </a>
+    ) : (
+      <span className="text-base text-gray-500">no cell number</span>
+    );
+
+  //  One card per partner, as on the phone page.
+  const groups: { playerB: Player; cands: Candidate[] }[] = [];
+  for (const c of candidates) {
+    let grp = groups.find((x) => x.playerB.id === c.playerB.id);
+    if (!grp) {
+      grp = { playerB: c.playerB, cands: [] };
+      groups.push(grp);
+    }
+    grp.cands.push(c);
+  }
+
+  const resetAll = () => {
+    setSwapMode(null);
+    setSwapPlayerId(null);
+    setSwapGameAId(null);
+    setSuggestions(null);
+    setHandoffList(null);
+    setGameNumberInput("");
+    setGameDateInput("");
+    setGameNumberError("");
+    setSwapPlayerSearch("");
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <p className="text-sm text-gray-500 mb-5">Swap games, or give one away.</p>
 
       {/* Banners */}
       {swapBanner && (
-        <div className="border border-green-200 bg-green-50 text-green-900 rounded p-3 text-sm">
+        <div className="border-2 border-green-200 bg-green-50 text-green-900 rounded-xl p-4 text-base mb-5">
           {swapBanner}
           {(lastSwap || lastHandoff || notifyMsg) && (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               {(lastSwap || lastHandoff) && (
                 <button
                   onClick={notifyPlayers}
                   disabled={notifying}
-                  className="bg-primary text-white px-3 py-1 rounded text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                  className={bigBtn}
                   title="Email both players what changed, with calendar files to remove the old game and add the new one"
                 >
                   {notifying ? "Sending..." : "Notify players"}
                 </button>
               )}
-              {notifyMsg && <span className="text-xs">{notifyMsg}</span>}
+              {notifyMsg && <span className="text-sm">{notifyMsg}</span>}
             </div>
           )}
         </div>
       )}
       {swapError && (
-        <div className="border border-red-200 bg-red-50 text-red-800 rounded p-3 text-sm">
+        <div className="border-2 border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3 text-base mb-5">
           {swapError}
         </div>
       )}
 
-      {/* Player picker */}
-      {swapMode && (
-      <div className="border border-border rounded bg-white">
-        <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-          1. Choose the player who needs to swap out of a game
-        </div>
-        <div className="p-3">
-          <input
-            type="text"
-            value={swapPlayerSearch}
-            onChange={(e) => setSwapPlayerSearch(e.target.value)}
-            placeholder="Search players..."
-            className="border border-border rounded px-2 py-1 text-sm w-full sm:w-64 mb-2"
-          />
-          <div className="max-h-40 overflow-y-auto border border-border rounded">
-            {filteredPlayers.length === 0 ? (
-              <p className="text-xs text-muted p-2">No players match.</p>
-            ) : (
-              filteredPlayers.map((p) => {
-                const selected = p.id === swapPlayerId;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      setSwapPlayerId(selected ? null : p.id);
-                      setSwapGameAId(null);
-                      setSuggestions(null);
-                      setGameNumberInput("");
-                      setGameDateInput("");
-                      setGameNumberError("");
-                      setSwapBanner("");
-                      setSwapError("");
-                    }}
-                    className={`w-full text-left px-2 py-1 text-sm border-b border-border last:border-b-0 ${
-                      selected ? "bg-primary/10 font-medium" : "hover:bg-muted-bg"
-                    }`}
-                  >
-                    {p.lastName}, {p.firstName}
-                    <span className="text-xs text-muted ml-2">
-                      ({p.skillLevel || "—"})
-                    </span>
-                  </button>
-                );
-              })
-            )}
+      {/* Step 0 — swap or give away */}
+      <div className="mb-5">
+        <div className="text-base font-semibold mb-2">What do you want to do?</div>
+        {swapMode ? (
+          <button onClick={resetAll} className={bar}>
+            <span className="text-lg font-semibold">
+              {swapMode === "swap" ? "Swap — trade games" : "Give away — hand a game to a player or sub"}
+            </span>
+            <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <button
+              onClick={() => { setSwapMode("swap"); setSuggestions(null); setHandoffList(null); }}
+              className={`${bigBtn} w-full text-left`}
+            >
+              Swap — trade games with another player
+            </button>
+            <button
+              onClick={() => { setSwapMode("handoff"); setSuggestions(null); setHandoffList(null); }}
+              className={`${bigBtn} w-full text-left`}
+            >
+              Give away — hand a game to a player or sub
+            </button>
           </div>
-        </div>
+        )}
       </div>
 
-      )}
-
-      {/* Player A's games */}
-      {swapMode && playerA && (
-        <div className="border border-border rounded bg-white">
-          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-            2. Which game can {playerA.lastName}, {playerA.firstName} not play?
+      {/* Step 1 — who */}
+      {swapMode && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">
+            1. Who {swapMode === "swap" ? "needs a swap" : "can't play"}?
           </div>
-          <div className="p-3">
-            {/* Type the game number, or click one below */}
-            <div className="flex flex-wrap items-end gap-3 mb-3">
-              <div>
-                <label className="block text-xs text-muted mb-1">Game #</label>
-                <input
-                  type="number"
-                  value={gameNumberInput}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setGameNumberInput(raw);
-                    if (raw.trim() !== "") setGameDateInput("");
-                    setGameNumberError("");
-                    setSuggestions(null);
-                    //  Resolve against the value being typed: state has
-                    //  not updated yet in this tick.
-                    const n = parseInt(raw.trim(), 10);
-                    const g = games.find(
-                      (x) => x.gameNumber === n && x.status === "normal"
-                    );
-                    const mine =
-                      g && (g.assignments ?? []).some((a) => a.playerId === playerA.id);
-                    setSwapGameAId(mine ? g!.id : null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    e.currentTarget.blur();
-                    const g = resolveGameA();
-                    setSwapGameAId(g ? g.id : null);
-                    setSuggestions(g ? computeCandidates(g) : null);
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() === "") {
-                      if (gameDateInput) return; // the date box owns the pick
-                      setSwapGameAId(null);
-                      setGameNumberError("");
-                      return;
-                    }
-                    const g = resolveGameA();
-                    setSwapGameAId(g ? g.id : null);
-                  }}
-                  placeholder="e.g. 412"
-                  className="border border-border rounded px-3 py-1.5 text-sm w-28"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted mb-1">or Date</label>
-                <input
-                  type="date"
-                  value={gameDateInput}
-                  onChange={(e) => {
-                    const d = e.target.value;
-                    setGameDateInput(d);
-                    setGameNumberInput("");
-                    setSuggestions(null);
-                    if (!d) {
-                      setSwapGameAId(null);
-                      setGameNumberError("");
-                      return;
-                    }
-                    const g = gameOnDate(d);
-                    setSwapGameAId(g ? g.id : null);
-                    setGameNumberError(
-                      g ? "" : `${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(d)}.`
-                    );
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    runSuggest(gameOnDate(gameDateInput));
-                  }}
-                  className="border border-border rounded px-3 py-1.5 text-sm"
-                />
-              </div>
-              {swapMode === "swap" && (
-              <button
-                onClick={() => runSuggest()}
-                disabled={!gameA}
-                //  Grey, not a faded blue: at 50% opacity the disabled
-                //  state still read as "blue button, press me".
-                className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 disabled:bg-gray-200 disabled:text-gray-500 disabled:hover:opacity-100 disabled:cursor-not-allowed"
-                title={
-                  gameA
-                    ? "Find contract players of the same skill who can take this game"
-                    : "Enter a game number or date this player is in"
-                }
-              >
-                Suggest
-              </button>
-              )}
-              {gameA && (
-                <span className="text-xs text-muted">
-                  #{gameA.gameNumber} · {DAYS_SHORT[gameA.dayOfWeek]} {fmtDate(gameA.date)} ·{" "}
-                  {fmtTime(gameA.startTime)} · Court {gameA.courtNumber} · Week {gameA.weekNumber}
-                </span>
-              )}
-              {gameNumberError && (
-                <span className="text-xs text-red-600">{gameNumberError}</span>
-              )}
-            </div>
-            {playerAGames.length === 0 ? (
-              <p className="text-sm text-muted">
-                No assigned games for this player in weeks {radiusLow}–{radiusHigh}.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                {playerAGames.map((g) => {
-                  const selected = g.id === swapGameAId;
-                  return (
+          {playerA ? (
+            <button
+              onClick={() => {
+                setSwapPlayerId(null);
+                setSwapGameAId(null);
+                setSuggestions(null);
+                setHandoffList(null);
+                setGameNumberInput("");
+                setGameDateInput("");
+                setGameNumberError("");
+                setSwapBanner("");
+                setSwapError("");
+              }}
+              className={bar}
+            >
+              <span className="text-lg font-semibold">
+                {playerA.lastName}, {playerA.firstName}{" "}
+                <span className="text-sm text-gray-500 font-normal">({playerA.skillLevel || "—"})</span>
+              </span>
+              <span className="text-sm text-blue-700 underline">change</span>
+            </button>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={swapPlayerSearch}
+                onChange={(e) => setSwapPlayerSearch(e.target.value)}
+                placeholder="Type a name…"
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-lg mb-2"
+              />
+              <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                {filteredPlayers.length === 0 ? (
+                  <p className="px-4 py-3 text-gray-500">No one matches that.</p>
+                ) : (
+                  filteredPlayers.map((p) => (
                     <button
-                      key={g.id}
+                      key={p.id}
                       onClick={() => {
-                        setSwapGameAId(selected ? null : g.id);
+                        setSwapPlayerId(p.id);
+                        setSwapGameAId(null);
                         setSuggestions(null);
-                        setGameNumberInput(selected ? "" : String(g.gameNumber));
-                        //  Keep the date box honest: it must show the game
-                        //  actually selected, not whatever was typed before.
-                        setGameDateInput(selected ? "" : g.date);
+                        setHandoffList(null);
+                        setGameNumberInput("");
+                        setGameDateInput("");
                         setGameNumberError("");
                         setSwapBanner("");
                         setSwapError("");
                       }}
-                      className={`text-left border rounded p-2 text-sm ${
-                        selected
-                          ? "border-primary bg-primary/5 ring-2 ring-primary"
-                          : "border-border hover:bg-muted-bg"
-                      }`}
+                      className="w-full text-left px-4 py-3 text-lg border-b border-gray-100 last:border-b-0 hover:bg-blue-50"
                     >
-                      <div className="font-semibold">
-                        Game #{g.gameNumber}{" "}
-                        <span className="text-xs text-muted font-normal">
-                          (Week {g.weekNumber})
-                        </span>
-                      </div>
-                      <div>
-                        {DAYS_SHORT[g.dayOfWeek]} {fmtDate(g.date)} · {fmtTime(g.startTime)}
-                      </div>
-                      <div className="text-xs text-muted">
-                        Court {g.courtNumber} ·{" "}
-                        {g.group === "solo" ? "Solo" : "Don's"}
-                      </div>
+                      {p.lastName}, {p.firstName}
+                      <span className="text-sm text-gray-500 ml-2">({p.skillLevel || "—"})</span>
                     </button>
-                  );
-                })}
+                  ))
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* Give the game away outright */}
-      {swapMode === "handoff" && playerA && gameA && (
-        <div className="border border-border rounded bg-white">
-          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-            Give Game #{gameA.gameNumber} away — nothing comes back
-          </div>
-          <div className="p-3">
-            <p className="text-xs text-muted mb-2">
-              Same skill level ({playerA.skillLevel || "—"}). Contract players are listed first, then subs
-              (a sub taking a game is a paid substitution). Everyone shown is free that day and breaks no rule.
-              The four players are reminded the evening before.
-            </p>
+      {/* Step 2 — which date */}
+      {swapMode && playerA && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">2. Which date can&apos;t they play?</div>
+          {gameA ? (
             <button
-              onClick={() =>
-                setHandoffList(
-                  findHandoffCandidates({
-                    players, games, playerAId: playerA.id, gameAId: gameA.id,
-                  })
-                )
-              }
-              className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90"
+              onClick={() => {
+                setSwapGameAId(null);
+                setSuggestions(null);
+                setHandoffList(null);
+                setGameNumberInput("");
+                setGameDateInput("");
+                setGameNumberError("");
+              }}
+              className={bar}
             >
-              Who can take it?
+              <span>
+                <span className="block text-lg font-semibold">
+                  {DAYS_SHORT[gameA.dayOfWeek]} {fmtDate(gameA.date)}
+                </span>
+                <span className="block text-base text-gray-600">
+                  {fmtTime(gameA.startTime)} · Court {gameA.courtNumber} ·{" "}
+                  {gameA.group === "solo" ? "SOLO" : "Don's"} · Game #{gameA.gameNumber}
+                </span>
+              </span>
+              <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
             </button>
-            {handoffList !== null && (
-              handoffList.length === 0 ? (
-                <p className="text-sm text-muted mt-3">
-                  Nobody of skill {playerA.skillLevel || "—"} is free for this game.
+          ) : (
+            <>
+              {/* Quick entry, for when the game number or date is already known */}
+              <div className="flex flex-wrap items-end gap-3 mb-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Game #</label>
+                  <input
+                    type="number"
+                    value={gameNumberInput}
+                    onChange={(e) => {
+                      setGameNumberInput(e.target.value);
+                      if (e.target.value.trim() !== "") setGameDateInput("");
+                      setGameNumberError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const n = parseInt(gameNumberInput.trim(), 10);
+                      const g = games.find((x) => x.gameNumber === n && x.status === "normal");
+                      const mine = g && (g.assignments ?? []).some((a) => a.playerId === playerA.id);
+                      jumpToGame(
+                        mine ? g! : null,
+                        g ? `${playerA.lastName}, ${playerA.firstName} is not in game #${n}.` : `No game #${gameNumberInput} in this season.`
+                      );
+                    }}
+                    placeholder="e.g. 412"
+                    className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base w-28"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">or Date</label>
+                  <input
+                    type="date"
+                    value={gameDateInput}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      setGameDateInput(d);
+                      setGameNumberInput("");
+                      setGameNumberError("");
+                      if (!d) return;
+                      jumpToGame(
+                        gameOnDate(d),
+                        `${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(d)}.`
+                      );
+                    }}
+                    className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base"
+                  />
+                </div>
+                {gameNumberError && <span className="text-sm text-red-600">{gameNumberError}</span>}
+              </div>
+              {playerAGames.length === 0 ? (
+                <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+                  {playerA.firstName} has no games left.
                 </p>
               ) : (
-                <table className="w-full text-sm mt-3">
-                  <tbody>
-                    {handoffList.map(({ player: p, isSub }) => (
-                      <tr key={p.id} className="border-t border-border">
-                        <td className="p-2">
-                          {p.lastName}, {p.firstName}
-                          {isSub && (
-                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">Sub</span>
-                          )}
-                          {p.cellNumber ? (
-                            <a
-                              href={`tel:${p.cellNumber.replace(/\D/g, "")}`}
-                              className="block text-xs text-primary hover:underline"
-                            >
-                              {formatPhone(p.cellNumber)}
-                            </a>
-                          ) : (
-                            <span className="block text-xs text-muted">no cell number</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-right">
-                          <button
-                            onClick={() => performHandoff(p, isSub)}
-                            disabled={swapping}
-                            className="px-3 py-1 bg-primary text-white rounded text-xs font-medium disabled:opacity-50 hover:opacity-90"
-                          >
-                            Give game
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )
-            )}
-          </div>
+                <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+                  {playerAGames.map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => pickGameA(g)}
+                      className="w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-blue-50"
+                    >
+                      <div className="text-lg font-semibold">
+                        {DAYS_SHORT[g.dayOfWeek]} {fmtDate(g.date)}
+                      </div>
+                      <div className="text-base text-gray-600">
+                        {fmtTime(g.startTime)} · Court {g.courtNumber} ·{" "}
+                        {g.group === "solo" ? "SOLO" : "Don's"} · Game #{g.gameNumber}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* Candidates */}
-      {swapMode === "swap" && playerA && gameA && (
-        <div ref={candidatesRef} className="border border-border rounded bg-white scroll-mt-4">
-          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
-            3. Choose a swap partner —{" "}
-            {suggestions === null
-              ? "press Suggest"
-              : candidates.length === 0
-                ? "no valid candidates found"
-                : `${new Set(candidates.map((c) => c.playerB.id)).size} player${
-                    new Set(candidates.map((c) => c.playerB.id)).size !== 1 ? "s" : ""
-                  }, ${candidates.length} game${candidates.length !== 1 ? "s" : ""} offered`}{" "}
-            <span className="font-normal text-xs text-muted">
-              (weeks {Math.max(1, gameA.weekNumber - swapWeeksBack)}–
-              {Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead)} around
-              game #{gameA.gameNumber}, {fmtDate(gameA.date)} · contract players only, same skill, same group — up to{" "}
-              {MAX_GAMES_PER_PARTNER} games each)
-            </span>
+      {/* Results — swap */}
+      {swapMode === "swap" && playerA && gameA && suggestions !== null && (
+        <div ref={candidatesRef} className="scroll-mt-4 mb-5">
+          <div className="text-base font-semibold mb-2">
+            {groups.length === 0
+              ? "No one can swap for this game"
+              : `${groups.length} player${groups.length !== 1 ? "s" : ""} could take it`}
           </div>
-          {suggestions === null ? (
-            <p className="p-3 text-sm text-muted">
-              Enter the game number above and press <strong>Suggest</strong>.
-            </p>
-          ) : candidates.length === 0 ? (
-            <p className="p-3 text-sm text-muted">
-              No contract player of the same skill level has an eligible game
-              within <strong>{swapWeeksBack} week(s) before</strong> /{" "}
-              <strong>{swapWeeksAhead} after</strong> game #{gameA.gameNumber}.
-              Widen the search window at the top of this tab and press Suggest
-              again — Solo games in particular often need a wider span, since
-              there are far fewer solo players to swap with.
+
+          {/* Search window around the chosen game */}
+          <div className="flex flex-wrap items-end gap-3 mb-3 text-sm text-gray-600">
+            <span>
+              Searching weeks {Math.max(1, gameA.weekNumber - swapWeeksBack)}–
+              {Math.min(season.totalWeeks, gameA.weekNumber + swapWeeksAhead)} around week {gameA.weekNumber}.
+            </span>
+            <label className="flex items-center gap-1">
+              back
+              <input
+                type="number"
+                min={0}
+                max={season.totalWeeks}
+                value={swapWeeksBack}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value);
+                  if (!isNaN(n) && n >= 0) setSwapWeeksBack(n);
+                }}
+                className="border border-gray-300 rounded px-2 py-1 w-16"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              ahead
+              <input
+                type="number"
+                min={0}
+                max={season.totalWeeks}
+                value={swapWeeksAhead}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value);
+                  if (!isNaN(n) && n >= 0) setSwapWeeksAhead(n);
+                }}
+                className="border border-gray-300 rounded px-2 py-1 w-16"
+              />
+            </label>
+            <button onClick={() => runSuggest()} className="text-blue-700 underline">
+              Search again
+            </button>
+          </div>
+
+          {groups.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              Nobody of the same level is free for this game in these weeks. Widen the window and
+              search again — Solo games in particular often need a wider span.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted-bg">
-                  <tr>
-                    <th className="text-left p-2">Player</th>
-                    <th className="text-left p-2">Their Game</th>
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-center p-2">Ct</th>
-                    <th className="text-left p-2">Time</th>
-                    <th className="text-center p-2">Wk Δ</th>
-                    <th className="p-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidates.map((c, i) => {
-                    //  Name printed once per partner; their second offered
-                    //  game sits under it.
-                    const firstOfPartner =
-                      i === 0 || candidates[i - 1].playerB.id !== c.playerB.id;
-                    return (
-                    <tr
-                      key={`${c.playerB.id}-${c.gameY.id}`}
-                      className={firstOfPartner ? "border-t-2 border-border" : "border-t border-border/50"}
-                    >
-                      <td className="p-2">
-                        {firstOfPartner ? (
-                          <>
-                            {c.playerB.lastName}, {c.playerB.firstName}{" "}
-                            <span className="text-xs text-muted">
-                              ({c.playerB.skillLevel})
+            <div className="space-y-3">
+              {groups.map((grp) => (
+                <div key={grp.playerB.id} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b-2 border-gray-200">
+                    <div className="text-lg font-semibold">
+                      {grp.playerB.lastName}, {grp.playerB.firstName}
+                    </div>
+                    {phoneLink(grp.playerB.cellNumber)}
+                  </div>
+                  <div className="px-4 py-2">
+                    <div className="text-sm text-gray-500 mb-1">can give you one of these:</div>
+                    {grp.cands.map((c) => (
+                      <div
+                        key={c.gameY.id}
+                        className="py-2 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-3"
+                      >
+                        <div>
+                          <div className="text-lg font-medium">Game #{c.gameY.gameNumber}</div>
+                          <div className="text-base">
+                            {DAYS_SHORT[c.gameY.dayOfWeek]} {fmtDate(c.gameY.date)} · {fmtTime(c.gameY.startTime)} · Court{" "}
+                            {c.gameY.courtNumber}
+                            <span className="text-sm text-gray-500">
+                              {" "}({c.weekDistance === 0 ? "same week" : `±${c.weekDistance} wk`})
                             </span>
-                            {c.playerB.cellNumber ? (
-                              <a
-                                href={`tel:${c.playerB.cellNumber.replace(/\D/g, "")}`}
-                                className="block text-xs text-primary hover:underline"
-                                title="Call to arrange the swap"
-                              >
-                                {formatPhone(c.playerB.cellNumber)}
-                              </a>
-                            ) : (
-                              <span className="block text-xs text-muted">no cell number</span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted pl-3">↳ also offers</span>
-                        )}
-                      </td>
-                      <td className="p-2">
-                        #{c.gameY.gameNumber}{" "}
-                        <span className="text-xs text-muted">
-                          (Wk {c.gameY.weekNumber})
-                        </span>
-                      </td>
-                      <td className="p-2 whitespace-nowrap">
-                        {DAYS_SHORT[c.gameY.dayOfWeek]} {fmtDate(c.gameY.date)}
-                      </td>
-                      <td className="p-2 text-center">{c.gameY.courtNumber}</td>
-                      <td className="p-2">{fmtTime(c.gameY.startTime)}</td>
-                      <td className="p-2 text-center">
-                        {c.weekDistance === 0 ? "same" : `±${c.weekDistance}`}
-                      </td>
-                      <td className="p-2 text-right">
-                        <button
-                          onClick={() => performSwap(c)}
-                          disabled={swapping}
-                          className="px-3 py-1 bg-primary text-white rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                        >
+                          </div>
+                        </div>
+                        <button onClick={() => performSwap(c)} disabled={swapping} className={`${bigBtn} shrink-0`}>
                           {swapping ? "..." : "Swap"}
                         </button>
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Results — give away */}
+      {swapMode === "handoff" && playerA && gameA && handoffList !== null && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">
+            {handoffList.length === 0
+              ? "No one can take this game"
+              : `${handoffList.length} player${handoffList.length !== 1 ? "s" : ""} could take it`}
+          </div>
+          {handoffList.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              Nobody of skill {playerA.skillLevel || "—"} is free for this game.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">
+                Same skill level. Contract players first, then subs (a paid substitution). Nothing comes
+                back to {playerA.firstName}; the four players are reminded the evening before.
+              </p>
+              {handoffList.map(({ player: p, isSub }) => (
+                <div key={p.id} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold">
+                        {p.lastName}, {p.firstName}
+                        {isSub && (
+                          <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">Sub</span>
+                        )}
+                      </div>
+                      {phoneLink(p.cellNumber)}
+                    </div>
+                    <button onClick={() => performHandoff(p, isSub)} disabled={swapping} className={`${bigBtn} shrink-0`}>
+                      Give game
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
