@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { APP_VERSION } from "@/lib/version";
+import { formatPhone } from "@/lib/formatPhone";
 
 /**
  * Delegated swap admin, for a phone. No login: the token in the URL is the
@@ -25,6 +26,7 @@ const fmtTime = (t: string) => {
   return mm === "00" ? `${h}${ap}` : `${h}:${mm}${ap}`;
 };
 const tel = (c: string | null) => (c ? c.replace(/\D/g, "") : "");
+const barCls = "w-full flex items-center justify-between border-2 border-blue-600 bg-blue-50 rounded-xl px-4 py-4 text-left";
 
 interface PlayerLite { id: number; firstName: string; lastName: string }
 interface GameLite {
@@ -156,88 +158,135 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const shown = search.trim()
     ? players.filter((p) => `${p.lastName} ${p.firstName}`.toLowerCase().includes(search.trim().toLowerCase()))
     : players;
-  const btn = "w-full rounded-lg px-4 py-3 text-base font-medium text-white bg-blue-600 active:bg-blue-700 disabled:opacity-50";
+  const btn = "rounded-xl px-5 py-3 text-base font-semibold text-white bg-blue-600 active:bg-blue-700 disabled:opacity-50";
+
+  // One card per partner, as on the public Swap Finder.
+  const swapGroups: { player: SwapCand["player"]; cands: SwapCand[] }[] = [];
+  for (const c of swapC ?? []) {
+    let g = swapGroups.find((x) => x.player.id === c.player.id);
+    if (!g) { g = { player: c.player, cands: [] }; swapGroups.push(g); }
+    g.cands.push(c);
+  }
+
+  const phone = (cell: string | null) =>
+    cell ? (
+      <a href={`tel:${tel(cell)}`} className="text-lg font-bold text-blue-700 underline">{formatPhone(cell)}</a>
+    ) : (
+      <span className="text-base text-gray-500">no cell number</span>
+    );
 
   return (
-    <main className="max-w-md mx-auto p-4 pb-16 text-[#171717]">
-      <div className="flex items-baseline justify-between mb-3">
-        <h1 className="text-xl font-semibold">Swap Admin</h1>
-        {mode && <button onClick={reset} className="text-sm text-blue-700 underline">Start over</button>}
-      </div>
-      {me && <p className="text-xs text-gray-500 mb-3">Signed in by link as {me}.</p>}
-      {error && <div className="mb-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+    <div className="-m-8 min-h-screen bg-white text-[#171717]">
+    <div className="px-4 py-5 max-w-xl mx-auto pb-16">
+      <h1 className="text-2xl font-bold mb-1">Swap Admin</h1>
+      <p className="text-sm text-gray-500 mb-5">
+        Swap games, or give one away.{me && <> Signed in by link as {me}.</>}
+      </p>
+      {error && <div className="border-2 border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3 text-base mb-5">{error}</div>}
 
       {/* Done */}
       {done && (
-        <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+        <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4 text-base text-green-900">
           <p>✓ {done.text}</p>
           {!notified && (
             <button onClick={notify} disabled={busy} className={`${btn} mt-3`}>
               {busy ? "Sending..." : "Notify players"}
             </button>
           )}
-          {notifyMsg && <p className="mt-2 text-xs">{notifyMsg}</p>}
-          <button onClick={reset} className="mt-3 text-blue-700 underline">Do another</button>
+          {notifyMsg && <p className="mt-2 text-sm">{notifyMsg}</p>}
+          <button onClick={reset} className="mt-3 block text-blue-700 underline">Do another</button>
         </div>
       )}
 
-      {/* Step 0: choose */}
-      {!done && !mode && (
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600">What do you want to do?</p>
-          <button className={btn} onClick={() => setMode("swap")}>
-            Swap — trade games with another player
-          </button>
-          <button className={btn} onClick={() => setMode("handoff")}>
-            Give away — hand a game to a player or sub
-          </button>
-        </div>
-      )}
-
-      {/* Step 1: who */}
-      {!done && mode && !player && (
-        <div>
-          <p className="text-sm font-medium mb-2">
-            {mode === "swap" ? "Swap" : "Give away"} — who can&apos;t play?
-          </p>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search players..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base mb-2"
-          />
-          <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
-            {shown.map((p) => (
-              <button key={p.id} onClick={() => pickPlayer(p)} className="block w-full text-left px-3 py-3 active:bg-gray-100">
-                {p.lastName}, {p.firstName}
-              </button>
-            ))}
-            {shown.length === 0 && <p className="p-3 text-sm text-gray-500">No players match.</p>}
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: which game */}
-      {!done && mode && player && !game && (
-        <div>
-          <p className="text-sm font-medium mb-1">
-            {player.firstName} {player.lastName} — which game?
-          </p>
-          <button onClick={() => { setPlayer(null); setGames(null); }} className="text-xs text-blue-700 underline mb-2">
-            Change player
-          </button>
-          {games === null ? (
-            <p className="text-sm text-gray-500">Loading...</p>
-          ) : games.length === 0 ? (
-            <p className="text-sm text-gray-500">No upcoming games.</p>
+      {/* Step 0 — swap or give away */}
+      {!done && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">What do you want to do?</div>
+          {mode ? (
+            <button onClick={reset} className={barCls}>
+              <span className="text-lg font-semibold">
+                {mode === "swap" ? "Swap — trade games" : "Give away — hand a game to a player or sub"}
+              </span>
+              <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
+            </button>
           ) : (
-            <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+            <div className="space-y-3">
+              <button className={`${btn} w-full text-left`} onClick={() => setMode("swap")}>
+                Swap — trade games with another player
+              </button>
+              <button className={`${btn} w-full text-left`} onClick={() => setMode("handoff")}>
+                Give away — hand a game to a player or sub
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 1 — who */}
+      {!done && mode && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">1. Who can&apos;t play?</div>
+          {player ? (
+            <button onClick={() => { setPlayer(null); setGames(null); setGame(null); setSwapC(null); setHandC(null); setError(""); }} className={barCls}>
+              <span className="text-lg font-semibold">{player.lastName}, {player.firstName}</span>
+              <span className="text-sm text-blue-700 underline">change</span>
+            </button>
+          ) : (
+            <>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Type a name…"
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-lg mb-2"
+              />
+              <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                {players.length === 0 && !error ? (
+                  <p className="px-4 py-3 text-gray-500">Loading players…</p>
+                ) : shown.length === 0 ? (
+                  <p className="px-4 py-3 text-gray-500">No one matches that.</p>
+                ) : (
+                  shown.map((p) => (
+                    <button key={p.id} onClick={() => pickPlayer(p)} className="w-full text-left px-4 py-4 text-lg border-b border-gray-100 last:border-b-0 active:bg-blue-50">
+                      {p.lastName}, {p.firstName}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Step 2 — which date */}
+      {!done && mode && player && (
+        <div className="mb-5">
+          <div className="text-base font-semibold mb-2">2. Which date can&apos;t they play?</div>
+          {game ? (
+            <button onClick={() => { setGame(null); setSwapC(null); setHandC(null); setError(""); }} className={barCls}>
+              <span>
+                <span className="block text-lg font-semibold">{DAYS[game.dayOfWeek]} {fmtDate(game.date)}</span>
+                <span className="block text-base text-gray-600">
+                  {fmtTime(game.startTime)} · Court {game.courtNumber} · {game.group === "solo" ? "SOLO" : "Don's"} · Game #{game.gameNumber}
+                </span>
+              </span>
+              <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
+            </button>
+          ) : games === null ? (
+            <p className="text-gray-500 px-1 py-2">Loading games…</p>
+          ) : games.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              {player.firstName} has no games left.
+            </p>
+          ) : (
+            <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
               {games.map((g) => (
-                <button key={g.id} onClick={() => pickGame(g)} className="block w-full text-left px-3 py-3 active:bg-gray-100">
-                  <span className="font-medium">{DAYS[g.dayOfWeek]} {fmtDate(g.date)}</span>{" "}
-                  · {fmtTime(g.startTime)} · Ct {g.courtNumber}
-                  {g.group === "solo" && <span className="ml-2 text-xs text-gray-500">Solo</span>}
-                  <span className="text-xs text-gray-500"> · #{g.gameNumber}</span>
+                <button key={g.id} onClick={() => pickGame(g)} className="w-full text-left px-4 py-4 border-b border-gray-100 last:border-b-0 active:bg-blue-50">
+                  <div className="text-lg font-semibold">{DAYS[g.dayOfWeek]} {fmtDate(g.date)}</div>
+                  <div className="text-base text-gray-600">
+                    {fmtTime(g.startTime)} · Court {g.courtNumber} · {g.group === "solo" ? "SOLO" : "Don's"} · Game #{g.gameNumber}
+                  </div>
                 </button>
               ))}
             </div>
@@ -245,64 +294,87 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
         </div>
       )}
 
-      {/* Step 3: results */}
-      {!done && mode && player && game && (
+      {!done && busy && game && !swapC && !handC && (
+        <div className="border-2 border-blue-200 bg-blue-50 text-blue-800 rounded-xl px-4 py-4 text-lg mb-5">
+          Looking for {mode === "swap" ? "swaps" : "players"}…
+        </div>
+      )}
+
+      {/* Results — swap */}
+      {!done && mode === "swap" && player && game && swapC && (
         <div>
-          <p className="text-sm">
-            <strong>{player.firstName} {player.lastName}</strong> can&apos;t play{" "}
-            <strong>{DAYS[game.dayOfWeek]} {fmtDate(game.date)}</strong> · {fmtTime(game.startTime)} · Ct {game.courtNumber}
-          </p>
-          <button onClick={() => { setGame(null); setSwapC(null); setHandC(null); }} className="text-xs text-blue-700 underline mb-3">
-            Change game
-          </button>
-          {busy && !swapC && !handC && <p className="text-sm text-gray-500">Looking...</p>}
-
-          {mode === "swap" && swapC && (
-            swapC.length === 0 ? (
-              <p className="text-sm text-gray-500">Nobody of the same level can swap for this game in the weeks around it.</p>
-            ) : (
-              <div className="space-y-2">
-                {swapC.map((c) => (
-                  <div key={`${c.player.id}-${c.game.id}`} className="border border-gray-200 rounded-lg p-3">
-                    <div className="font-medium">{c.player.name}</div>
-                    {c.player.cell && (
-                      <a href={`tel:${tel(c.player.cell)}`} className="text-sm text-blue-700">{c.player.cell}</a>
-                    )}
-                    <div className="text-sm mt-1">
-                      Would give you: {DAYS[c.game.dayOfWeek]} {fmtDate(c.game.date)} · {fmtTime(c.game.startTime)} · Ct {c.game.courtNumber}
-                      <span className="text-xs text-gray-500"> ({c.weekDistance === 0 ? "same week" : `±${c.weekDistance} wk`})</span>
-                    </div>
-                    <button onClick={() => doSwap(c)} disabled={busy} className={`${btn} mt-2 py-2`}>Swap</button>
+          <div className="text-base font-semibold mb-2">
+            {swapGroups.length === 0
+              ? "No one can swap for this game"
+              : `${swapGroups.length} player${swapGroups.length !== 1 ? "s" : ""} could take it`}
+          </div>
+          {swapGroups.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              Nobody of the same level is free for this game in the weeks around it.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {swapGroups.map((grp) => (
+                <div key={grp.player.id} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b-2 border-gray-200">
+                    <div className="text-lg font-semibold">{grp.player.name}</div>
+                    {phone(grp.player.cell)}
                   </div>
-                ))}
-              </div>
-            )
-          )}
-
-          {mode === "handoff" && handC && (
-            handC.length === 0 ? (
-              <p className="text-sm text-gray-500">Nobody of the same level is free for this game.</p>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">Contract players first, then subs (a paid substitution).</p>
-                {handC.map((c) => (
-                  <div key={c.player.id} className="border border-gray-200 rounded-lg p-3">
-                    <div className="font-medium">
-                      {c.player.name}
-                      {c.isSub && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">Sub</span>}
-                    </div>
-                    {c.player.cell && (
-                      <a href={`tel:${tel(c.player.cell)}`} className="text-sm text-blue-700">{c.player.cell}</a>
-                    )}
-                    <button onClick={() => doHandoff(c)} disabled={busy} className={`${btn} mt-2 py-2`}>Give game</button>
+                  <div className="px-4 py-2">
+                    <div className="text-sm text-gray-500 mb-1">can give you one of these:</div>
+                    {grp.cands.map((c) => (
+                      <div key={c.game.id} className="py-2 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-medium">Game #{c.game.gameNumber}</div>
+                          <div className="text-base">
+                            {DAYS[c.game.dayOfWeek]} {fmtDate(c.game.date)} · {fmtTime(c.game.startTime)} · Court {c.game.courtNumber}
+                          </div>
+                        </div>
+                        <button onClick={() => doSwap(c)} disabled={busy} className={`${btn} shrink-0`}>Swap</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
+
+      {/* Results — give away */}
+      {!done && mode === "handoff" && player && game && handC && (
+        <div>
+          <div className="text-base font-semibold mb-2">
+            {handC.length === 0 ? "No one can take this game" : `${handC.length} player${handC.length !== 1 ? "s" : ""} could take it`}
+          </div>
+          {handC.length === 0 ? (
+            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              Nobody of the same level is free for this game.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">Contract players first, then subs (a paid substitution).</p>
+              {handC.map((c) => (
+                <div key={c.player.id} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold">
+                        {c.player.name}
+                        {c.isSub && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">Sub</span>}
+                      </div>
+                      {phone(c.player.cell)}
+                    </div>
+                    <button onClick={() => doHandoff(c)} disabled={busy} className={`${btn} shrink-0`}>Give game</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-gray-400 mt-8 text-center">Swap Admin v{APP_VERSION}</p>
-    </main>
+    </div>
+    </div>
   );
 }
