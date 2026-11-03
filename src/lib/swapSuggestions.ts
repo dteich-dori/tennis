@@ -81,9 +81,6 @@ export function whyCannotPlay(
   if (p.noEarlyGames && game.startTime < "10:00") {
     return "No early games";
   }
-  if (game.group === "solo" && (!p.soloGames || p.soloGames <= 0)) {
-    return "Not a Solo player";
-  }
   for (const g of games) {
     if (g.id === game.id) continue;
     if (excludeGameId !== undefined && g.id === excludeGameId) continue;

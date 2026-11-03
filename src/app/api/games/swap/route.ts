@@ -141,15 +141,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (gameA.group === "solo") {
-      if (!playerA.soloGames || !playerB.soloGames) {
-        return NextResponse.json(
-          { error: "Both players must be Solo players (soloGames > 0) for a Solo swap" },
-          { status: 400 }
-        );
-      }
-    }
-
     // Load blocked days & vacations & DNP for both players
     const playerIds = [playerAId, playerBId];
     const [blockedRows, vacRows, dnpRows] = await Promise.all([
