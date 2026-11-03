@@ -170,8 +170,8 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     const { ok, data } = await post({ op: "notify", kind: done.kind, payload: done.payload });
     setBusy(false);
     if (!ok || !data.results) { setNotifyMsg(data.error || "Could not send the notices."); return; }
-    const results = data.results as { name: string; sent: boolean; error?: string }[];
-    setNotifyMsg(results.map((r) => (r.sent ? `✓ Emailed ${r.name}` : `✗ ${r.name}: ${r.error ?? "not sent"}`)).join("  "));
+    const results = data.results as { name: string; sent: boolean; via?: string; error?: string }[];
+    setNotifyMsg(results.map((r) => (r.sent ? `✓ Notified ${r.name}${r.via ? ` (${r.via})` : ""}` : `✗ ${r.name}: ${r.error ?? "not sent"}`)).join("  "));
     if (results.every((r) => r.sent)) setNotified(true);
   };
 

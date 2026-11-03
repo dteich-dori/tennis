@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, emailSettings } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
-import { sendEmail } from "@/lib/email";
+import { games, gameAssignments, players } from "@/db/schema";
+import { inArray } from "drizzle-orm";
+import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
 import { generateSwapIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
@@ -11,6 +11,8 @@ interface NotifyBody {
   playerAId: number;
   gameBId: number;
   playerBId: number;
+  /** The delegate who made the swap; omitted when the admin Swap tab did. */
+  issuerPlayerId?: number;
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -38,13 +40,13 @@ function describe(g: { date: string; dayOfWeek: number; startTime: string; court
  *
  * Called from the Swap tab's "Notify players" button AFTER a swap has been
  * made — never automatically. Same body as /api/games/swap. Each of the two
- * players is emailed the game they gave up and the game they took, with two
+ * players is told (text first, email as the fallback — see swapNotices) the game they gave up and the game they took, with two
  * calendar files (one cancels the old game, one adds the new one) and plain
  * instructions, since calendar apps do not all honour the cancel.
  */
 export async function POST(request: NextRequest) {
   try {
-    const { gameAId, playerAId, gameBId, playerBId } = (await request.json()) as NotifyBody;
+    const { gameAId, playerAId, gameBId, playerBId, issuerPlayerId } = (await request.json()) as NotifyBody;
     if (!gameAId || !playerAId || !gameBId || !playerBId) {
       return NextResponse.json({ error: "gameAId, playerAId, gameBId, playerBId are required" }, { status: 400 });
     }
@@ -89,13 +91,7 @@ export async function POST(request: NextRequest) {
     const nameRows = await database.select().from(players).where(inArray(players.id, coIds));
     const lookup = new Map(nameRows.map((p) => [p.id, { id: p.id, firstName: p.firstName, lastName: p.lastName }]));
 
-    const [settings] = await database
-      .select()
-      .from(emailSettings)
-      .where(eq(emailSettings.seasonId, gameA.seasonId))
-      .limit(1);
-    const fromName = settings?.fromName || "Tennis Club";
-    const replyTo = settings?.replyTo || undefined;
+    const settings = await loadNoticeSettings(gameA.seasonId);
 
     //  player -> [game they gave up, game they took]
     const legs = [
@@ -103,20 +99,15 @@ export async function POST(request: NextRequest) {
       { player: playerB, gave: gB, took: gA },
     ];
 
-    const results: { playerId: number; name: string; sent: boolean; error?: string }[] = [];
+    const results: NoticeResult[] = [];
     for (const { player, gave, took } of legs) {
-      const name = `${player.firstName} ${player.lastName}`;
-      if (!player.email || !player.email.trim()) {
-        results.push({ playerId: player.id, name, sent: false, error: "No email address on file" });
-        continue;
-      }
       const ics = generateSwapIcs(
         { id: player.id, firstName: player.firstName, lastName: player.lastName },
         took,
         gave,
         lookup
       );
-      const text = [
+      const emailText = [
         `Hi ${player.firstName},`,
         "",
         "Your swap has been made. Here is what changed on your schedule:",
@@ -132,20 +123,38 @@ export async function POST(request: NextRequest) {
         "",
         "If you do not use the calendar feature, you can ignore the attachments. The swap board at the club stays the official record.",
       ].join("\n");
+      const smsText =
+        `Swap made. You're OUT of ${describe(gave)} (Game #${gave.gameNumber}). ` +
+        `You're IN to ${describe(took)} (Game #${took.gameNumber}). ` +
+        `If you keep games on your calendar, please update it.`;
 
-      const r = await sendEmail({
-        to: player.email,
-        subject: `Your swap: now playing ${fmtDate(took)}`,
-        text,
-        fromName,
-        replyTo,
-        attachments: [
-          { filename: "1-REMOVE-old-game.ics", content: ics.remove, contentType: "text/calendar; charset=utf-8; method=CANCEL" },
-          { filename: "2-ADD-new-game.ics", content: ics.add, contentType: "text/calendar; charset=utf-8" },
-        ],
-      });
-      results.push({ playerId: player.id, name, sent: r.success, error: r.error });
+      results.push(
+        await deliverToPlayer(player, {
+          settings,
+          subject: `Your swap: now playing ${fmtDate(took)}`,
+          emailText,
+          smsText,
+          attachments: [
+            { filename: "1-REMOVE-old-game.ics", content: ics.remove, contentType: "text/calendar; charset=utf-8; method=CANCEL" },
+            { filename: "2-ADD-new-game.ics", content: ics.add, contentType: "text/calendar; charset=utf-8" },
+          ],
+        })
+      );
     }
+
+    //  Copies: whoever issued the swap, and the game coordinator.
+    const summary =
+      `Swap: ${playerA.firstName} ${playerA.lastName} now plays ${describe(gB)} (Game #${gB.gameNumber}); ` +
+      `${playerB.firstName} ${playerB.lastName} now plays ${describe(gA)} (Game #${gA.gameNumber}).`;
+    results.push(
+      ...(await notifyIssuerAndCoordinator({
+        settings,
+        issuerPlayerId,
+        affectedPlayerIds: [playerAId, playerBId],
+        subject: "Swap made",
+        text: summary,
+      }))
+    );
 
     return NextResponse.json({ results });
   } catch (err) {

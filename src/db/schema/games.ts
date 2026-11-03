@@ -35,6 +35,8 @@ export const gameAssignments = sqliteTable("game_assignments", {
   // never swapped. A later swap of the same slot overwrites it, so the
   // mark always reflects the most recent swap.
   swapSerial: integer("swap_serial"),
+  //  Set once the evening-before line-up notice for this swapped slot went out.
+  swapReminderSentAt: text("swap_reminder_sent_at"),
   // v2.254: set by auto-assign's Pass 2.9 (clear-swap sub priority) to
   // the vacationing player this sub is covering for — e.g. Golden's
   // assignment gets coveringForPlayerId = Klein's id. Null for every

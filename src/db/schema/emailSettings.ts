@@ -35,4 +35,12 @@ export const emailSettings = sqliteTable("email_settings", {
   // because start times change between seasons, and a stale hardcoded
   // value would silently remind nobody.
   reminderStartTime: text("reminder_start_time"),
+  // --- Swap / give-away notices ---
+  // Same values as reminderChannel. Text first is the default: the notices
+  // are time-sensitive and a text gets read.
+  swapChannel: text("swap_channel").notNull().default("sms-fallback"),
+  // Cell number that gets a copy when the admin Swap tab makes a change.
+  swapAdminCell: text("swap_admin_cell").notNull().default(""),
+  // Game coordinator: gets a copy of every swap / give-away.
+  swapCoordinatorPlayerId: integer("swap_coordinator_player_id"),
 });

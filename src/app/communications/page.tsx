@@ -162,6 +162,10 @@ export default function CommunicationsPage() {
   const [reminderChannel, setReminderChannel] = useState<Channel>("sms-fallback");
   //  "" means every game tomorrow; "HH:MM" restricts to that start time.
   const [reminderStartTime, setReminderStartTime] = useState<string>("");
+  //  Swap / give-away notices: channel, the admin's own cell, the coordinator.
+  const [swapChannel, setSwapChannel] = useState<Channel>("sms-fallback");
+  const [swapAdminCell, setSwapAdminCell] = useState("");
+  const [swapCoordinatorPlayerId, setSwapCoordinatorPlayerId] = useState<number | null>(null);
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
@@ -242,6 +246,9 @@ export default function CommunicationsPage() {
       reminderChannel?: Channel;
       reminderStartTime?: string | null;
       reminderTemplateId?: number | null;
+      swapChannel?: Channel;
+      swapAdminCell?: string;
+      swapCoordinatorPlayerId?: number | null;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
@@ -252,6 +259,9 @@ export default function CommunicationsPage() {
       setReminderTemplate(data.reminderTemplate);
     if (data.reminderChannel) setReminderChannel(data.reminderChannel);
     setReminderStartTime(data.reminderStartTime ?? "");
+    setSwapChannel(data.swapChannel ?? "sms-fallback");
+    setSwapAdminCell(data.swapAdminCell ?? "");
+    setSwapCoordinatorPlayerId(data.swapCoordinatorPlayerId ?? null);
     if (data.reminderTemplateId !== undefined)
       setReminderTemplateId(data.reminderTemplateId);
     setTestPhone(data.testPhone || "");
@@ -388,6 +398,9 @@ export default function CommunicationsPage() {
         reminderChannel,
         reminderStartTime,
         reminderTemplateId,
+        swapChannel,
+        swapAdminCell,
+        swapCoordinatorPlayerId,
       }),
     });
     if (res.ok) {
@@ -810,6 +823,55 @@ export default function CommunicationsPage() {
                 className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
                 placeholder="https://docs.google.com/forms/d/e/..."
               />
+            </div>
+
+            {/* Swap and give-away notices */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <div className="text-sm font-medium mb-1">Swap &amp; give-away notices</div>
+              <p className="text-xs text-muted mb-2">
+                Sent when you press Notify players after a swap or give-away, and again the evening
+                before the game to everyone in it. Texts carry no calendar files; if a player has
+                no usable cell number (or opted out) the notice goes by email, with the files.
+              </p>
+              <label className="block text-xs font-medium mb-1">Send via</label>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
+                {([
+                  ["sms-fallback", "Text → Email if no text"],
+                  ["sms", "Text only"],
+                  ["both", "Text + Email"],
+                  ["email", "Email only"],
+                ] as const).map(([v, label]) => (
+                  <label key={v} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" name="swapChannel" value={v} checked={swapChannel === v} onChange={() => setSwapChannel(v)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Your cell (copy of changes you make here)</label>
+                  <input
+                    type="tel"
+                    value={swapAdminCell}
+                    onChange={(e) => setSwapAdminCell(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                    placeholder="10 digits"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Game coordinator (copy of every change)</label>
+                  <select
+                    value={swapCoordinatorPlayerId ?? ""}
+                    onChange={(e) => setSwapCoordinatorPlayerId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  >
+                    <option value="">— none —</option>
+                    {activePlayers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.lastName}, {p.firstName}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Daily reminders moved to the "Scheduled Reminders" tab. */}

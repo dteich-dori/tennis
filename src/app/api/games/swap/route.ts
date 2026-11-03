@@ -278,11 +278,11 @@ export async function POST(request: NextRequest) {
     // All good — perform the swap: update playerId on both assignment rows.
     await database
       .update(gameAssignments)
-      .set({ playerId: playerBId, swapSerial: nextSerial })
+      .set({ playerId: playerBId, swapSerial: nextSerial, swapReminderSentAt: null })
       .where(eq(gameAssignments.id, assignA.id));
     await database
       .update(gameAssignments)
-      .set({ playerId: playerAId, swapSerial: nextSerial })
+      .set({ playerId: playerAId, swapSerial: nextSerial, swapReminderSentAt: null })
       .where(eq(gameAssignments.id, assignB.id));
 
     const { bumpScheduleVersion } = await import("@/lib/bumpScheduleVersion");

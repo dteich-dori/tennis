@@ -1137,14 +1137,14 @@ function SwapTab(props: SwapTabProps) {
       });
       const data = (await res.json()) as {
         error?: string;
-        results?: { name: string; sent: boolean; error?: string }[];
+        results?: { name: string; sent: boolean; via?: string; error?: string }[];
       };
       if (!res.ok || !data.results) {
         setNotifyMsg(data.error || "Could not send the notices.");
       } else {
         setNotifyMsg(
           data.results
-            .map((r) => (r.sent ? `✓ Emailed ${r.name}` : `✗ ${r.name}: ${r.error ?? "not sent"}`))
+            .map((r) => (r.sent ? `✓ Notified ${r.name}${r.via ? ` (${r.via})` : ""}` : `✗ ${r.name}: ${r.error ?? "not sent"}`))
             .join("   ")
         );
         if (data.results.every((r) => r.sent)) {

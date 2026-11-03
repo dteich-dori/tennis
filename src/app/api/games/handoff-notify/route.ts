@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
-import { games, gameAssignments, players, emailSettings } from "@/db/schema";
+import { games, gameAssignments, players } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { sendEmail } from "@/lib/email";
+import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
 import { generateSingleGameIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
@@ -25,8 +25,8 @@ function when(g: { date: string; dayOfWeek: number; startTime: string; courtNumb
  */
 export async function POST(request: NextRequest) {
   try {
-    const { gameId, fromPlayerId, toPlayerId } = (await request.json()) as {
-      gameId: number; fromPlayerId: number; toPlayerId: number;
+    const { gameId, fromPlayerId, toPlayerId, issuerPlayerId } = (await request.json()) as {
+      gameId: number; fromPlayerId: number; toPlayerId: number; issuerPlayerId?: number;
     };
     const database = await db();
     const [game] = await database.select().from(games).where(eq(games.id, gameId));
@@ -43,24 +43,18 @@ export async function POST(request: NextRequest) {
     const receiver = pRows.find((p) => p.id === toPlayerId);
     if (!giver || !receiver) return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
-    const [settings] = await database.select().from(emailSettings).where(eq(emailSettings.seasonId, game.seasonId)).limit(1);
-    const fromName = settings?.fromName || "Tennis Club";
-    const replyTo = settings?.replyTo || undefined;
+    const settings = await loadNoticeSettings(game.seasonId);
     const withAssign = { ...game, assignments };
     const others = assignments.filter((a) => a.playerId !== toPlayerId).map((a) => lookup.get(a.playerId)).filter(Boolean)
       .map((p) => `${p!.firstName} ${p!.lastName}`).join(", ");
 
-    const send = async (p: typeof giver, subject: string, text: string, filename: string, ics: string, cancel: boolean) => {
-      const name = `${p.firstName} ${p.lastName}`;
-      if (!p.email?.trim()) return { playerId: p.id, name, sent: false, error: "No email address on file" };
-      const r = await sendEmail({
-        to: p.email, subject, text, fromName, replyTo,
+    const send = async (p: typeof giver, subject: string, text: string, smsText: string, filename: string, ics: string, cancel: boolean): Promise<NoticeResult> =>
+      deliverToPlayer(p, {
+        settings, subject, emailText: text, smsText,
         attachments: [{ filename, content: ics, contentType: `text/calendar; charset=utf-8${cancel ? "; method=CANCEL" : ""}` }],
       });
-      return { playerId: p.id, name, sent: r.success, error: r.error };
-    };
 
-    const results = [
+    const results: NoticeResult[] = [
       await send(
         giver,
         `Game handed off: ${when(game)}`,
@@ -70,6 +64,7 @@ export async function POST(request: NextRequest) {
           `${receiver.firstName} ${receiver.lastName} has taken your place.`, "",
           "If you added your games to your calendar earlier, open the attached file to take this game off it. Apple Calendar and Outlook will remove it; Google Calendar often ignores the file — if the game is still there afterwards, delete it by hand.",
         ].join("\n"),
+        `You're out of ${when(game)} (Game #${game.gameNumber}). ${receiver.firstName} ${receiver.lastName} has taken your place. If you keep games on your calendar, please remove it.`,
         "REMOVE-handed-off-game.ics",
         generateSingleGameIcs({ id: giver.id, firstName: giver.firstName, lastName: giver.lastName }, withAssign, lookup, "cancel"),
         true
@@ -84,11 +79,21 @@ export async function POST(request: NextRequest) {
           others ? `You will be playing with: ${others}.` : "", "",
           "Open the attached file and confirm to add the game to your calendar. You will also get a reminder the evening before.",
         ].filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n"),
+        `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`,
         "ADD-new-game.ics",
         generateSingleGameIcs({ id: receiver.id, firstName: receiver.firstName, lastName: receiver.lastName }, withAssign, lookup, "add"),
         false
       ),
     ];
+    results.push(
+      ...(await notifyIssuerAndCoordinator({
+        settings,
+        issuerPlayerId,
+        affectedPlayerIds: [fromPlayerId, toPlayerId],
+        subject: "Game given away",
+        text: `Give-away: ${giver.firstName} ${giver.lastName} gave ${when(game)} (Game #${game.gameNumber}) to ${receiver.firstName} ${receiver.lastName}.`,
+      }))
+    );
     return NextResponse.json({ results });
   } catch (err) {
     console.error("[games/handoff-notify] error:", err);

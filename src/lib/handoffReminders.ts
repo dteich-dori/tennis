@@ -1,21 +1,23 @@
 import { db } from "@/db/getDb";
-import { emailSettings, games, gameAssignments, gameHandoffs, players, emailLog } from "@/db/schema";
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import { sendEmail, sendBulkSms, validateEmailConfig, hasSmsCapability } from "@/lib/email";
+import { games, gameAssignments, gameHandoffs, players, emailLog } from "@/db/schema";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { validateEmailConfig } from "@/lib/email";
+import { deliverToPlayer, loadNoticeSettings } from "@/lib/swapNotices";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 /**
- * Evening-before notice for games that changed hands outright.
+ * Evening-before notice for games whose line-up changed.
  *
  * For every game TOMORROW (ET) that had a player give it away
- * (game_handoffs, not yet announced), tells all four current players that
- * the line-up changed and who is playing. Each handed-off game is announced
- * once. This is in addition to the general reminder, which says nothing
+ * (game_handoffs) or was part of a swap (game_assignments.swap_serial) and
+ * has not been announced yet, tells all four current players that the
+ * line-up changed and who is playing. Each change is announced once. This is in addition to the general reminder, which says nothing
  * about a change.
  *
  * Runs at the end of /api/cron/reminders (the plan allows one daily cron)
  * and is also reachable on its own at /api/cron/handoff-reminders.
- * Channel and sender come from the season's email_settings.
+ * Channel (text first by default) and sender come from the season's
+ * email_settings swap_channel.
  */
 const TZ = "America/New_York";
 
@@ -48,25 +50,42 @@ export async function runHandoffReminders() {
   }
 
   const database = await db();
-  const pending = await database
+  const pendingHandoffs = await database
     .select({ h: gameHandoffs, g: games })
     .from(gameHandoffs)
     .innerJoin(games, eq(games.id, gameHandoffs.gameId))
     .where(and(isNull(gameHandoffs.reminderSentAt), eq(games.date, tomorrow), eq(games.status, "normal")));
+  const pendingSwaps = await database
+    .select({ a: gameAssignments, g: games })
+    .from(gameAssignments)
+    .innerJoin(games, eq(games.id, gameAssignments.gameId))
+    .where(
+      and(
+        isNotNull(gameAssignments.swapSerial),
+        isNull(gameAssignments.swapReminderSentAt),
+        eq(games.date, tomorrow),
+        eq(games.status, "normal")
+      )
+    );
 
-  const byGame = new Map<number, { game: typeof games.$inferSelect; handoffs: (typeof gameHandoffs.$inferSelect)[] }>();
-  for (const { h, g } of pending) {
-    const e = byGame.get(g.id) ?? { game: g, handoffs: [] };
-    e.handoffs.push(h);
+  type Entry = {
+    game: typeof games.$inferSelect;
+    handoffs: (typeof gameHandoffs.$inferSelect)[];
+    swapped: (typeof gameAssignments.$inferSelect)[];
+  };
+  const byGame = new Map<number, Entry>();
+  const entry = (g: typeof games.$inferSelect) => {
+    const e = byGame.get(g.id) ?? { game: g, handoffs: [], swapped: [] };
     byGame.set(g.id, e);
-  }
+    return e;
+  };
+  for (const { h, g } of pendingHandoffs) entry(g).handoffs.push(h);
+  for (const { a, g } of pendingSwaps) entry(g).swapped.push(a);
 
   const summary: { gameId: number; delivered: number; errors: string[] }[] = [];
-  for (const { game, handoffs } of byGame.values()) {
-    const [settings] = await database.select().from(emailSettings).where(eq(emailSettings.seasonId, game.seasonId)).limit(1);
-    const fromName = settings?.fromName || "Tennis Club";
-    const replyTo = settings?.replyTo || undefined;
-    const channel = settings?.reminderChannel || "sms-fallback";
+  for (const { game, handoffs, swapped } of byGame.values()) {
+    const settings = await loadNoticeSettings(game.seasonId);
+    const { fromName, replyTo } = settings;
 
     const rows = await database.select().from(gameAssignments).where(eq(gameAssignments.gameId, game.id));
     const roster = firstPerSlot(rows).sort((a, b) => a.slotPosition - b.slotPosition);
@@ -75,7 +94,10 @@ export async function runHandoffReminders() {
     const byId = new Map(pRows.map((p) => [p.id, p]));
     const nm = (id: number) => { const p = byId.get(id); return p ? `${p.firstName} ${p.lastName}` : "(unknown)"; };
 
-    const changes = handoffs.map((h) => `${nm(h.toPlayerId)} is taking ${nm(h.fromPlayerId)}'s place`).join("; ");
+    const parts = handoffs.map((h) => `${nm(h.toPlayerId)} is taking ${nm(h.fromPlayerId)}'s place`);
+    const swappedIn = [...new Set(swapped.map((a) => nm(a.playerId)))];
+    if (swappedIn.length > 0) parts.push(`${swappedIn.join(" and ")} swapped into this game`);
+    const changes = parts.join("; ");
     const lineup = roster.map((r) => nm(r.playerId)).join(", ");
     const subject = `Line-up change for tomorrow: ${fmtWhen(game.date, game.startTime)}`;
     const errors: string[] = [];
@@ -93,35 +115,21 @@ export async function runHandoffReminders() {
       ].join("\n");
       const smsBody = `${subject}. Court ${game.courtNumber}. ${changes}. Line-up: ${lineup}.`;
 
-      const hasEmail = !!p.email?.trim();
-      const hasSms = !p.smsOptOut && hasSmsCapability(p.cellNumber, p.carrier);
-      const email = async () => {
-        if (!hasEmail) return false;
-        const res = await sendEmail({ to: p.email!, subject, text: body, fromName, replyTo });
-        if (!res.success) errors.push(`${nm(p.id)} email: ${res.error}`);
-        return res.success;
-      };
-      const sms = async () => {
-        if (!hasSms) return false;
-        const res = await sendBulkSms([{ name: nm(p.id), phone: p.cellNumber!, carrier: p.carrier ?? undefined }], smsBody, fromName);
-        if (res.errors.length) errors.push(...res.errors);
-        return res.smsSent > 0;
-      };
-      let ok = false;
-      if (channel === "email") ok = await email();
-      else if (channel === "sms") ok = hasSms ? await sms() : await email();
-      else if (channel === "both") { const e = await email(); const s = await sms(); ok = e || s; }
-      else { ok = hasSms ? (await sms()) || (await email()) : await email(); }
-      if (ok) delivered++;
+      const res = await deliverToPlayer(p, { settings, subject, emailText: body, smsText: smsBody });
+      if (res.sent) delivered++;
+      else errors.push(`${nm(p.id)}: ${res.error}`);
     }
 
     //  Mark announced only if somebody actually received it; the date will
     //  have passed by tomorrow's run, so there is no retry either way.
+    const now = new Date().toISOString();
     if (delivered > 0) {
-      await database
-        .update(gameHandoffs)
-        .set({ reminderSentAt: new Date().toISOString() })
-        .where(inArray(gameHandoffs.id, handoffs.map((h) => h.id)));
+      if (handoffs.length > 0) {
+        await database.update(gameHandoffs).set({ reminderSentAt: now }).where(inArray(gameHandoffs.id, handoffs.map((h) => h.id)));
+      }
+      if (swapped.length > 0) {
+        await database.update(gameAssignments).set({ swapReminderSentAt: now }).where(inArray(gameAssignments.id, swapped.map((a) => a.id)));
+      }
     }
     await database.insert(emailLog).values({
       seasonId: game.seasonId,

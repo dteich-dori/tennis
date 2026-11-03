@@ -199,7 +199,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
         .where(and(eq(swapAdminLog.delegatePlayerId, me.id), eq(swapAdminLog.action, kind), gt(swapAdminLog.createdAt, since)))
         .limit(1);
       if (recent.length === 0) return bad("Make a change first, then notify.", 403);
-      const res = await forward(kind === "handoff" ? handoffNotifyPost : swapNotifyPost, body.payload);
+      const res = await forward(kind === "handoff" ? handoffNotifyPost : swapNotifyPost, { ...body.payload, issuerPlayerId: me.id });
       return NextResponse.json(await res.json(), { status: res.status });
     }
     return bad("Unknown op");

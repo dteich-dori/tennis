@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
         reminderChannel: "sms-fallback",
         reminderTemplateId: null,
         reminderStartTime: null,
+        swapChannel: "sms-fallback",
+        swapAdminCell: "",
+        swapCoordinatorPlayerId: null,
       });
     }
 
@@ -63,6 +66,9 @@ export async function PUT(request: NextRequest) {
       reminderChannel?: string;
       reminderTemplateId?: number | null;
       reminderStartTime?: string | null;
+      swapChannel?: string;
+      swapAdminCell?: string;
+      swapCoordinatorPlayerId?: number | null;
     };
     const {
       seasonId,
@@ -78,7 +84,20 @@ export async function PUT(request: NextRequest) {
       reminderChannel,
       reminderTemplateId,
       reminderStartTime,
+      swapChannel,
+      swapAdminCell,
+      swapCoordinatorPlayerId,
     } = body;
+
+    if (swapChannel !== undefined && !["both", "email", "sms", "sms-fallback"].includes(swapChannel)) {
+      return NextResponse.json(
+        { error: "swapChannel must be one of: both, email, sms, sms-fallback" },
+        { status: 400 }
+      );
+    }
+    if (swapAdminCell !== undefined && swapAdminCell.trim() !== "" && swapAdminCell.replace(/\D/g, "").length !== 10) {
+      return NextResponse.json({ error: "Admin cell must be a 10-digit number" }, { status: 400 });
+    }
 
     if (!seasonId) {
       return NextResponse.json({ error: "seasonId required" }, { status: 400 });
@@ -142,6 +161,9 @@ export async function PUT(request: NextRequest) {
         updates.reminderChannel = reminderChannel;
       }
       if (safeStartTime !== undefined) updates.reminderStartTime = safeStartTime;
+      if (swapChannel !== undefined) updates.swapChannel = swapChannel;
+      if (swapAdminCell !== undefined) updates.swapAdminCell = swapAdminCell.trim();
+      if (swapCoordinatorPlayerId !== undefined) updates.swapCoordinatorPlayerId = swapCoordinatorPlayerId;
       if (reminderTemplateId !== undefined) {
         // null = clear / use inline template; integer = use that template id
         updates.reminderTemplateId = reminderTemplateId;
@@ -169,6 +191,9 @@ export async function PUT(request: NextRequest) {
           reminderTemplate: reminderTemplate ?? DEFAULT_REMINDER_TEMPLATE,
           reminderChannel: reminderChannel ?? "sms-fallback",
           reminderTemplateId: reminderTemplateId ?? null,
+          swapChannel: swapChannel ?? "sms-fallback",
+          swapAdminCell: (swapAdminCell ?? "").trim(),
+          swapCoordinatorPlayerId: swapCoordinatorPlayerId ?? null,
         })
         .returning();
       return NextResponse.json(result[0], { status: 201 });
