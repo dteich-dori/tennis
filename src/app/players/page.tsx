@@ -1031,30 +1031,21 @@ export default function PlayersPage() {
                     className="flex items-center gap-2"
                     title="Lets this player swap or give away ANY game, with no login, from a private link. Unchecking and saving revokes the link at once."
                   >
+                    Swap admin
                     <input
                       type="checkbox"
                       checked={form.swapAdminAccess}
                       onChange={(e) => setForm({ ...form, swapAdminAccess: e.target.checked })}
                     />
-                    Swap admin (can swap or give away any game via a private link)
                   </label>
                   {form.swapAdminAccess && form.swapAdminToken && !form.swapAdminRegenerate && (
-                    <div className="mt-1 ml-6 text-xs">
+                    <div className="mt-1 text-xs">
                       <code className="break-all">
                         {typeof window !== "undefined" ? window.location.origin : ""}/swap-admin/{form.swapAdminToken}
                       </code>{" "}
                       <button
                         type="button"
-                        className="text-primary underline"
-                        onClick={() =>
-                          navigator.clipboard?.writeText(`${window.location.origin}/swap-admin/${form.swapAdminToken}`)
-                        }
-                      >
-                        Copy
-                      </button>{" "}
-                      <button
-                        type="button"
-                        className="text-primary underline"
+                        className="text-primary underline font-medium"
                         disabled={linkTexting}
                         title="Text this link to the player's cell"
                         onClick={async () => {
@@ -1076,7 +1067,7 @@ export default function PlayersPage() {
                           }
                         }}
                       >
-                        {linkTexting ? "Texting..." : "Text link"}
+                        {linkTexting ? "Sending..." : "Send Link"}
                       </button>{" "}
                       <button
                         type="button"
@@ -1085,15 +1076,24 @@ export default function PlayersPage() {
                         title="Issue a new link on save; the old one stops working"
                       >
                         New link
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() =>
+                          navigator.clipboard?.writeText(`${window.location.origin}/swap-admin/${form.swapAdminToken}`)
+                        }
+                      >
+                        Copy
                       </button>
-                      {linkTextMsg && <span className="ml-2">{linkTextMsg}</span>}
+                      {linkTextMsg && <div className="mt-1">{linkTextMsg}</div>}
                     </div>
                   )}
                   {form.swapAdminAccess && !form.swapAdminToken && (
-                    <p className="mt-1 ml-6 text-xs text-muted">The link appears after you save.</p>
+                    <p className="mt-1 text-xs text-muted">The link appears after you save.</p>
                   )}
                   {form.swapAdminRegenerate && (
-                    <p className="mt-1 ml-6 text-xs text-muted">A new link will be issued when you save.</p>
+                    <p className="mt-1 text-xs text-muted">A new link will be issued when you save.</p>
                   )}
                 </div>
               )}
