@@ -3,7 +3,6 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments, players } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
-import { generateSwapIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 interface NotifyBody {
@@ -40,9 +39,9 @@ function describe(g: { date: string; dayOfWeek: number; startTime: string; court
  *
  * Called from the Swap tab's "Notify players" button AFTER a swap has been
  * made — never automatically. Same body as /api/games/swap. Each of the two
- * players is told (text first, email as the fallback — see swapNotices) the game they gave up and the game they took, with two
- * calendar files (one cancels the old game, one adds the new one) and plain
- * instructions, since calendar apps do not all honour the cancel.
+ * players is told (text first, email as the fallback — see swapNotices) the
+ * game they gave up and the game they took. No calendar files: players keep
+ * their own calendars. The issuer and the game coordinator get a copy.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -86,11 +85,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    //  Co-player names for the event description.
-    const coIds = [...gA.assignments, ...gB.assignments].map((a) => a.playerId);
-    const nameRows = await database.select().from(players).where(inArray(players.id, coIds));
-    const lookup = new Map(nameRows.map((p) => [p.id, { id: p.id, firstName: p.firstName, lastName: p.lastName }]));
-
     const settings = await loadNoticeSettings(gameA.seasonId);
 
     //  player -> [game they gave up, game they took]
@@ -101,12 +95,6 @@ export async function POST(request: NextRequest) {
 
     const results: NoticeResult[] = [];
     for (const { player, gave, took } of legs) {
-      const ics = generateSwapIcs(
-        { id: player.id, firstName: player.firstName, lastName: player.lastName },
-        took,
-        gave,
-        lookup
-      );
       const emailText = [
         `Hi ${player.firstName},`,
         "",
@@ -115,18 +103,11 @@ export async function POST(request: NextRequest) {
         `NO LONGER PLAYING:  ${describe(gave)}  (Game #${gave.gameNumber})`,
         `NOW PLAYING:        ${describe(took)}  (Game #${took.gameNumber})`,
         "",
-        "WHAT YOU NEED TO DO",
-        "If you added your games to your calendar earlier, your calendar does not update by itself. Two files are attached:",
-        "",
-        "1. Open \"1-REMOVE-old-game.ics\". Apple Calendar and Outlook will take the old game off your calendar. Google Calendar often ignores it — if the old game is still there afterwards, delete it by hand.",
-        "2. Open \"2-ADD-new-game.ics\" and confirm, to put the new game on your calendar.",
-        "",
-        "If you do not use the calendar feature, you can ignore the attachments. The swap board at the club stays the official record.",
+        "Your calendar has not been changed — update it yourself if you keep these games on it.",
       ].join("\n");
       const smsText =
         `Swap made. You're OUT of ${describe(gave)} (Game #${gave.gameNumber}). ` +
-        `You're IN to ${describe(took)} (Game #${took.gameNumber}). ` +
-        `If you keep games on your calendar, please update it.`;
+        `You're IN to ${describe(took)} (Game #${took.gameNumber}).`;
 
       results.push(
         await deliverToPlayer(player, {
@@ -134,10 +115,6 @@ export async function POST(request: NextRequest) {
           subject: `Your swap: now playing ${fmtDate(took)}`,
           emailText,
           smsText,
-          attachments: [
-            { filename: "1-REMOVE-old-game.ics", content: ics.remove, contentType: "text/calendar; charset=utf-8; method=CANCEL" },
-            { filename: "2-ADD-new-game.ics", content: ics.add, contentType: "text/calendar; charset=utf-8" },
-          ],
         })
       );
     }

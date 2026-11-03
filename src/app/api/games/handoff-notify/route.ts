@@ -3,7 +3,6 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments, players } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
-import { generateSingleGameIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -19,8 +18,8 @@ function when(g: { date: string; dayOfWeek: number; startTime: string; courtNumb
 /**
  * POST /api/games/handoff-notify  { gameId, fromPlayerId, toPlayerId }
  * From the "Notify players" button after a handoff — never automatic. The
- * giver is told the game is off their schedule (with a calendar cancel);
- * the receiver is told it is theirs (with the game to add). The other two
+ * giver is told the game is off their schedule; the receiver is told it is
+ * theirs. No calendar files: players' calendars are theirs to edit. The other two
  * players hear about it from the evening-before cron.
  */
 export async function POST(request: NextRequest) {
@@ -44,15 +43,11 @@ export async function POST(request: NextRequest) {
     if (!giver || !receiver) return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
     const settings = await loadNoticeSettings(game.seasonId);
-    const withAssign = { ...game, assignments };
     const others = assignments.filter((a) => a.playerId !== toPlayerId).map((a) => lookup.get(a.playerId)).filter(Boolean)
       .map((p) => `${p!.firstName} ${p!.lastName}`).join(", ");
 
-    const send = async (p: typeof giver, subject: string, text: string, smsText: string, filename: string, ics: string, cancel: boolean): Promise<NoticeResult> =>
-      deliverToPlayer(p, {
-        settings, subject, emailText: text, smsText,
-        attachments: [{ filename, content: ics, contentType: `text/calendar; charset=utf-8${cancel ? "; method=CANCEL" : ""}` }],
-      });
+    const send = (p: typeof giver, subject: string, text: string, smsText: string): Promise<NoticeResult> =>
+      deliverToPlayer(p, { settings, subject, emailText: text, smsText });
 
     const results: NoticeResult[] = [
       await send(
@@ -62,12 +57,9 @@ export async function POST(request: NextRequest) {
           `Hi ${giver.firstName},`, "",
           `You are no longer playing: ${when(game)} (Game #${game.gameNumber}).`,
           `${receiver.firstName} ${receiver.lastName} has taken your place.`, "",
-          "If you added your games to your calendar earlier, open the attached file to take this game off it. Apple Calendar and Outlook will remove it; Google Calendar often ignores the file — if the game is still there afterwards, delete it by hand.",
+          "Your calendar has not been changed — remove the game yourself if you keep it there.",
         ].join("\n"),
-        `You're out of ${when(game)} (Game #${game.gameNumber}). ${receiver.firstName} ${receiver.lastName} has taken your place. If you keep games on your calendar, please remove it.`,
-        "REMOVE-handed-off-game.ics",
-        generateSingleGameIcs({ id: giver.id, firstName: giver.firstName, lastName: giver.lastName }, withAssign, lookup, "cancel"),
-        true
+        `You're out of ${when(game)} (Game #${game.gameNumber}). ${receiver.firstName} ${receiver.lastName} has taken your place.`
       ),
       await send(
         receiver,
@@ -77,12 +69,9 @@ export async function POST(request: NextRequest) {
           `${giver.firstName} ${giver.lastName} can't play, and you have taken the game:`,
           `${when(game)} (Game #${game.gameNumber}).`,
           others ? `You will be playing with: ${others}.` : "", "",
-          "Open the attached file and confirm to add the game to your calendar. You will also get a reminder the evening before.",
+          "Your calendar has not been changed — add the game yourself if you keep one. You will also get a reminder the evening before.",
         ].filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n"),
-        `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`,
-        "ADD-new-game.ics",
-        generateSingleGameIcs({ id: receiver.id, firstName: receiver.firstName, lastName: receiver.lastName }, withAssign, lookup, "add"),
-        false
+        `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`
       ),
     ];
     results.push(

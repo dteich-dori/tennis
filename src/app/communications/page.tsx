@@ -830,8 +830,8 @@ export default function CommunicationsPage() {
               <div className="text-sm font-medium mb-1">Swap &amp; give-away notices</div>
               <p className="text-xs text-muted mb-2">
                 Sent when you press Notify players after a swap or give-away, and again the evening
-                before the game to everyone in it. Texts carry no calendar files; if a player has
-                no usable cell number (or opted out) the notice goes by email, with the files.
+                before the game to everyone in it. If a player has no usable cell number (or opted
+                out of texts) the notice goes by email instead. No calendar files are sent.
               </p>
               <label className="block text-xs font-medium mb-1">Send via</label>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
