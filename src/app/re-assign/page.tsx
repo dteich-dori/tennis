@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findSwapSuggestions, findHandoffCandidates, whyCannotPlay } from "@/lib/swapSuggestions";
+import { matchGameDate } from "@/lib/matchGameDate";
 import { formatPhone } from "@/lib/formatPhone";
 
 interface Season {
@@ -1111,19 +1112,6 @@ function SwapTab(props: SwapTabProps) {
 
   const candidates = suggestions ?? [];
 
-  /** The selected player's game on a date (they can only hold one a day). */
-  function gameOnDate(date: string): Game | null {
-    if (!playerA) return null;
-    return (
-      games.find(
-        (x) =>
-          x.date === date &&
-          x.status === "normal" &&
-          (x.assignments ?? []).some((a) => a.playerId === playerA.id)
-      ) ?? null
-    );
-  }
-
   //  The swap just made, kept so "Notify players" can email exactly it.
   const [lastSwap, setLastSwap] = useState<{
     gameAId: number; playerAId: number; gameBId: number; playerBId: number;
@@ -1554,20 +1542,26 @@ function SwapTab(props: SwapTabProps) {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">or Date</label>
                   <input
-                    type="date"
+                    type="text"
+                    inputMode="numeric"
                     value={gameDateInput}
                     onChange={(e) => {
-                      const d = e.target.value;
-                      setGameDateInput(d);
+                      setGameDateInput(e.target.value);
                       setGameNumberInput("");
                       setGameNumberError("");
-                      if (!d) return;
-                      jumpToGame(
-                        gameOnDate(d),
-                        `${playerA.lastName}, ${playerA.firstName} has no game on ${fmtDate(d)}.`
-                      );
                     }}
-                    className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base"
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      e.currentTarget.blur();
+                    }}
+                    onBlur={() => {
+                      if (!gameDateInput.trim()) return;
+                      const r = matchGameDate(gameDateInput, playerAAllGames);
+                      jumpToGame(r.game, r.error ? `${playerA.lastName}, ${playerA.firstName}: ${r.error}` : "");
+                    }}
+                    placeholder="month/day, e.g. 3/10"
+                    className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base w-44"
                   />
                 </div>
                 {gameNumberError && <span className="text-sm text-red-600">{gameNumberError}</span>}

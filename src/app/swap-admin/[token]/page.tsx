@@ -3,6 +3,7 @@
 import { useEffect, useState, use } from "react";
 import { APP_VERSION } from "@/lib/version";
 import { formatPhone } from "@/lib/formatPhone";
+import { matchGameDate } from "@/lib/matchGameDate";
 
 /**
  * Delegated swap admin, for a phone. No login: the token in the URL is the
@@ -289,14 +290,22 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Enter the date</label>
                 <input
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
                   value={dateInput}
-                  onChange={(e) => {
-                    const d = e.target.value;
-                    setDateInput(d); setNumInput("");
-                    if (d) jump(games.find((g) => g.date === d), `${player.firstName} has no game on ${fmtDate(d)}.`);
+                  onChange={(e) => { setDateInput(e.target.value); setNumInput(""); setError(""); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    e.currentTarget.blur();
                   }}
-                  className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base"
+                  onBlur={() => {
+                    if (!dateInput.trim()) return;
+                    const r = matchGameDate(dateInput, games);
+                    jump(r.game ?? undefined, r.error ? `${player.firstName}: ${r.error}` : "");
+                  }}
+                  placeholder="month/day, e.g. 3/10"
+                  className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base w-44"
                 />
               </div>
               <div>
