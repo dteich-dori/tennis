@@ -23,7 +23,7 @@ interface SwapBody {
  *   - Player A leaves Game X, takes Player B's slot in Game Y
  *   - Player B leaves Game Y, takes Player A's slot in Game X
  * Server re-validates eligibility for both sides before committing.
- * Same group only (Dons<->Dons or Solo<->Solo). Same skill level required.
+ * Solo and Don's games may be traded for one another. Same skill level required.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -62,12 +62,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "One or both games not found" },
         { status: 404 }
-      );
-    }
-    if (gameA.group !== gameB.group) {
-      return NextResponse.json(
-        { error: `Groups differ (${gameA.group} vs ${gameB.group}). Swaps must be within same group.` },
-        { status: 400 }
       );
     }
     if (gameA.status !== "normal" || gameB.status !== "normal") {

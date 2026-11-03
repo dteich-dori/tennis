@@ -612,7 +612,7 @@ export default function ReAssignPage() {
           <ol className="list-decimal ml-5 space-y-0.5">
             <li>Pick the <strong>player</strong> who wants to swap out of a game.</li>
             <li>Click the <strong>game they want to give up</strong>.</li>
-            <li>The system shows valid swap partners in the selected radius — <strong>same group, same skill level</strong> only.</li>
+            <li>The system shows valid swap partners in the selected radius — <strong>same skill level</strong> only (a Solo game may be traded for a Don&apos;s game).</li>
             <li>Click <strong>Swap</strong> next to a candidate. Both assignments switch atomically.</li>
           </ol>
         </div>
@@ -1621,7 +1621,7 @@ function SwapTab(props: SwapTabProps) {
           {groups.length === 0 ? (
             <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of the same level is free for this game in these weeks. Widen the window and
-              search again — Solo games in particular often need a wider span.
+              search again.
               {whyNot("swap")}
             </div>
           ) : (

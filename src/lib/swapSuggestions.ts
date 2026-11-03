@@ -143,7 +143,6 @@ export function findSwapSuggestions<P extends SwapPlayer, G extends SwapGame>(
     if (g.id === gameA.id) continue;
     if (g.status !== "normal") continue;
     if (g.weekNumber < lo || g.weekNumber > hi) continue;
-    if (g.group !== gameA.group) continue;
     if (g.date === gameA.date) continue; // same-date clash for whoever moves
     //  Mirror of the alreadyInGameA guard below: a game player A already
     //  plays in is nothing for them to receive, so it is not a swap.
@@ -290,13 +289,12 @@ export function explainNoMatch<P extends SwapPlayer, G extends SwapGame>(opts: {
     const theirs = games.filter(
       (g) =>
         g.status === "normal" &&
-        g.group === gameA.group &&
         g.date !== gameA.date &&
         g.weekNumber >= lo && g.weekNumber <= hi &&
         (g.assignments ?? []).some((a) => a.playerId === b.id)
     );
     if (theirs.length === 0) {
-      out.push({ name, reason: `has no ${gameA.group === "solo" ? "Solo " : ""}games in weeks ${lo}–${hi} to give back` });
+      out.push({ name, reason: `has no games in weeks ${lo}–${hi} to give back` });
       continue;
     }
     const why = new Map<string, number>();
