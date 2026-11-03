@@ -57,6 +57,8 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const [done, setDone] = useState<{ text: string; kind: Mode; payload: unknown } | null>(null);
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notified, setNotified] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+  const [numInput, setNumInput] = useState("");
 
   const get = async (qs: string) => {
     const res = await fetch(`${api}?${qs}`);
@@ -82,6 +84,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     setMode(null); setPlayer(null); setGames(null); setGame(null);
     setSwapC(null); setHandC(null); setError(""); setDone(null);
     setNotifyMsg(""); setNotified(false); setSearch("");
+    setDateInput(""); setNumInput("");
   };
 
   const pickPlayer = async (p: PlayerLite) => {
@@ -101,6 +104,11 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       else setHandC((await get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`)).candidates);
     } catch (e) { setError(String((e as Error).message)); }
     finally { setBusy(false); }
+  };
+
+  // Quick entry: a date or game number typed directly picks that game.
+  const jump = (found: GameLite | undefined, msg: string) => {
+    if (found) { setError(""); pickGame(found); } else setError(msg);
   };
 
   const doSwap = async (c: SwapCand) => {
@@ -275,7 +283,41 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
             </button>
           ) : games === null ? (
             <p className="text-gray-500 px-1 py-2">Loading games…</p>
-          ) : games.length === 0 ? (
+          ) : null}
+          {!game && games !== null && (
+            <div className="flex flex-wrap items-end gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Enter the date</label>
+                <input
+                  type="date"
+                  value={dateInput}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    setDateInput(d); setNumInput("");
+                    if (d) jump(games.find((g) => g.date === d), `${player.firstName} has no game on ${fmtDate(d)}.`);
+                  }}
+                  className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">or Game #</label>
+                <input
+                  type="number"
+                  value={numInput}
+                  onChange={(e) => { setNumInput(e.target.value); setDateInput(""); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const n = parseInt(numInput.trim(), 10);
+                    jump(games.find((g) => g.gameNumber === n), `${player.firstName} is not in game #${numInput}.`);
+                  }}
+                  placeholder="e.g. 412"
+                  className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base w-28"
+                />
+              </div>
+            </div>
+          )}
+          {!game && games !== null && (games.length === 0 ? (
             <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               {player.firstName} has no games left.
             </p>
@@ -290,7 +332,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
                 </button>
               ))}
             </div>
-          )}
+          ))}
         </div>
       )}
 
