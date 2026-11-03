@@ -1217,6 +1217,18 @@ function SwapTab(props: SwapTabProps) {
     pickGameA(game);
   }
 
+  //  A typed date is looked up once typing pauses, so "2-3" or "2 3" needs
+  //  no Enter; blur and Enter still do it at once.
+  useEffect(() => {
+    if (!playerA || gameA || !gameDateInput.trim()) return;
+    const t = setTimeout(() => {
+      const r = matchGameDate(gameDateInput, playerAAllGames);
+      jumpToGame(r.game, r.error ? `${playerA.lastName}, ${playerA.firstName}: ${r.error}` : "");
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameDateInput]);
+
   /** Give gameA away outright to `to`; nothing comes back. */
   const performHandoff = async (to: Player, isSub: boolean) => {
     if (!playerA || !gameA) return;

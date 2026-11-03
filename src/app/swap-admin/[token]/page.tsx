@@ -132,6 +132,18 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     if (found) { setError(""); pickGame(found); } else setError(msg);
   };
 
+  //  A typed date is looked up once typing pauses, so "2-3" or "2 3" needs
+  //  no Enter; blur and Enter still do it at once.
+  useEffect(() => {
+    if (!player || game || games === null || !dateInput.trim()) return;
+    const t = setTimeout(() => {
+      const r = matchGameDate(dateInput, games);
+      jump(r.game ?? undefined, r.error ? `${player.firstName}: ${r.error}` : "");
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateInput]);
+
   const doSwap = async (c: SwapCand) => {
     if (!player || !game) return;
     if (!window.confirm(
