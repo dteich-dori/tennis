@@ -51,6 +51,8 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const [game, setGame] = useState<GameLite | null>(null);
   const [swapC, setSwapC] = useState<SwapCand[] | null>(null);
   const [handC, setHandC] = useState<HandCand[] | null>(null);
+  const [back, setBack] = useState(4);
+  const [ahead, setAhead] = useState(6);
   type Why = { name: string; reason: string }[];
   const [swapWhy, setSwapWhy] = useState<Why>([]);
   const [handWhy, setHandWhy] = useState<Why>([]);
@@ -106,11 +108,21 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       const [sw, hd] = await Promise.all([
-        get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}`),
+        get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}&back=${back}&ahead=${ahead}`),
         get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`),
       ]);
       setSwapC(sw.candidates); setSwapWhy(sw.reasons ?? []);
       setHandC(hd.candidates); setHandWhy(hd.reasons ?? []);
+    } catch (e) { setError(String((e as Error).message)); }
+    finally { setBusy(false); }
+  };
+
+  const searchAgain = async () => {
+    if (!player || !game) return;
+    setBusy(true); setError("");
+    try {
+      const d = await get(`op=swap-candidates&playerId=${player.id}&gameId=${game.id}&back=${back}&ahead=${ahead}`);
+      setSwapC(d.candidates); setSwapWhy(d.reasons ?? []);
     } catch (e) { setError(String((e as Error).message)); }
     finally { setBusy(false); }
   };
@@ -356,6 +368,24 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
             {swapGroups.length === 0
               ? "Swap — no one can trade for this game"
               : `Swap — ${swapGroups.length} player${swapGroups.length !== 1 ? "s" : ""} could trade for it`}
+          </div>
+          <div className="flex flex-wrap items-end gap-3 mb-3 text-sm text-gray-600">
+            <span>Searching around week {game.weekNumber ?? "?"}:</span>
+            <label className="flex items-center gap-1">
+              weeks back
+              <input type="number" min={0} max={30} value={back}
+                onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0) setBack(n); }}
+                className="border border-gray-300 rounded px-2 py-1 w-16" />
+            </label>
+            <label className="flex items-center gap-1">
+              weeks ahead
+              <input type="number" min={0} max={30} value={ahead}
+                onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0) setAhead(n); }}
+                className="border border-gray-300 rounded px-2 py-1 w-16" />
+            </label>
+            <button onClick={searchAgain} disabled={busy} className="text-blue-700 underline disabled:opacity-50">
+              Search again
+            </button>
           </div>
           {swapGroups.length === 0 ? (
             <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
