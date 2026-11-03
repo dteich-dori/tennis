@@ -113,7 +113,10 @@ export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [linkTexting, setLinkTexting] = useState(false);
+  const [linkTextMsg, setLinkTextMsg] = useState("");
   const [form, setForm] = useState(emptyPlayer);
+  useEffect(() => setLinkTextMsg(""), [editingId]);
   const [formError, setFormError] = useState("");
   const [sortField, setSortField] = useState<"lastName" | "firstName" | "skillLevel" | "contractedFrequency">("lastName");
   const [sortAsc, setSortAsc] = useState(true);
@@ -1052,11 +1055,38 @@ export default function PlayersPage() {
                       <button
                         type="button"
                         className="text-primary underline"
+                        disabled={linkTexting}
+                        title="Text this link to the player's cell"
+                        onClick={async () => {
+                          if (!editingId) return;
+                          setLinkTexting(true);
+                          setLinkTextMsg("");
+                          try {
+                            const res = await fetch("/api/players/swap-admin-link-text", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ playerId: editingId }),
+                            });
+                            const d = (await res.json()) as { error?: string; sentTo?: string };
+                            setLinkTextMsg(res.ok ? `✓ Texted to ${d.sentTo}` : `✗ ${d.error ?? "Not sent"}`);
+                          } catch (e) {
+                            setLinkTextMsg(`✗ ${e instanceof Error ? e.message : String(e)}`);
+                          } finally {
+                            setLinkTexting(false);
+                          }
+                        }}
+                      >
+                        {linkTexting ? "Texting..." : "Text link"}
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className="text-primary underline"
                         onClick={() => setForm({ ...form, swapAdminRegenerate: true })}
                         title="Issue a new link on save; the old one stops working"
                       >
                         New link
                       </button>
+                      {linkTextMsg && <span className="ml-2">{linkTextMsg}</span>}
                     </div>
                   )}
                   {form.swapAdminAccess && !form.swapAdminToken && (
