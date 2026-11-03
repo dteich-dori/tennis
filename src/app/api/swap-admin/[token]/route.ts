@@ -76,7 +76,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
           .sort((a, b) => a.date.localeCompare(b.date) || a.gameNumber - b.gameNumber)
           .map((g) => ({
             id: g.id, gameNumber: g.gameNumber, date: g.date, dayOfWeek: g.dayOfWeek,
-            startTime: g.startTime, courtNumber: g.courtNumber, group: g.group,
+            startTime: g.startTime, courtNumber: g.courtNumber, weekNumber: g.weekNumber, group: g.group,
           })),
       });
     }
