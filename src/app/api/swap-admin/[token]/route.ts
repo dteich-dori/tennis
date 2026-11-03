@@ -4,7 +4,7 @@ import { games, players, seasons, swapAdminLog } from "@/db/schema";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { getSwapAdmin, todayEt } from "@/lib/swapAdmin";
 import { loadSwapData } from "@/lib/swapData";
-import { findSwapSuggestions, findHandoffCandidates } from "@/lib/swapSuggestions";
+import { findSwapSuggestions, findHandoffCandidates, explainNoMatch } from "@/lib/swapSuggestions";
 import { POST as swapPost } from "@/app/api/games/swap/route";
 import { POST as handoffPost } from "@/app/api/games/handoff/route";
 import { POST as swapNotifyPost } from "@/app/api/games/swap-notify/route";
@@ -110,6 +110,10 @@ export async function GET(request: NextRequest, { params }: Ctx) {
           player: { id: c.playerB.id, name: nm(c.playerB), cell: cells.get(c.playerB.id) ?? null },
           game: slim(c.gameY), weekDistance: c.weekDistance,
         })),
+        reasons: found.length > 0 ? [] : explainNoMatch({
+          players: swapPlayers, games: swapGames, playerAId: playerId, gameAId: gameId,
+          totalWeeks: season.totalWeeks, weeksBack: back, weeksAhead: ahead, kind: "swap",
+        }),
       });
     }
 
@@ -120,6 +124,10 @@ export async function GET(request: NextRequest, { params }: Ctx) {
           player: { id: c.player.id, name: nm(c.player), cell: cells.get(c.player.id) ?? null },
           isSub: c.isSub,
         })),
+        reasons: found.length > 0 ? [] : explainNoMatch({
+          players: swapPlayers, games: swapGames, playerAId: playerId, gameAId: gameId,
+          totalWeeks: 0, weeksBack: 0, weeksAhead: 0, kind: "handoff",
+        }),
       });
     }
     return bad("Unknown op");

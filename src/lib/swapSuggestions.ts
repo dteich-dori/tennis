@@ -239,3 +239,83 @@ export function findHandoffCandidates<P extends SwapPlayer, G extends SwapGame>(
       x.player.firstName.localeCompare(y.player.firstName)
   );
 }
+
+export interface NoMatchReason {
+  name: string;
+  reason: string;
+}
+
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * When a search comes back empty: for each same-skill player, the first
+ * thing that rules them out. `kind` is "swap" (contract players only, and
+ * their own games in the window must also suit the giver) or "handoff"
+ * (subs included; only the receiving side is judged).
+ */
+export function explainNoMatch<P extends SwapPlayer, G extends SwapGame>(opts: {
+  players: P[];
+  games: G[];
+  playerAId: number;
+  gameAId: number;
+  totalWeeks: number;
+  weeksBack: number;
+  weeksAhead: number;
+  kind: "swap" | "handoff";
+}): NoMatchReason[] {
+  const { players, games, playerAId, gameAId, totalWeeks, weeksBack, weeksAhead, kind } = opts;
+  const playerA = players.find((p) => p.id === playerAId);
+  const gameA = games.find((g) => g.id === gameAId);
+  if (!playerA || !gameA) return [];
+  const skill = playerA.skillLevel || "";
+  const inGame = new Set((gameA.assignments ?? []).map((a) => a.playerId));
+  const lo = Math.max(1, gameA.weekNumber - weeksBack);
+  const hi = Math.min(totalWeeks, gameA.weekNumber + weeksAhead);
+  const out: NoMatchReason[] = [];
+
+  for (const b of players) {
+    if (b.id === playerA.id || !b.isActive) continue;
+    if ((b.skillLevel || "") !== skill) continue;
+    if (kind === "swap" && b.contractedFrequency === "0") continue;
+    const name = `${b.lastName}, ${b.firstName}`;
+    if (inGame.has(b.id)) {
+      out.push({ name, reason: "already in this game" });
+      continue;
+    }
+    const cant = whyCannotPlay(b.id, gameA, players, games, undefined, playerA.id);
+    if (cant) {
+      out.push({ name, reason: `can't play ${DOW[gameA.dayOfWeek]} ${gameA.date}: ${cant.toLowerCase()}` });
+      continue;
+    }
+    if (kind === "handoff") continue;
+
+    // b could take the game; what blocks the return game?
+    const theirs = games.filter(
+      (g) =>
+        g.status === "normal" &&
+        g.group === gameA.group &&
+        g.date !== gameA.date &&
+        g.weekNumber >= lo && g.weekNumber <= hi &&
+        (g.assignments ?? []).some((a) => a.playerId === b.id)
+    );
+    if (theirs.length === 0) {
+      out.push({ name, reason: `has no ${gameA.group === "solo" ? "Solo " : ""}games in weeks ${lo}–${hi} to give back` });
+      continue;
+    }
+    const why = new Map<string, number>();
+    for (const g of theirs) {
+      const r =
+        whyCannotPlay(playerA.id, g, players, games, gameA.id, b.id) ??
+        (inGame.has(b.id) ? "already in this game" : null);
+      if (r) why.set(r, (why.get(r) ?? 0) + 1);
+    }
+    const top = [...why.entries()].sort((x, y) => y[1] - x[1])[0];
+    out.push({
+      name,
+      reason: top
+        ? `${playerA.firstName} can't take their games (${top[0].toLowerCase()})`
+        : "no usable game to give back",
+    });
+  }
+  return out.sort((x, y) => x.name.localeCompare(y.name));
+}

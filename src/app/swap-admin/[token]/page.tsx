@@ -52,6 +52,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const [game, setGame] = useState<GameLite | null>(null);
   const [swapC, setSwapC] = useState<SwapCand[] | null>(null);
   const [handC, setHandC] = useState<HandCand[] | null>(null);
+  const [reasons, setReasons] = useState<{ name: string; reason: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fatal, setFatal] = useState("");
@@ -98,11 +99,16 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
 
   const pickGame = async (g: GameLite) => {
     if (!player || !mode) return;
-    setGame(g); setSwapC(null); setHandC(null); setError(""); setBusy(true);
+    setGame(g); setSwapC(null); setHandC(null); setReasons([]); setError(""); setBusy(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
-      if (mode === "swap") setSwapC((await get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}`)).candidates);
-      else setHandC((await get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`)).candidates);
+      if (mode === "swap") {
+        const d = await get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}`);
+        setSwapC(d.candidates); setReasons(d.reasons ?? []);
+      } else {
+        const d = await get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`);
+        setHandC(d.candidates); setReasons(d.reasons ?? []);
+      }
     } catch (e) { setError(String((e as Error).message)); }
     finally { setBusy(false); }
   };
@@ -176,6 +182,17 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     if (!g) { g = { player: c.player, cands: [] }; swapGroups.push(g); }
     g.cands.push(c);
   }
+
+  const whyNot = reasons.length > 0 && (
+    <div className="mt-3 text-sm text-gray-600">
+      <p className="font-medium mb-1">Why no one fits ({player?.firstName}&apos;s level):</p>
+      <ul className="list-disc pl-5 space-y-0.5">
+        {reasons.map((r) => (
+          <li key={r.name}><strong>{r.name}</strong> — {r.reason}</li>
+        ))}
+      </ul>
+    </div>
+  );
 
   const phone = (cell: string | null) =>
     cell ? (
@@ -360,9 +377,10 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
               : `${swapGroups.length} player${swapGroups.length !== 1 ? "s" : ""} could take it`}
           </div>
           {swapGroups.length === 0 ? (
-            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
-              Nobody of the same level is free for this game in the weeks around it.
-            </p>
+            <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+              Nobody of the same level can swap for this game in the weeks around it.
+              {whyNot}
+            </div>
           ) : (
             <div className="space-y-3">
               {swapGroups.map((grp) => (
@@ -399,9 +417,10 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
             {handC.length === 0 ? "No one can take this game" : `${handC.length} player${handC.length !== 1 ? "s" : ""} could take it`}
           </div>
           {handC.length === 0 ? (
-            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+            <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of the same level is free for this game.
-            </p>
+              {whyNot}
+            </div>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-gray-500">Contract players first, then subs (a paid substitution).</p>

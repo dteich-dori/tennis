@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { findSwapSuggestions, findHandoffCandidates, whyCannotPlay } from "@/lib/swapSuggestions";
+import { findSwapSuggestions, findHandoffCandidates, explainNoMatch, whyCannotPlay } from "@/lib/swapSuggestions";
 import { matchGameDate } from "@/lib/matchGameDate";
 import { formatPhone } from "@/lib/formatPhone";
 
@@ -1343,6 +1343,29 @@ function SwapTab(props: SwapTabProps) {
     grp.cands.push(c);
   }
 
+  //  Why nobody fits: one line per same-skill player, so an empty result
+  //  explains itself instead of looking like nothing happened.
+  const whyNot = (kind: "swap" | "handoff") => {
+    if (!playerA || !gameA) return null;
+    const rs = explainNoMatch({
+      players, games, playerAId: playerA.id, gameAId: gameA.id,
+      totalWeeks: season.totalWeeks, weeksBack: swapWeeksBack, weeksAhead: swapWeeksAhead, kind,
+    });
+    if (rs.length === 0) {
+      return <p className="mt-3 text-sm">No other active player has skill level {playerA.skillLevel || "—"}.</p>;
+    }
+    return (
+      <div className="mt-3 text-sm">
+        <p className="font-medium mb-1">Why no one fits (skill {playerA.skillLevel || "—"}):</p>
+        <ul className="list-disc pl-5 space-y-0.5">
+          {rs.map((r) => (
+            <li key={r.name}><strong>{r.name}</strong> — {r.reason}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
   const resetAll = () => {
     setSwapMode(null);
     setSwapPlayerId(null);
@@ -1643,10 +1666,11 @@ function SwapTab(props: SwapTabProps) {
           </div>
 
           {groups.length === 0 ? (
-            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+            <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of the same level is free for this game in these weeks. Widen the window and
               search again — Solo games in particular often need a wider span.
-            </p>
+              {whyNot("swap")}
+            </div>
           ) : (
             <div className="space-y-3">
               {groups.map((grp) => (
@@ -1696,9 +1720,10 @@ function SwapTab(props: SwapTabProps) {
               : `${handoffList.length} player${handoffList.length !== 1 ? "s" : ""} could take it`}
           </div>
           {handoffList.length === 0 ? (
-            <p className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
+            <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of skill {playerA.skillLevel || "—"} is free for this game.
-            </p>
+              {whyNot("handoff")}
+            </div>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-gray-500">
