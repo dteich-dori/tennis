@@ -43,7 +43,6 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const { token } = use(params);
   const api = `/api/swap-admin/${token}`;
 
-  const [mode, setMode] = useState<Mode | null>(null);
   const [me, setMe] = useState("");
   const [players, setPlayers] = useState<PlayerLite[]>([]);
   const [search, setSearch] = useState("");
@@ -52,7 +51,9 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const [game, setGame] = useState<GameLite | null>(null);
   const [swapC, setSwapC] = useState<SwapCand[] | null>(null);
   const [handC, setHandC] = useState<HandCand[] | null>(null);
-  const [reasons, setReasons] = useState<{ name: string; reason: string }[]>([]);
+  type Why = { name: string; reason: string }[];
+  const [swapWhy, setSwapWhy] = useState<Why>([]);
+  const [handWhy, setHandWhy] = useState<Why>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fatal, setFatal] = useState("");
@@ -83,7 +84,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   }, []);
 
   const reset = () => {
-    setMode(null); setPlayer(null); setGames(null); setGame(null);
+    setPlayer(null); setGames(null); setGame(null);
     setSwapC(null); setHandC(null); setError(""); setDone(null);
     setNotifyMsg(""); setNotified(false); setSearch("");
     setDateInput(""); setNumInput("");
@@ -97,18 +98,19 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     finally { setBusy(false); }
   };
 
+  //  Both answers at once: who could swap for the game, and who could
+  //  simply take it. The choice is made at the button.
   const pickGame = async (g: GameLite) => {
-    if (!player || !mode) return;
-    setGame(g); setSwapC(null); setHandC(null); setReasons([]); setError(""); setBusy(true);
+    if (!player) return;
+    setGame(g); setSwapC(null); setHandC(null); setSwapWhy([]); setHandWhy([]); setError(""); setBusy(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
-      if (mode === "swap") {
-        const d = await get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}`);
-        setSwapC(d.candidates); setReasons(d.reasons ?? []);
-      } else {
-        const d = await get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`);
-        setHandC(d.candidates); setReasons(d.reasons ?? []);
-      }
+      const [sw, hd] = await Promise.all([
+        get(`op=swap-candidates&playerId=${player.id}&gameId=${g.id}`),
+        get(`op=handoff-candidates&playerId=${player.id}&gameId=${g.id}`),
+      ]);
+      setSwapC(sw.candidates); setSwapWhy(sw.reasons ?? []);
+      setHandC(hd.candidates); setHandWhy(hd.reasons ?? []);
     } catch (e) { setError(String((e as Error).message)); }
     finally { setBusy(false); }
   };
@@ -183,7 +185,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     g.cands.push(c);
   }
 
-  const whyNot = reasons.length > 0 && (
+  const whyNot = (reasons: Why) => reasons.length > 0 && (
     <div className="mt-3 text-sm text-gray-600">
       <p className="font-medium mb-1">Why no one fits ({player?.firstName}&apos;s level):</p>
       <ul className="list-disc pl-5 space-y-0.5">
@@ -224,32 +226,8 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
         </div>
       )}
 
-      {/* Step 0 — swap or give away */}
-      {!done && (
-        <div className="mb-5">
-          <div className="text-base font-semibold mb-2">What do you want to do?</div>
-          {mode ? (
-            <button onClick={reset} className={barCls}>
-              <span className="text-lg font-semibold">
-                {mode === "swap" ? "Swap — trade games" : "Give away — hand a game to a player or sub"}
-              </span>
-              <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <button className={`${btn} w-full text-left`} onClick={() => setMode("swap")}>
-                Swap — trade games with another player
-              </button>
-              <button className={`${btn} w-full text-left`} onClick={() => setMode("handoff")}>
-                Give away — hand a game to a player or sub
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Step 1 — who */}
-      {!done && mode && (
+      {!done && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">1. Who can&apos;t play?</div>
           {player ? (
@@ -286,7 +264,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       )}
 
       {/* Step 2 — which date */}
-      {!done && mode && player && (
+      {!done && player && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">2. Which date can&apos;t they play?</div>
           {game ? (
@@ -365,24 +343,24 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
         </div>
       )}
 
-      {!done && busy && game && !swapC && !handC && (
+      {!done && busy && game && !swapC && (
         <div className="border-2 border-blue-200 bg-blue-50 text-blue-800 rounded-xl px-4 py-4 text-lg mb-5">
-          Looking for {mode === "swap" ? "swaps" : "players"}…
+          Looking for swaps…
         </div>
       )}
 
       {/* Results — swap */}
-      {!done && mode === "swap" && player && game && swapC && (
+      {!done && player && game && swapC && (
         <div>
           <div className="text-base font-semibold mb-2">
             {swapGroups.length === 0
-              ? "No one can swap for this game"
-              : `${swapGroups.length} player${swapGroups.length !== 1 ? "s" : ""} could take it`}
+              ? "Swap — no one can trade for this game"
+              : `Swap — ${swapGroups.length} player${swapGroups.length !== 1 ? "s" : ""} could trade for it`}
           </div>
           {swapGroups.length === 0 ? (
             <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of the same level can swap for this game in the weeks around it.
-              {whyNot}
+              {whyNot(swapWhy)}
             </div>
           ) : (
             <div className="space-y-3">
@@ -414,15 +392,15 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       )}
 
       {/* Results — give away */}
-      {!done && mode === "handoff" && player && game && handC && (
-        <div>
+      {!done && player && game && handC && (
+        <div className="mt-6">
           <div className="text-base font-semibold mb-2">
-            {handC.length === 0 ? "No one can take this game" : `${handC.length} player${handC.length !== 1 ? "s" : ""} could take it`}
+            {handC.length === 0 ? "Or give it away — no one can take it" : `Or give it away — ${handC.length} player${handC.length !== 1 ? "s" : ""} could take it`}
           </div>
           {handC.length === 0 ? (
             <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
               Nobody of the same level is free for this game.
-              {whyNot}
+              {whyNot(handWhy)}
             </div>
           ) : (
             <div className="space-y-3">

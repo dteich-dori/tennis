@@ -1159,14 +1159,6 @@ function SwapTab(props: SwapTabProps) {
     }
   }
 
-  //  The who-can-take-it list belongs to one game; drop it when that changes.
-  useEffect(() => {
-    setHandoffList(null);
-  }, [swapGameAId]);
-
-  //  First decision on entry: trade games, or give one away. The rest of
-  //  the tab follows from it, as on the phone page.
-  const [swapMode, setSwapMode] = useState<"swap" | "handoff" | null>(null);
 
   //  Changes made through delegates' private links, newest first.
   const [delegateLog, setDelegateLog] = useState<
@@ -1210,12 +1202,10 @@ function SwapTab(props: SwapTabProps) {
     setSwapBanner("");
     setSwapError("");
     setNotifyMsg("");
-    if (swapMode === "swap") {
-      runSuggest(g);
-    } else {
-      setSuggestions(null);
-      setHandoffList(findHandoffCandidates({ players, games, playerAId: playerA.id, gameAId: g.id }));
-    }
+    //  Both answers at once: who could swap for it, and who could simply
+    //  take it. The choice is made at the button, not up front.
+    runSuggest(g);
+    setHandoffList(findHandoffCandidates({ players, games, playerAId: playerA.id, gameAId: g.id }));
   }
 
   /** Jump straight to a game typed by number or chosen by date. */
@@ -1366,21 +1356,9 @@ function SwapTab(props: SwapTabProps) {
     );
   };
 
-  const resetAll = () => {
-    setSwapMode(null);
-    setSwapPlayerId(null);
-    setSwapGameAId(null);
-    setSuggestions(null);
-    setHandoffList(null);
-    setGameNumberInput("");
-    setGameDateInput("");
-    setGameNumberError("");
-    setSwapPlayerSearch("");
-  };
-
   return (
     <div className="max-w-2xl mx-auto">
-      <p className="text-sm text-gray-500 mb-5">Swap games, or give one away.</p>
+      <p className="text-sm text-gray-500 mb-5">Swap a game with another player, or give it away.</p>
 
       {/* Banners */}
       {swapBanner && (
@@ -1409,39 +1387,11 @@ function SwapTab(props: SwapTabProps) {
         </div>
       )}
 
-      {/* Step 0 — swap or give away */}
-      <div className="mb-5">
-        <div className="text-base font-semibold mb-2">What do you want to do?</div>
-        {swapMode ? (
-          <button onClick={resetAll} className={bar}>
-            <span className="text-lg font-semibold">
-              {swapMode === "swap" ? "Swap — trade games" : "Give away — hand a game to a player or sub"}
-            </span>
-            <span className="text-sm text-blue-700 underline shrink-0 ml-3">change</span>
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <button
-              onClick={() => { setSwapMode("swap"); setSuggestions(null); setHandoffList(null); }}
-              className={`${bigBtn} w-full text-left`}
-            >
-              Swap — trade games with another player
-            </button>
-            <button
-              onClick={() => { setSwapMode("handoff"); setSuggestions(null); setHandoffList(null); }}
-              className={`${bigBtn} w-full text-left`}
-            >
-              Give away — hand a game to a player or sub
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* Step 1 — who */}
-      {swapMode && (
+      {(
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">
-            1. Who {swapMode === "swap" ? "needs a swap" : "can't play"}?
+            1. Who can&apos;t play?
           </div>
           {playerA ? (
             <button
@@ -1507,7 +1457,7 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Step 2 — which date */}
-      {swapMode && playerA && (
+      {playerA && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">2. Which date can&apos;t they play?</div>
           {gameA ? (
@@ -1621,12 +1571,12 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Results — swap */}
-      {swapMode === "swap" && playerA && gameA && suggestions !== null && (
+      {playerA && gameA && suggestions !== null && (
         <div ref={candidatesRef} className="scroll-mt-4 mb-5">
           <div className="text-base font-semibold mb-2">
             {groups.length === 0
-              ? "No one can swap for this game"
-              : `${groups.length} player${groups.length !== 1 ? "s" : ""} could take it`}
+              ? "Swap — no one can trade for this game"
+              : `Swap — ${groups.length} player${groups.length !== 1 ? "s" : ""} could trade for it`}
           </div>
 
           {/* Search window around the chosen game */}
@@ -1715,12 +1665,12 @@ function SwapTab(props: SwapTabProps) {
       )}
 
       {/* Results — give away */}
-      {swapMode === "handoff" && playerA && gameA && handoffList !== null && (
+      {playerA && gameA && handoffList !== null && (
         <div className="mb-5">
           <div className="text-base font-semibold mb-2">
             {handoffList.length === 0
-              ? "No one can take this game"
-              : `${handoffList.length} player${handoffList.length !== 1 ? "s" : ""} could take it`}
+              ? "Or give it away — no one can take it"
+              : `Or give it away — ${handoffList.length} player${handoffList.length !== 1 ? "s" : ""} could take it`}
           </div>
           {handoffList.length === 0 ? (
             <div className="text-base text-gray-600 border-2 border-gray-200 rounded-xl px-4 py-4">
