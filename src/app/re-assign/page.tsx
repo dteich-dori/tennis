@@ -1584,6 +1584,9 @@ function SwapTab(props: SwapTabProps) {
                       jumpToGame(r.game, r.error ? `${playerA.lastName}, ${playerA.firstName}: ${r.error}` : "");
                     }}
                     placeholder="month/day, e.g. 3/10"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="border-2 border-gray-300 rounded-xl px-3 py-2 text-base w-44"
                   />
                 </div>

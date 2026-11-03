@@ -8,7 +8,11 @@ export function matchGameDate<T extends { date: string }>(
   text: string,
   games: T[]
 ): { game: T | null; error: string } {
-  const m = text.trim().match(/^(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2}|\d{4}))?$/);
+  //  Mac/iPhone text replacement turns "2/3" into the single character ⅔
+  //  (and "3/4" into ¾, and so on). NFKC unfolds those back to "2⁄3", with
+  //  U+2044, the fraction slash, as the separator.
+  const clean = text.normalize("NFKC").replace(/\u2044/g, "/").trim();
+  const m = clean.match(/^(\d{1,2})\s*[/.\-\s]\s*(\d{1,2})(?:\s*[/.\-\s]\s*(\d{2}|\d{4}))?$/);
   if (!m) return { game: null, error: "Enter the date as month/day, e.g. 3/10." };
   const month = parseInt(m[1], 10);
   const day = parseInt(m[2], 10);
