@@ -829,7 +829,7 @@ export default function CommunicationsPage() {
             <div className="mt-4 pt-3 border-t border-gray-200">
               <div className="text-sm font-medium mb-1">Swap &amp; give-away notices</div>
               <p className="text-xs text-muted mb-2">
-                Sent automatically when a swap or give-away is made, and again the evening
+                Sent automatically 60 seconds after a swap or give-away is made (the person making it can Undo until then), and again the evening
                 before the game to everyone in it. If a player has no usable cell number (or opted
                 out of texts) the notice goes by email instead. Emails carry a calendar file with
                 only the new game; nothing is sent to remove the old one.

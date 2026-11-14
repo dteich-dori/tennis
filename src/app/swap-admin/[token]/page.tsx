@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import { useUndoWindow } from "@/lib/useUndoWindow";
 import { APP_VERSION } from "@/lib/version";
 import { formatPhone } from "@/lib/formatPhone";
 import { matchGameDate } from "@/lib/matchGameDate";
@@ -62,6 +63,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const [done, setDone] = useState<{ text: string; kind: Mode; payload: unknown } | null>(null);
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notified, setNotified] = useState(false);
+  const [undoneMsg, setUndoneMsg] = useState("");
   const [dateInput, setDateInput] = useState("");
   const [numInput, setNumInput] = useState("");
 
@@ -72,8 +74,8 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
   };
-  const post = async (body: unknown) => {
-    const res = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const post = async (body: unknown, keepalive = false) => {
+    const res = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive });
     const data = await res.json();
     return { ok: res.ok && data.success !== false && !data.error, data };
   };
@@ -88,8 +90,9 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
   const reset = () => {
     setPlayer(null); setGames(null); setGame(null);
     setSwapC(null); setHandC(null); setError(""); setDone(null);
-    setNotifyMsg(""); setNotified(false); setSearch("");
+    setNotifyMsg(""); setNotified(false); setSearch(""); setUndoneMsg("");
     setDateInput(""); setNumInput("");
+    undoWin.flush();
   };
 
   const pickPlayer = async (p: PlayerLite) => {
@@ -158,7 +161,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       kind: "swap", payload,
       text: `Swapped: ${player.firstName} ${player.lastName} now plays ${DAYS[c.game.dayOfWeek]} ${fmtDate(c.game.date)}; ${c.player.name} plays ${DAYS[game.dayOfWeek]} ${fmtDate(game.date)}.`,
     });
-    void notify("swap", payload);
+    undoWin.start({ kind: "swap", payload, undo: data.undo });
   };
 
   const doHandoff = async (c: HandCand) => {
@@ -175,21 +178,43 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       kind: "handoff", payload,
       text: `${c.player.name} now plays ${DAYS[game.dayOfWeek]} ${fmtDate(game.date)}; ${player.firstName} ${player.lastName} is out of it.`,
     });
-    void notify("handoff", payload);
+    undoWin.start({ kind: "handoff", payload, undo: data.undo });
   };
 
   //  Runs automatically right after a change; the button is only a retry.
-  const notify = async (kind?: Mode, payload?: unknown) => {
+  const notify = async (kind?: Mode, payload?: unknown, keepalive = false) => {
     const k = kind ?? done?.kind;
     const pl = payload ?? done?.payload;
     if (!k || !pl) return;
     setBusy(true); setNotifyMsg("Sending notices...");
-    const { ok, data } = await post({ op: "notify", kind: k, payload: pl });
+    const { ok, data } = await post({ op: "notify", kind: k, payload: pl }, keepalive);
     setBusy(false);
     if (!ok || !data.results) { setNotifyMsg(data.error || "Could not send the notices."); return; }
     const results = data.results as { name: string; sent: boolean; via?: string; error?: string }[];
     setNotifyMsg(results.map((r) => (r.sent ? `✓ Notified ${r.name}${r.via ? ` (${r.via})` : ""}` : `✗ ${r.name}: ${r.error ?? "not sent"}`)).join("  "));
     if (results.every((r) => r.sent)) setNotified(true);
+  };
+
+  //  The undo window: the change is made, but players are told only after
+  //  this runs out, so a mistaken one can be taken back first.
+  const undoWin = useUndoWindow<{ kind: Mode; payload: unknown; undo: unknown }>((item, keepalive) => {
+    void notify(item.kind, item.payload, keepalive);
+  }, 60);
+
+  const undo = async () => {
+    const item = undoWin.pending;
+    if (!item) return;
+    undoWin.cancel();
+    setBusy(true);
+    const { ok, data } = await post({ op: "undo", undo: item.undo });
+    setBusy(false);
+    if (!ok) {
+      setError(data.error || "Could not undo.");
+      void notify(item.kind, item.payload);
+      return;
+    }
+    reset();
+    setUndoneMsg("↩ Undone. The schedule is back as it was, and nobody was notified.");
   };
 
   if (fatal) {
@@ -241,10 +266,19 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       </p>
       {error && <div className="border-2 border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3 text-base mb-5">{error}</div>}
 
+      {undoneMsg && !done && <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4 text-base text-green-900 mb-5">{undoneMsg}</div>}
+
       {/* Done */}
       {done && (
         <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4 text-base text-green-900">
           <p>✓ {done.text}</p>
+          {undoWin.pending && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="text-sm">Players are notified in {undoWin.left}s.</span>
+              <button onClick={undo} disabled={busy} className={btn}>Undo</button>
+              <button onClick={() => undoWin.flush()} className="underline text-sm">Send now</button>
+            </div>
+          )}
           {!notified && !busy && notifyMsg && !notifyMsg.startsWith("Sending") && (notifyMsg.includes("✗") || !notifyMsg.includes("✓")) && (
             <button onClick={() => notify()} disabled={busy} className={`${btn} mt-3`}>
               Retry notifying

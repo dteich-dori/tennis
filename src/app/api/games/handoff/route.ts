@@ -50,12 +50,14 @@ export async function POST(request: NextRequest) {
     }
 
     await database.update(gameAssignments).set({ playerId: toPlayerId }).where(eq(gameAssignments.id, row.id));
-    await database.insert(gameHandoffs).values({
-      gameId, fromPlayerId, toPlayerId, createdAt: new Date().toISOString(),
-    });
+    const createdAt = new Date().toISOString();
+    await database.insert(gameHandoffs).values({ gameId, fromPlayerId, toPlayerId, createdAt });
     await bumpScheduleVersion(game.seasonId);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      undo: { kind: "handoff", assignmentId: row.id, gameId, fromPlayerId, toPlayerId, createdAt },
+    });
   } catch (err) {
     console.error("[games/handoff] error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

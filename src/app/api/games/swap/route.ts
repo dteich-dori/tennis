@@ -275,6 +275,16 @@ export async function POST(request: NextRequest) {
     const nextSerial =
       usedSerials.reduce((max, r) => Math.max(max, r.serial ?? 0), 0) + 1;
 
+    // What undo needs to put the two rows back exactly as they were.
+    const undo = {
+      kind: "swap" as const,
+      assignAId: assignA.id,
+      assignBId: assignB.id,
+      swapSerial: nextSerial,
+      prevA: { swapSerial: assignA.swapSerial ?? null, swapReminderSentAt: assignA.swapReminderSentAt ?? null },
+      prevB: { swapSerial: assignB.swapSerial ?? null, swapReminderSentAt: assignB.swapReminderSentAt ?? null },
+    };
+
     // All good — perform the swap: update playerId on both assignment rows.
     await database
       .update(gameAssignments)
@@ -291,6 +301,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       swapSerial: nextSerial,
+      undo,
       swap: {
         gameA: {
           id: gameA.id,

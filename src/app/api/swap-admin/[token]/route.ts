@@ -8,6 +8,7 @@ import { findSwapSuggestions, findHandoffCandidates, explainNoMatch } from "@/li
 import { POST as swapPost } from "@/app/api/games/swap/route";
 import { POST as handoffPost } from "@/app/api/games/handoff/route";
 import { POST as swapNotifyPost } from "@/app/api/games/swap-notify/route";
+import { POST as undoPost } from "@/app/api/games/undo-change/route";
 import { POST as handoffNotifyPost } from "@/app/api/games/handoff-notify/route";
 
 /**
@@ -201,6 +202,23 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       if (recent.length === 0) return bad("Make a change first, then notify.", 403);
       const res = await forward(kind === "handoff" ? handoffNotifyPost : swapNotifyPost, { ...body.payload, issuerPlayerId: me.id });
       return NextResponse.json(await res.json(), { status: res.status });
+    }
+
+    if (op === "undo") {
+      //  Only a change this delegate made in the last 6 hours; the undo route
+      //  itself refuses unless the rows are still as that change left them.
+      const kind = body.undo?.kind === "handoff" ? "handoff" : "swap";
+      const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+      const recent = await database
+        .select({ id: swapAdminLog.id })
+        .from(swapAdminLog)
+        .where(and(eq(swapAdminLog.delegatePlayerId, me.id), eq(swapAdminLog.action, kind), gt(swapAdminLog.createdAt, since)))
+        .limit(1);
+      if (recent.length === 0) return bad("Nothing recent to undo.", 403);
+      const res = await forward(undoPost, body.undo);
+      const data = await res.json();
+      if (res.ok && data.success) await log("undo", `Undid the last ${kind === "handoff" ? "give-away" : "swap"}`);
+      return NextResponse.json(data, { status: res.status });
     }
     return bad("Unknown op");
   } catch (err) {

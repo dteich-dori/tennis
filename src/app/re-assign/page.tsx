@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findSwapSuggestions, findHandoffCandidates, explainNoMatch, whyCannotPlay } from "@/lib/swapSuggestions";
 import { matchGameDate } from "@/lib/matchGameDate";
+import { useUndoWindow } from "@/lib/useUndoWindow";
 import { formatPhone } from "@/lib/formatPhone";
 
 interface Season {
@@ -1127,7 +1128,8 @@ function SwapTab(props: SwapTabProps) {
   //  Runs automatically right after a swap / give-away succeeds. The button
   //  below only appears as a retry when some notice failed.
   async function notifyPlayers(
-    override?: { kind: "swap"; payload: NonNullable<typeof lastSwap> } | { kind: "handoff"; payload: NonNullable<typeof lastHandoff> }
+    override?: { kind: "swap"; payload: NonNullable<typeof lastSwap> } | { kind: "handoff"; payload: NonNullable<typeof lastHandoff> },
+    keepalive = false
   ) {
     const kind = override?.kind ?? (lastSwap ? "swap" : "handoff");
     const payload = override?.payload ?? lastSwap ?? lastHandoff;
@@ -1139,6 +1141,7 @@ function SwapTab(props: SwapTabProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        keepalive,
       });
       const data = (await res.json()) as {
         error?: string;
@@ -1164,6 +1167,42 @@ function SwapTab(props: SwapTabProps) {
     }
   }
 
+
+  //  The undo window: the change is already made; notices wait this long so
+  //  a mistaken swap can be taken back before anyone is told.
+  type PendingNotice = (
+    | { kind: "swap"; payload: NonNullable<typeof lastSwap> }
+    | { kind: "handoff"; payload: NonNullable<typeof lastHandoff> }
+  ) & { undo: unknown };
+  const undoWin = useUndoWindow<PendingNotice>((item, keepalive) => {
+    void notifyPlayers(item.kind === "swap" ? { kind: "swap", payload: item.payload } : { kind: "handoff", payload: item.payload }, keepalive);
+  }, 60);
+
+  async function undoChange() {
+    const item = undoWin.pending;
+    if (!item) return;
+    undoWin.cancel();
+    try {
+      const res = await fetch("/api/games/undo-change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item.undo),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        setSwapError(data.error || "Could not undo.");
+        void notifyPlayers(item.kind === "swap" ? { kind: "swap", payload: item.payload } : { kind: "handoff", payload: item.payload });
+        return;
+      }
+      setSwapBanner("↩ Undone. The schedule is back as it was, and nobody was notified.");
+      setLastSwap(null);
+      setLastHandoff(null);
+      setNotifyMsg("");
+      await loadBase();
+    } catch (err) {
+      setSwapError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   //  Changes made through delegates' private links, newest first.
   const [delegateLog, setDelegateLog] = useState<
@@ -1242,6 +1281,7 @@ function SwapTab(props: SwapTabProps) {
       `from ${playerA.lastName}, ${playerA.firstName} to ${to.lastName}, ${to.firstName}` +
       `${isSub ? " (a sub)" : ""}? Nothing comes back to ${playerA.firstName}.`;
     if (!window.confirm(msg)) return;
+    undoWin.flush();
     setSwapping(true);
     setSwapBanner("");
     setSwapError("");
@@ -1254,7 +1294,7 @@ function SwapTab(props: SwapTabProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id }),
       });
-      const data = (await res.json()) as { success?: boolean; error?: string };
+      const data = (await res.json()) as { success?: boolean; error?: string; undo?: unknown };
       if (!res.ok || !data.success) {
         setSwapError(data.error || "Hand-off failed.");
       } else {
@@ -1264,7 +1304,7 @@ function SwapTab(props: SwapTabProps) {
         );
         const handoff = { gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id };
         setLastHandoff(handoff);
-        void notifyPlayers({ kind: "handoff", payload: handoff });
+        undoWin.start({ kind: "handoff", payload: handoff, undo: data.undo });
         setHandoffList(null);
         await loadBase();
         setSwapGameAId(null);
@@ -1286,6 +1326,7 @@ function SwapTab(props: SwapTabProps) {
       `with ${c.playerB.lastName}, ${c.playerB.firstName} (Game #${c.gameY.gameNumber}, ${fmtDate(c.gameY.date)})?`;
     if (!window.confirm(confirmMsg)) return;
 
+    undoWin.flush();
     setSwapping(true);
     setSwapBanner("");
     setLastSwap(null);
@@ -1303,7 +1344,7 @@ function SwapTab(props: SwapTabProps) {
           playerBId: c.playerB.id,
         }),
       });
-      const data = (await res.json()) as { success?: boolean; error?: string };
+      const data = (await res.json()) as { success?: boolean; error?: string; undo?: unknown };
       if (!res.ok || !data.success) {
         setSwapError(data.error || "Swap failed.");
       } else {
@@ -1318,7 +1359,7 @@ function SwapTab(props: SwapTabProps) {
           playerBId: c.playerB.id,
         };
         setLastSwap(swapped);
-        void notifyPlayers({ kind: "swap", payload: swapped });
+        undoWin.start({ kind: "swap", payload: swapped, undo: data.undo });
         // Reload games so the lists reflect new state
         await loadBase();
         // Clear selections so user starts fresh for next swap
@@ -1385,6 +1426,13 @@ function SwapTab(props: SwapTabProps) {
       {swapBanner && (
         <div className="border-2 border-green-200 bg-green-50 text-green-900 rounded-xl p-4 text-base mb-5">
           {swapBanner}
+          {undoWin.pending && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="text-sm">Players are notified in {undoWin.left}s.</span>
+              <button onClick={undoChange} className={bigBtn}>Undo</button>
+              <button onClick={() => undoWin.flush()} className="underline text-sm">Send now</button>
+            </div>
+          )}
           {(lastSwap || lastHandoff || notifyMsg) && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {(lastSwap || lastHandoff) && !notifying && notifyMsg && !notifyMsg.startsWith("Sending") && (notifyMsg.includes("✗") || !notifyMsg.includes("✓")) && (
