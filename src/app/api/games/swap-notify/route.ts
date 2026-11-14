@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments, players } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
+import { generateSingleGameIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 interface NotifyBody {
@@ -40,8 +41,9 @@ function describe(g: { date: string; dayOfWeek: number; startTime: string; court
  * Called from the Swap tab's "Notify players" button AFTER a swap has been
  * made — never automatically. Same body as /api/games/swap. Each of the two
  * players is told (text first, email as the fallback — see swapNotices) the
- * game they gave up and the game they took. No calendar files: players keep
- * their own calendars. The issuer and the game coordinator get a copy.
+ * game they gave up and the game they took. The email carries one calendar
+ * file with only the new game ("Moved from…" in its description); texts carry
+ * none. The issuer and the game coordinator get a copy.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -85,6 +87,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    //  Co-player names for the event description.
+    const coIds = [...gA.assignments, ...gB.assignments].map((a) => a.playerId);
+    const nameRows = await database.select().from(players).where(inArray(players.id, coIds));
+    const lookup = new Map(nameRows.map((p) => [p.id, { id: p.id, firstName: p.firstName, lastName: p.lastName }]));
+
     const settings = await loadNoticeSettings(gameA.seasonId);
 
     //  player -> [game they gave up, game they took]
@@ -95,6 +102,15 @@ export async function POST(request: NextRequest) {
 
     const results: NoticeResult[] = [];
     for (const { player, gave, took } of legs) {
+      //  Only the NEW game is attached, with a "Moved from" line. Nothing is
+      //  sent to remove the old one: players' calendars are theirs to edit.
+      const ics = generateSingleGameIcs(
+        { id: player.id, firstName: player.firstName, lastName: player.lastName },
+        took,
+        lookup,
+        "add",
+        `Moved from ${fmtDate(gave)} at ${fmtTime(gave.startTime)}, Court ${gave.courtNumber}`
+      );
       const emailText = [
         `Hi ${player.firstName},`,
         "",
@@ -103,7 +119,7 @@ export async function POST(request: NextRequest) {
         `NO LONGER PLAYING:  ${describe(gave)}  (Game #${gave.gameNumber})`,
         `NOW PLAYING:        ${describe(took)}  (Game #${took.gameNumber})`,
         "",
-        "Your calendar has not been changed — update it yourself if you keep these games on it.",
+        "If you keep your games on a calendar, open the attached file to add the new game (its description says which game it replaces). Your calendar is not changed automatically, so delete the old game yourself.",
       ].join("\n");
       const smsText =
         `Swap made. You're OUT of ${describe(gave)} (Game #${gave.gameNumber}). ` +
@@ -115,6 +131,7 @@ export async function POST(request: NextRequest) {
           subject: `Your swap: now playing ${fmtDate(took)}`,
           emailText,
           smsText,
+          attachments: [{ filename: "new-game.ics", content: ics, contentType: "text/calendar; charset=utf-8" }],
         })
       );
     }

@@ -3,6 +3,7 @@ import { db } from "@/db/getDb";
 import { games, gameAssignments, players } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { deliverToPlayer, loadNoticeSettings, notifyIssuerAndCoordinator, type NoticeResult } from "@/lib/swapNotices";
+import { generateSingleGameIcs } from "@/lib/ics";
 import { firstPerSlot } from "@/lib/dedupeAssignments";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -19,7 +20,7 @@ function when(g: { date: string; dayOfWeek: number; startTime: string; courtNumb
  * POST /api/games/handoff-notify  { gameId, fromPlayerId, toPlayerId }
  * From the "Notify players" button after a handoff — never automatic. The
  * giver is told the game is off their schedule; the receiver is told it is
- * theirs. No calendar files: players' calendars are theirs to edit. The other two
+ * theirs, with a calendar file for the game to add (none goes to the giver). The other two
  * players hear about it from the evening-before cron.
  */
 export async function POST(request: NextRequest) {
@@ -46,8 +47,15 @@ export async function POST(request: NextRequest) {
     const others = assignments.filter((a) => a.playerId !== toPlayerId).map((a) => lookup.get(a.playerId)).filter(Boolean)
       .map((p) => `${p!.firstName} ${p!.lastName}`).join(", ");
 
-    const send = (p: typeof giver, subject: string, text: string, smsText: string): Promise<NoticeResult> =>
-      deliverToPlayer(p, { settings, subject, emailText: text, smsText });
+    const send = (p: typeof giver, subject: string, text: string, smsText: string, ics?: string): Promise<NoticeResult> =>
+      deliverToPlayer(p, {
+        settings, subject, emailText: text, smsText,
+        attachments: ics ? [{ filename: "new-game.ics", content: ics, contentType: "text/calendar; charset=utf-8" }] : undefined,
+      });
+    const receiverIcs = generateSingleGameIcs(
+      { id: receiver.id, firstName: receiver.firstName, lastName: receiver.lastName },
+      { ...game, assignments }, lookup, "add", `Taken over from ${giver.firstName} ${giver.lastName}`
+    );
 
     const results: NoticeResult[] = [
       await send(
@@ -69,9 +77,10 @@ export async function POST(request: NextRequest) {
           `${giver.firstName} ${giver.lastName} can't play, and you have taken the game:`,
           `${when(game)} (Game #${game.gameNumber}).`,
           others ? `You will be playing with: ${others}.` : "", "",
-          "Your calendar has not been changed — add the game yourself if you keep one. You will also get a reminder the evening before.",
+          "If you keep your games on a calendar, open the attached file to add this game. You will also get a reminder the evening before.",
         ].filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n"),
-        `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`
+        `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`,
+        receiverIcs
       ),
     ];
     results.push(

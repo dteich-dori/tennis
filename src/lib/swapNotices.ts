@@ -12,8 +12,8 @@ import {
  * Delivery of swap / give-away notices. Text first by default
  * (email_settings.swap_channel = "sms-fallback"): the text goes out, and
  * email is the fallback when a player has no usable cell number, has opted
- * out of texts, or the text fails. No calendar files are sent: players edit
- * their own calendars and a notice must never overwrite them.
+ * out of texts, or the text fails. Email notices may carry a calendar file with
+ * only the NEW game; nothing is ever sent to remove or overwrite an old one.
  */
 export type NoticeChannel = "both" | "email" | "sms" | "sms-fallback";
 

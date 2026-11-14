@@ -75,7 +75,8 @@ function playerDisplayName(
 function buildGameEvent(
   player: Player,
   game: Game,
-  allPlayers: Map<number, Player>
+  allPlayers: Map<number, Player>,
+  note?: string
 ): EventAttributes {
   const [y, mo, d] = parseDateParts(game.date);
   const [h, mi] = parseTimeParts(game.startTime);
@@ -91,6 +92,7 @@ function buildGameEvent(
     .map((a) => playerDisplayName(a.playerId, allPlayers));
 
   const descriptionLines: string[] = [];
+  if (note) descriptionLines.push(note);
   descriptionLines.push(`Week ${game.weekNumber} — Game ${game.gameNumber}`);
   descriptionLines.push(`Court ${game.courtNumber}`);
   if (coPlayers.length > 0) {
@@ -208,15 +210,17 @@ export function generateSwapIcs(
  * One calendar file for one game — either adding it or cancelling it. Used
  * when a game is handed off outright: the giver gets only the cancel, the
  * receiver only the add. The cancel reuses the game's event UID with a
- * higher SEQUENCE, as in generateSwapIcs.
+ * higher SEQUENCE, as in generateSwapIcs. `note` (e.g. "Moved from Tue 11/18")
+ * becomes the first line of the event description.
  */
 export function generateSingleGameIcs(
   player: Player,
   game: Game,
   allPlayers: Map<number, Player>,
-  kind: "add" | "cancel"
+  kind: "add" | "cancel",
+  note?: string
 ): string {
-  const base = buildGameEvent(player, game, allPlayers);
+  const base = buildGameEvent(player, game, allPlayers, note);
   const event: EventAttributes =
     kind === "cancel" ? { ...base, method: "CANCEL", status: "CANCELLED", sequence: 1 } : base;
   const { error, value } = createEvents([event]);
