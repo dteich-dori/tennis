@@ -1112,7 +1112,7 @@ function SwapTab(props: SwapTabProps) {
 
   const candidates = suggestions ?? [];
 
-  //  The swap just made, kept so "Notify players" can email exactly it.
+  //  The swap just made, kept so a failed notice can be retried.
   const [lastSwap, setLastSwap] = useState<{
     gameAId: number; playerAId: number; gameBId: number; playerBId: number;
   } | null>(null);
@@ -1124,13 +1124,18 @@ function SwapTab(props: SwapTabProps) {
   const [notifying, setNotifying] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState("");
 
-  async function notifyPlayers() {
-    const payload = lastSwap ?? lastHandoff;
+  //  Runs automatically right after a swap / give-away succeeds. The button
+  //  below only appears as a retry when some notice failed.
+  async function notifyPlayers(
+    override?: { kind: "swap"; payload: NonNullable<typeof lastSwap> } | { kind: "handoff"; payload: NonNullable<typeof lastHandoff> }
+  ) {
+    const kind = override?.kind ?? (lastSwap ? "swap" : "handoff");
+    const payload = override?.payload ?? lastSwap ?? lastHandoff;
     if (!payload) return;
     setNotifying(true);
-    setNotifyMsg("");
+    setNotifyMsg("Sending notices...");
     try {
-      const res = await fetch(lastSwap ? "/api/games/swap-notify" : "/api/games/handoff-notify", {
+      const res = await fetch(kind === "swap" ? "/api/games/swap-notify" : "/api/games/handoff-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1257,7 +1262,9 @@ function SwapTab(props: SwapTabProps) {
           `✓ ${to.lastName}, ${to.firstName} now has Game #${gameA.gameNumber} (${fmtDate(gameA.date)}); ` +
           `${playerA.lastName}, ${playerA.firstName} is out of it.`
         );
-        setLastHandoff({ gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id });
+        const handoff = { gameId: gameA.id, fromPlayerId: playerA.id, toPlayerId: to.id };
+        setLastHandoff(handoff);
+        void notifyPlayers({ kind: "handoff", payload: handoff });
         setHandoffList(null);
         await loadBase();
         setSwapGameAId(null);
@@ -1304,12 +1311,14 @@ function SwapTab(props: SwapTabProps) {
           `✓ Swapped: ${playerA.lastName}, ${playerA.firstName} → Game #${c.gameY.gameNumber} (${fmtDate(c.gameY.date)}) ` +
           `and ${c.playerB.lastName}, ${c.playerB.firstName} → Game #${gameA.gameNumber} (${fmtDate(gameA.date)})`
         );
-        setLastSwap({
+        const swapped = {
           gameAId: gameA.id,
           playerAId: playerA.id,
           gameBId: c.gameY.id,
           playerBId: c.playerB.id,
-        });
+        };
+        setLastSwap(swapped);
+        void notifyPlayers({ kind: "swap", payload: swapped });
         // Reload games so the lists reflect new state
         await loadBase();
         // Clear selections so user starts fresh for next swap
@@ -1378,14 +1387,14 @@ function SwapTab(props: SwapTabProps) {
           {swapBanner}
           {(lastSwap || lastHandoff || notifyMsg) && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {(lastSwap || lastHandoff) && (
+              {(lastSwap || lastHandoff) && !notifying && notifyMsg && !notifyMsg.startsWith("Sending") && (notifyMsg.includes("✗") || !notifyMsg.includes("✓")) && (
                 <button
-                  onClick={notifyPlayers}
+                  onClick={() => notifyPlayers()}
                   disabled={notifying}
                   className={bigBtn}
-                  title="Email both players what changed, with calendar files to remove the old game and add the new one"
+                  title="Some notices did not go out; send them again"
                 >
-                  {notifying ? "Sending..." : "Notify players"}
+                  {notifying ? "Sending..." : "Retry notifying"}
                 </button>
               )}
               {notifyMsg && <span className="text-sm">{notifyMsg}</span>}

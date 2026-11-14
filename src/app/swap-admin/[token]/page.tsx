@@ -158,6 +158,7 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       kind: "swap", payload,
       text: `Swapped: ${player.firstName} ${player.lastName} now plays ${DAYS[c.game.dayOfWeek]} ${fmtDate(c.game.date)}; ${c.player.name} plays ${DAYS[game.dayOfWeek]} ${fmtDate(game.date)}.`,
     });
+    void notify("swap", payload);
   };
 
   const doHandoff = async (c: HandCand) => {
@@ -174,12 +175,16 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       kind: "handoff", payload,
       text: `${c.player.name} now plays ${DAYS[game.dayOfWeek]} ${fmtDate(game.date)}; ${player.firstName} ${player.lastName} is out of it.`,
     });
+    void notify("handoff", payload);
   };
 
-  const notify = async () => {
-    if (!done) return;
-    setBusy(true); setNotifyMsg("");
-    const { ok, data } = await post({ op: "notify", kind: done.kind, payload: done.payload });
+  //  Runs automatically right after a change; the button is only a retry.
+  const notify = async (kind?: Mode, payload?: unknown) => {
+    const k = kind ?? done?.kind;
+    const pl = payload ?? done?.payload;
+    if (!k || !pl) return;
+    setBusy(true); setNotifyMsg("Sending notices...");
+    const { ok, data } = await post({ op: "notify", kind: k, payload: pl });
     setBusy(false);
     if (!ok || !data.results) { setNotifyMsg(data.error || "Could not send the notices."); return; }
     const results = data.results as { name: string; sent: boolean; via?: string; error?: string }[];
@@ -240,9 +245,9 @@ export default function SwapAdminPage({ params }: { params: Promise<{ token: str
       {done && (
         <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4 text-base text-green-900">
           <p>✓ {done.text}</p>
-          {!notified && (
-            <button onClick={notify} disabled={busy} className={`${btn} mt-3`}>
-              {busy ? "Sending..." : "Notify players"}
+          {!notified && !busy && notifyMsg && !notifyMsg.startsWith("Sending") && (notifyMsg.includes("✗") || !notifyMsg.includes("✓")) && (
+            <button onClick={() => notify()} disabled={busy} className={`${btn} mt-3`}>
+              Retry notifying
             </button>
           )}
           {notifyMsg && <p className="mt-2 text-sm">{notifyMsg}</p>}
