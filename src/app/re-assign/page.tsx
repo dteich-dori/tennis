@@ -1215,6 +1215,37 @@ function SwapTab(props: SwapTabProps) {
       .catch(() => setDelegateLog([]));
   }, [swapBanner]);
 
+  //  Recent swaps / give-aways, so a notice can be sent again (e.g. for one
+  //  made before calendar files existed). Texts carry no file, so "with
+  //  calendar file" forces email.
+  const [recent, setRecent] = useState<{ key: string; kind: "swap" | "handoff"; summary: string; payload: object }[] | null>(null);
+  const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/games/recent-changes")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setRecent(Array.isArray(rows) ? rows : []))
+      .catch(() => setRecent([]));
+  }, [swapBanner]);
+  async function resend(r: { key: string; kind: "swap" | "handoff"; payload: object }, withFile: boolean) {
+    const what = withFile ? "email both players, with the calendar file" : "send the normal notices";
+    if (!window.confirm(`Send this notice again? This will ${what}, and copy the admin and coordinator.`)) return;
+    setResendMsg((m) => ({ ...m, [r.key]: "Sending..." }));
+    try {
+      const res = await fetch(r.kind === "swap" ? "/api/games/swap-notify" : "/api/games/handoff-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...r.payload, ...(withFile ? { channelOverride: "email" } : {}) }),
+      });
+      const data = (await res.json()) as { error?: string; results?: { name: string; sent: boolean; via?: string; error?: string }[] };
+      const msg = !res.ok || !data.results
+        ? data.error || "Could not send."
+        : data.results.map((x) => (x.sent ? `✓ ${x.name}${x.via ? ` (${x.via})` : ""}` : `✗ ${x.name}: ${x.error ?? "not sent"}`)).join("   ");
+      setResendMsg((m) => ({ ...m, [r.key]: msg }));
+    } catch (err) {
+      setResendMsg((m) => ({ ...m, [r.key]: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
   const candidatesRef = useRef<HTMLDivElement | null>(null);
 
   /**
@@ -1772,6 +1803,26 @@ function SwapTab(props: SwapTabProps) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {recent && recent.length > 0 && (
+        <div className="border border-border rounded bg-white mb-5">
+          <div className="px-3 py-2 border-b border-border bg-muted-bg text-sm font-medium">
+            Recent swaps &amp; give-aways — send the notice again
+          </div>
+          <ul className="p-3 text-xs space-y-3 max-h-80 overflow-y-auto">
+            {recent.map((r) => (
+              <li key={r.key}>
+                <div>{r.summary}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <button onClick={() => resend(r, true)} className="rounded border border-blue-600 text-blue-700 px-2 py-1">Resend by email with calendar file</button>
+                  <button onClick={() => resend(r, false)} className="rounded border border-border px-2 py-1">Resend normal notice</button>
+                  {resendMsg[r.key] && <span>{resendMsg[r.key]}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

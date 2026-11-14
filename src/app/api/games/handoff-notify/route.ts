@@ -25,8 +25,8 @@ function when(g: { date: string; dayOfWeek: number; startTime: string; courtNumb
  */
 export async function POST(request: NextRequest) {
   try {
-    const { gameId, fromPlayerId, toPlayerId, issuerPlayerId } = (await request.json()) as {
-      gameId: number; fromPlayerId: number; toPlayerId: number; issuerPlayerId?: number;
+    const { gameId, fromPlayerId, toPlayerId, issuerPlayerId, channelOverride } = (await request.json()) as {
+      gameId: number; fromPlayerId: number; toPlayerId: number; issuerPlayerId?: number; channelOverride?: "email";
     };
     const database = await db();
     const [game] = await database.select().from(games).where(eq(games.id, gameId));
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
     const receiver = pRows.find((p) => p.id === toPlayerId);
     if (!giver || !receiver) return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
-    const settings = await loadNoticeSettings(game.seasonId);
+    const baseSettings = await loadNoticeSettings(game.seasonId);
+    const settings = channelOverride === "email" ? { ...baseSettings, channel: "email" as const } : baseSettings;
     const others = assignments.filter((a) => a.playerId !== toPlayerId).map((a) => lookup.get(a.playerId)).filter(Boolean)
       .map((p) => `${p!.firstName} ${p!.lastName}`).join(", ");
 
