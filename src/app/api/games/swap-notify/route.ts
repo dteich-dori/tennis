@@ -13,6 +13,8 @@ interface NotifyBody {
   playerBId: number;
   /** The delegate who made the swap; omitted when the admin Swap tab did. */
   issuerPlayerId?: number;
+  /** Send the two players' notices by this channel instead of the saved setting (e.g. "email" to include the calendar file). */
+  channelOverride?: "email";
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -47,7 +49,7 @@ function describe(g: { date: string; dayOfWeek: number; startTime: string; court
  */
 export async function POST(request: NextRequest) {
   try {
-    const { gameAId, playerAId, gameBId, playerBId, issuerPlayerId } = (await request.json()) as NotifyBody;
+    const { gameAId, playerAId, gameBId, playerBId, issuerPlayerId, channelOverride } = (await request.json()) as NotifyBody;
     if (!gameAId || !playerAId || !gameBId || !playerBId) {
       return NextResponse.json({ error: "gameAId, playerAId, gameBId, playerBId are required" }, { status: 400 });
     }
@@ -92,7 +94,8 @@ export async function POST(request: NextRequest) {
     const nameRows = await database.select().from(players).where(inArray(players.id, coIds));
     const lookup = new Map(nameRows.map((p) => [p.id, { id: p.id, firstName: p.firstName, lastName: p.lastName }]));
 
-    const settings = await loadNoticeSettings(gameA.seasonId);
+    const baseSettings = await loadNoticeSettings(gameA.seasonId);
+    const settings = channelOverride === "email" ? { ...baseSettings, channel: "email" as const } : baseSettings;
 
     //  player -> [game they gave up, game they took]
     const legs = [
