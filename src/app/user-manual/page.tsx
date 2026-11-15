@@ -12,6 +12,7 @@ const tocSections = [
   { id: "court-schedule", label: "Court Schedule" },
   { id: "players", label: "Players" },
   { id: "schedule", label: "Schedule" },
+  { id: "swaps", label: "Swaps & Give-Aways" },
   { id: "auto-assign-dons", label: "Auto-Assign: Don\u2019s Algorithm" },
   { id: "auto-assign-solo", label: "Auto-Assign: Solo Algorithm" },
   { id: "ball-balancing", label: "Ball Balancing" },
@@ -697,6 +698,94 @@ export default function UserManualPage() {
                 where a 2+ player has been assigned extra games beyond their contracted frequency.
                 This can be exported as a PDF report.
               </p>
+            </div>
+          </section>
+
+          {/* ===== SWAPS & GIVE-AWAYS ===== */}
+          <section id="swaps" className="scroll-mt-8">
+            <div className="border border-border rounded-lg p-6">
+              <h2 className="font-semibold text-lg mb-4">Swaps &amp; Give-Aways</h2>
+              <p className="text-sm leading-relaxed mb-4">
+                When a player can&apos;t make a game, you can <span className="font-semibold">swap</span>{" "}
+                it with another player (each takes the other&apos;s game) or{" "}
+                <span className="font-semibold">give it away</span> (someone takes it and nothing
+                comes back). Both are done on the Swap tab of the Re-Assign page, or by a delegate
+                through a private Swap Admin link. Both use the same checks and the same notices.
+              </p>
+
+              <h3 className="font-semibold mb-2">Making a Swap or Give-Away</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li>Pick the player who can&apos;t play, then the game (tap its date, or type the month/day or game number).</li>
+                <li>Choose <span className="font-semibold">Swap</span> or <span className="font-semibold">Give away</span>. The partners who fit are listed one card per player, with their phone numbers.</li>
+                <li>A swap needs the same skill level, two different dates, and nothing broken for either player: blocked days, vacations, do-not-pair, no early games (before 10:00), and one game per day. A Solo game and a Don&apos;s game may be traded for each other.</li>
+                <li>A give-away goes to a same-skill contract player or sub who is free that day with no rule broken.</li>
+                <li>If nobody fits, the screen lists each same-skill player and why they are ruled out.</li>
+                <li>Only games that have not been played yet can be changed.</li>
+              </ul>
+
+              <h3 className="font-semibold mb-2">Notices Go Out Automatically</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                There is no Notify button. After a swap or give-away succeeds, a banner reads{" "}
+                <span className="font-semibold">&ldquo;Players are notified in 60s&rdquo;</span>{" "}
+                with two buttons:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li><span className="font-semibold">Undo</span> &mdash; takes the change back and puts the schedule exactly as it was, including the swap numbers on the printed schedule. Nobody is notified. Undo works only if the two games are still as the change left them.</li>
+                <li><span className="font-semibold">Send now</span> &mdash; sends the notices right away.</li>
+              </ul>
+              <p className="text-sm leading-relaxed mb-4">
+                When the 60 seconds run out the notices go out. If you close the page, switch to
+                another app or start another swap during the countdown, the notices are sent
+                immediately, so they are never lost, but you can no longer undo. If a notice fails,
+                the banner shows who was missed and a <span className="font-semibold">Retry notifying</span>{" "}
+                button.
+              </p>
+
+              <h3 className="font-semibold mb-2">Who Is Told, and How</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4 mb-4">
+                <li><span className="font-semibold">Swap:</span> each of the two players is told the game they gave up and the game they took. <span className="font-semibold">Give-away:</span> the giver is told they are out; the receiver is told the game is theirs and who they play with.</li>
+                <li>The channel is set on the Communications page. The default is text first, with email as the fallback when a player has no usable cell number, has opted out of texts, or the text fails.</li>
+                <li>A copy goes to whoever made the change (the delegate, or the admin cell for the admin tab) and to the game coordinator.</li>
+                <li>The other players in the affected games get a line-up change notice the evening before the game.</li>
+              </ul>
+
+              <h3 className="font-semibold mb-2">Calendar File</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                An <span className="font-semibold">email</span> notice carries one calendar file,{" "}
+                <span className="font-semibold">new-game.ics</span>, for the <em>new</em> game only.
+                Its description starts with a &ldquo;Moved from&hellip;&rdquo; line (for a give-away,
+                &ldquo;Taken over from&hellip;&rdquo;). Nothing is sent to remove the old game: a
+                player&apos;s calendar is theirs to edit, so they delete the old one themselves. The
+                file uses the same event as the subscribed calendar feed, so subscribers are updated
+                and don&apos;t get a duplicate. A giver gets no file. <span className="font-semibold">Texts
+                cannot carry a file</span>, so a player who is texted gets no calendar file.
+              </p>
+
+              <h3 className="font-semibold mb-2">Sending a Notice Again</h3>
+              <p className="text-sm leading-relaxed mb-4">
+                The Swap tab has a panel,{" "}
+                <span className="font-semibold">Recent swaps &amp; give-aways &mdash; send the notice again</span>,
+                listing changes whose games have not all been played. Each row has two buttons:
+                <span className="font-semibold"> Resend by email with calendar file</span> (forces
+                email so the file is attached; use this for a swap made before calendar files were
+                added, or when a player was only texted) and{" "}
+                <span className="font-semibold">Resend normal notice</span> (uses the saved channel).
+                Each asks you to confirm first, because the admin and coordinator are copied again.
+                A swap that was changed again later may not appear.
+              </p>
+
+              <h3 className="font-semibold mb-2">Swap Admin Links (Delegates)</h3>
+              <p className="text-sm leading-relaxed mb-2">
+                A delegate can swap or give away any game that has not been played, from a private
+                link and nothing else. Set this up on the Players page: a delegate&apos;s Swap admin
+                block has their link and a <span className="font-semibold">Text link</span> button
+                that texts it to them. They can put it on a phone&apos;s home screen (the icon opens
+                their own page); there is a PDF of instructions for this.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm ml-4">
+                <li>Delegates get the same 60-second countdown with Undo and Send now. They can undo only their own recent change.</li>
+                <li>Every change, and every undo, is logged under &ldquo;Changes made through swap-admin links&rdquo; at the bottom of the Swap tab.</li>
+              </ul>
             </div>
           </section>
 
