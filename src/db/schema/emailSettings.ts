@@ -43,4 +43,11 @@ export const emailSettings = sqliteTable("email_settings", {
   swapAdminCell: text("swap_admin_cell").notNull().default(""),
   // Game coordinator: gets a copy of every swap / give-away.
   swapCoordinatorPlayerId: integer("swap_coordinator_player_id"),
+  // v2.372: who is told, editable on the Communications tab.
+  // The players directly in the swap / give-away.
+  swapNotifyPlayers: integer("swap_notify_players", { mode: "boolean" }).notNull().default(true),
+  // Whoever made the change (delegate, or the admin cell for the Swap tab).
+  swapNotifyIssuer: integer("swap_notify_issuer", { mode: "boolean" }).notNull().default(true),
+  // JSON array of player ids who get a copy of every swap / give-away.
+  swapExtraRecipientIds: text("swap_extra_recipient_ids").notNull().default("[]"),
 });

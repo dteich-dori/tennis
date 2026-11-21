@@ -166,6 +166,10 @@ export default function CommunicationsPage() {
   const [swapChannel, setSwapChannel] = useState<Channel>("sms-fallback");
   const [swapAdminCell, setSwapAdminCell] = useState("");
   const [swapCoordinatorPlayerId, setSwapCoordinatorPlayerId] = useState<number | null>(null);
+  const [swapNotifyPlayers, setSwapNotifyPlayers] = useState(true);
+  const [swapNotifyIssuer, setSwapNotifyIssuer] = useState(true);
+  const [swapExtraIds, setSwapExtraIds] = useState<number[]>([]);
+  const [swapExtraPick, setSwapExtraPick] = useState("");
   const [reminderTestPlayerId, setReminderTestPlayerId] = useState<number | null>(null);
   const [reminderTestSending, setReminderTestSending] = useState(false);
   const [reminderTestResult, setReminderTestResult] = useState<string>("");
@@ -249,6 +253,9 @@ export default function CommunicationsPage() {
       swapChannel?: Channel;
       swapAdminCell?: string;
       swapCoordinatorPlayerId?: number | null;
+      swapNotifyPlayers?: boolean;
+      swapNotifyIssuer?: boolean;
+      swapExtraRecipientIds?: string;
     };
     setFromName(data.fromName || "Tennis Club");
     setReplyTo(data.replyTo || "");
@@ -262,6 +269,14 @@ export default function CommunicationsPage() {
     setSwapChannel(data.swapChannel ?? "sms-fallback");
     setSwapAdminCell(data.swapAdminCell ?? "");
     setSwapCoordinatorPlayerId(data.swapCoordinatorPlayerId ?? null);
+    setSwapNotifyPlayers(data.swapNotifyPlayers ?? true);
+    setSwapNotifyIssuer(data.swapNotifyIssuer ?? true);
+    try {
+      const ids = JSON.parse(data.swapExtraRecipientIds || "[]");
+      setSwapExtraIds(Array.isArray(ids) ? ids : []);
+    } catch {
+      setSwapExtraIds([]);
+    }
     if (data.reminderTemplateId !== undefined)
       setReminderTemplateId(data.reminderTemplateId);
     setTestPhone(data.testPhone || "");
@@ -401,6 +416,9 @@ export default function CommunicationsPage() {
         swapChannel,
         swapAdminCell,
         swapCoordinatorPlayerId,
+        swapNotifyPlayers,
+        swapNotifyIssuer,
+        swapExtraRecipientIds: swapExtraIds,
       }),
     });
     if (res.ok) {
@@ -872,6 +890,53 @@ export default function CommunicationsPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="text-xs font-medium mb-1">Who gets told about a swap or give-away</div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={swapNotifyPlayers} onChange={(e) => setSwapNotifyPlayers(e.target.checked)} />
+                  The players in the swap or give-away
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={swapNotifyIssuer} onChange={(e) => setSwapNotifyIssuer(e.target.checked)} />
+                  Whoever made the change (a copy)
+                </label>
+                <div className="text-xs text-muted mt-2 mb-1">
+                  Also send a copy of every change to these people (besides the coordinator above):
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {swapExtraIds.length === 0 && <span className="text-xs text-muted">No one added.</span>}
+                  {swapExtraIds.map((id) => {
+                    const p = activePlayers.find((x) => x.id === id);
+                    return (
+                      <span key={id} className="inline-flex items-center gap-1 bg-gray-100 border border-gray-300 rounded px-2 py-0.5 text-sm">
+                        {p ? `${p.firstName} ${p.lastName}` : `Player #${id}`}
+                        <button
+                          type="button"
+                          aria-label="Remove"
+                          className="text-gray-500 hover:text-red-600"
+                          onClick={() => setSwapExtraIds(swapExtraIds.filter((x) => x !== id))}
+                        >×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+                <select
+                  value={swapExtraPick}
+                  onChange={(e) => {
+                    const id = parseInt(e.target.value);
+                    if (id && !swapExtraIds.includes(id)) setSwapExtraIds([...swapExtraIds, id]);
+                    setSwapExtraPick("");
+                  }}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                >
+                  <option value="">+ Add a person…</option>
+                  {activePlayers.filter((p) => !swapExtraIds.includes(p.id)).map((p) => (
+                    <option key={p.id} value={p.id}>{p.lastName}, {p.firstName}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted mt-1">Click Save Settings below to keep your changes.</p>
               </div>
             </div>
 

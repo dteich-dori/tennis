@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
         swapChannel: "sms-fallback",
         swapAdminCell: "",
         swapCoordinatorPlayerId: null,
+        swapNotifyPlayers: true,
+        swapNotifyIssuer: true,
+        swapExtraRecipientIds: "[]",
       });
     }
 
@@ -69,6 +72,9 @@ export async function PUT(request: NextRequest) {
       swapChannel?: string;
       swapAdminCell?: string;
       swapCoordinatorPlayerId?: number | null;
+      swapNotifyPlayers?: boolean;
+      swapNotifyIssuer?: boolean;
+      swapExtraRecipientIds?: number[];
     };
     const {
       seasonId,
@@ -87,7 +93,14 @@ export async function PUT(request: NextRequest) {
       swapChannel,
       swapAdminCell,
       swapCoordinatorPlayerId,
+      swapNotifyPlayers,
+      swapNotifyIssuer,
+      swapExtraRecipientIds,
     } = body;
+    const extraIdsJson =
+      swapExtraRecipientIds === undefined
+        ? undefined
+        : JSON.stringify(swapExtraRecipientIds.filter((x) => Number.isInteger(x)));
 
     if (swapChannel !== undefined && !["both", "email", "sms", "sms-fallback"].includes(swapChannel)) {
       return NextResponse.json(
@@ -164,6 +177,9 @@ export async function PUT(request: NextRequest) {
       if (swapChannel !== undefined) updates.swapChannel = swapChannel;
       if (swapAdminCell !== undefined) updates.swapAdminCell = swapAdminCell.trim();
       if (swapCoordinatorPlayerId !== undefined) updates.swapCoordinatorPlayerId = swapCoordinatorPlayerId;
+      if (swapNotifyPlayers !== undefined) updates.swapNotifyPlayers = swapNotifyPlayers;
+      if (swapNotifyIssuer !== undefined) updates.swapNotifyIssuer = swapNotifyIssuer;
+      if (extraIdsJson !== undefined) updates.swapExtraRecipientIds = extraIdsJson;
       if (reminderTemplateId !== undefined) {
         // null = clear / use inline template; integer = use that template id
         updates.reminderTemplateId = reminderTemplateId;
@@ -194,6 +210,9 @@ export async function PUT(request: NextRequest) {
           swapChannel: swapChannel ?? "sms-fallback",
           swapAdminCell: (swapAdminCell ?? "").trim(),
           swapCoordinatorPlayerId: swapCoordinatorPlayerId ?? null,
+          swapNotifyPlayers: swapNotifyPlayers ?? true,
+          swapNotifyIssuer: swapNotifyIssuer ?? true,
+          swapExtraRecipientIds: extraIdsJson ?? "[]",
         })
         .returning();
       return NextResponse.json(result[0], { status: 201 });

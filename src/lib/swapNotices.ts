@@ -23,9 +23,24 @@ export interface NoticeSettings {
   replyTo?: string;
   adminCell: string;
   coordinatorPlayerId: number | null;
+  /** Tell the players directly in the swap / give-away. */
+  notifyPlayers: boolean;
+  /** Send the copy to whoever made the change. */
+  notifyIssuer: boolean;
+  /** Further players who get a copy of every change. */
+  extraRecipientIds: number[];
 }
 
 type PlayerRow = typeof players.$inferSelect;
+
+function parseIds(raw?: string | null): number[] {
+  try {
+    const v = JSON.parse(raw || "[]");
+    return Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : [];
+  } catch {
+    return [];
+  }
+}
 
 export async function loadNoticeSettings(seasonId: number): Promise<NoticeSettings> {
   const database = await db();
@@ -37,6 +52,9 @@ export async function loadNoticeSettings(seasonId: number): Promise<NoticeSettin
     replyTo: s?.replyTo || undefined,
     adminCell: s?.swapAdminCell || "",
     coordinatorPlayerId: s?.swapCoordinatorPlayerId ?? null,
+    notifyPlayers: s?.swapNotifyPlayers ?? true,
+    notifyIssuer: s?.swapNotifyIssuer ?? true,
+    extraRecipientIds: parseIds(s?.swapExtraRecipientIds),
   };
 }
 
@@ -124,7 +142,7 @@ export async function notifyIssuerAndCoordinator(opts: {
 }): Promise<NoticeResult[]> {
   const { settings, issuerPlayerId, affectedPlayerIds, subject, text } = opts;
   const database = await db();
-  const wantIds = [issuerPlayerId, settings.coordinatorPlayerId].filter((x): x is number => !!x);
+  const wantIds = [issuerPlayerId, settings.coordinatorPlayerId, ...settings.extraRecipientIds].filter((x): x is number => !!x);
   const rows = wantIds.length ? await database.select().from(players).where(inArray(players.id, wantIds)) : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out: NoticeResult[] = [];
@@ -143,7 +161,9 @@ export async function notifyIssuerAndCoordinator(opts: {
     }));
   };
 
-  if (issuerPlayerId) await toPlayer(issuerPlayerId, "issued it");
+  if (!settings.notifyIssuer) {
+    //  issuer copy switched off
+  } else if (issuerPlayerId) await toPlayer(issuerPlayerId, "issued it");
   else if (settings.adminCell.trim()) {
     const d = digits(settings.adminCell);
     if (!seen.has(d)) {
@@ -153,6 +173,9 @@ export async function notifyIssuerAndCoordinator(opts: {
   }
   if (settings.coordinatorPlayerId && settings.coordinatorPlayerId !== issuerPlayerId) {
     await toPlayer(settings.coordinatorPlayerId, "coordinator");
+  }
+  for (const id of settings.extraRecipientIds) {
+    if (id !== settings.coordinatorPlayerId && id !== issuerPlayerId) await toPlayer(id, "copy");
   }
   return out;
 }

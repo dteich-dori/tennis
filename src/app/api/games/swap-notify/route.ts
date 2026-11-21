@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
 
     const results: NoticeResult[] = [];
     for (const { player, gave, took } of legs) {
+      if (!settings.notifyPlayers) continue;
       //  Only the NEW game is attached, with a "Moved from" line. Nothing is
       //  sent to remove the old one: players' calendars are theirs to edit.
       const ics = generateSingleGameIcs(

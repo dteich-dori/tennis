@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       { ...game, assignments }, lookup, "add", `Taken over from ${giver.firstName} ${giver.lastName}`
     );
 
-    const results: NoticeResult[] = [
+    const results: NoticeResult[] = settings.notifyPlayers ? [
       await send(
         giver,
         `Game handed off: ${when(game)}`,
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         `${giver.firstName} ${giver.lastName} can't play, so you're IN: ${when(game)} (Game #${game.gameNumber})${others ? `, with ${others}` : ""}. You'll get a reminder the evening before.`,
         receiverIcs
       ),
-    ];
+    ] : [];
     results.push(
       ...(await notifyIssuerAndCoordinator({
         settings,
