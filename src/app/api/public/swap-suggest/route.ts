@@ -2,14 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/getDb";
 import {
   players,
-  games,
-  gameAssignments,
-  playerBlockedDays,
-  playerVacations,
-  playerDoNotPair,
   seasons,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { loadSwapData } from "@/lib/swapData";
 import { findSwapSuggestions, type SwapPlayer, type SwapGame } from "@/lib/swapSuggestions";
 
 /**
@@ -49,70 +45,14 @@ async function loadSeasonData() {
     .limit(1);
   if (!season) return null;
 
-  const [pRows, gRows, aRows, blocked, vacs, dnp] = await Promise.all([
-    database.select().from(players).where(eq(players.seasonId, season.id)),
-    database.select().from(games).where(eq(games.seasonId, season.id)),
-    database.select().from(gameAssignments),
-    database.select().from(playerBlockedDays),
-    database.select().from(playerVacations),
-    database.select().from(playerDoNotPair),
-  ]);
-
-  const blockedBy = new Map<number, number[]>();
-  for (const b of blocked) {
-    const a = blockedBy.get(b.playerId) ?? [];
-    a.push(b.dayOfWeek);
-    blockedBy.set(b.playerId, a);
-  }
-  const vacsBy = new Map<number, { startDate: string; endDate: string }[]>();
-  for (const v of vacs) {
-    const a = vacsBy.get(v.playerId) ?? [];
-    a.push({ startDate: v.startDate, endDate: v.endDate });
-    vacsBy.set(v.playerId, a);
-  }
-  const dnpBy = new Map<number, number[]>();
-  for (const d of dnp) {
-    const a = dnpBy.get(d.playerId) ?? [];
-    a.push(d.pairedPlayerId);
-    dnpBy.set(d.playerId, a);
-  }
-  const assignBy = new Map<number, { playerId: number }[]>();
-  for (const a of aRows) {
-    const arr = assignBy.get(a.gameId) ?? [];
-    arr.push({ playerId: a.playerId });
-    assignBy.set(a.gameId, arr);
-  }
+  // Same loader as the admin swap page: current assignments (including every
+  // swap to date), one row per slot, so availability reflects the live schedule.
+  const { swapPlayers, swapGames } = await loadSwapData(database, season.id);
+  const pRows = await database.select().from(players).where(eq(players.seasonId, season.id));
 
   //  Keyed separately rather than widening SwapPlayer: the matching
   //  library has no business knowing contact details.
   const cellById = new Map<number, string | null>(pRows.map((p) => [p.id, p.cellNumber]));
-
-  const swapPlayers: SwapPlayer[] = pRows.map((p) => ({
-    id: p.id,
-    firstName: p.firstName,
-    lastName: p.lastName,
-    isActive: p.isActive,
-    skillLevel: p.skillLevel,
-    contractedFrequency: p.contractedFrequency,
-    soloGames: p.soloGames,
-    noEarlyGames: p.noEarlyGames,
-    blockedDays: blockedBy.get(p.id) ?? [],
-    vacations: vacsBy.get(p.id) ?? [],
-    doNotPair: dnpBy.get(p.id) ?? [],
-  }));
-
-  const swapGames: SwapGame[] = gRows.map((g) => ({
-    id: g.id,
-    gameNumber: g.gameNumber,
-    date: g.date,
-    dayOfWeek: g.dayOfWeek,
-    startTime: g.startTime,
-    courtNumber: g.courtNumber,
-    weekNumber: g.weekNumber,
-    status: g.status,
-    group: g.group,
-    assignments: assignBy.get(g.id) ?? [],
-  }));
 
   return { season, swapPlayers, swapGames, cellById };
 }
